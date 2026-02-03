@@ -41,6 +41,11 @@ func main() {
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 
+	// Warn if using auto-generated cookie secret
+	if cfg.CookieSecretGenerated {
+		logger.Warn("using auto-generated cookie secret - sessions will not persist across restarts. Set IDP_COOKIE_SECRET for production.")
+	}
+
 	// Initialize file store
 	store, err := file.NewStore(cfg.DataDir)
 	if err != nil {

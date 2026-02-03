@@ -2,6 +2,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -40,6 +42,9 @@ type Config struct {
 	// Logging
 	LogLevel  string `env:"IDP_LOG_LEVEL" env-default:"info"`
 	LogFormat string `env:"IDP_LOG_FORMAT" env-default:"json"` // json or text
+
+	// Internal flags (not from env)
+	CookieSecretGenerated bool `env:"-"` // True if secret was auto-generated
 }
 
 // Load reads configuration from environment variables.
@@ -48,6 +53,17 @@ func Load() (*Config, error) {
 	if err := cleanenv.ReadEnv(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
+
+	// Generate random cookie secret if not provided
+	if cfg.CookieSecret == "" {
+		secret, err := generateRandomSecret(32)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate cookie secret: %w", err)
+		}
+		cfg.CookieSecret = secret
+		cfg.CookieSecretGenerated = true
+	}
+
 	return &cfg, nil
 }
 
@@ -56,13 +72,11 @@ func (c *Config) Addr() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.Port)
 }
 
-// Validate checks that required configuration is set.
-func (c *Config) Validate() error {
-	if c.CookieSecret == "" {
-		return fmt.Errorf("IDP_COOKIE_SECRET is required")
+// generateRandomSecret generates a cryptographically secure random string.
+func generateRandomSecret(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
 	}
-	if len(c.CookieSecret) < 32 {
-		return fmt.Errorf("IDP_COOKIE_SECRET must be at least 32 characters")
-	}
-	return nil
+	return base64.RawURLEncoding.EncodeToString(bytes), nil
 }
