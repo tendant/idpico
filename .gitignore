@@ -7,6 +7,10 @@
 *.dll
 *.so
 *.dylib
+/idp
+
+# Data directory (file-based storage)
+/data/
 
 # Test binary, built with `go test -c`
 *.test
