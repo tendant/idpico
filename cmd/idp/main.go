@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/tendant/simple-idp/internal/config"
+	"github.com/tendant/simple-idp/internal/crypto"
 	idphttp "github.com/tendant/simple-idp/internal/http"
 	"github.com/tendant/simple-idp/internal/store/file"
 )
@@ -48,8 +49,25 @@ func main() {
 
 	logger.Info("initialized file store", "data_dir", cfg.DataDir)
 
+	// Initialize key service for JWT signing
+	keyRepo := file.NewKeyRepository(cfg.DataDir)
+	keyService := crypto.NewKeyService(keyRepo)
+
+	// Ensure we have an active signing key
+	activeKey, err := keyService.EnsureActiveKey(context.Background())
+	if err != nil {
+		logger.Error("failed to ensure active signing key", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("signing key ready", "kid", activeKey.Kid)
+
 	// Create HTTP server
-	server := idphttp.NewServer(cfg.Addr(), idphttp.WithLogger(logger))
+	server := idphttp.NewServer(
+		cfg.Addr(),
+		idphttp.WithLogger(logger),
+		idphttp.WithKeyService(keyService),
+		idphttp.WithIssuerURL(cfg.IssuerURL),
+	)
 
 	// Start server in goroutine
 	go func() {

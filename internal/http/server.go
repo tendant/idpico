@@ -8,13 +8,16 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/tendant/simple-idp/internal/crypto"
 )
 
 // Server represents the HTTP server.
 type Server struct {
-	router *chi.Mux
-	server *http.Server
-	logger *slog.Logger
+	router     *chi.Mux
+	server     *http.Server
+	logger     *slog.Logger
+	keyService *crypto.KeyService
+	issuerURL  string
 }
 
 // Option configures the Server.
@@ -24,6 +27,20 @@ type Option func(*Server)
 func WithLogger(logger *slog.Logger) Option {
 	return func(s *Server) {
 		s.logger = logger
+	}
+}
+
+// WithKeyService sets the key service for JWKS endpoint.
+func WithKeyService(keyService *crypto.KeyService) Option {
+	return func(s *Server) {
+		s.keyService = keyService
+	}
+}
+
+// WithIssuerURL sets the issuer URL for OIDC discovery.
+func WithIssuerURL(issuerURL string) Option {
+	return func(s *Server) {
+		s.issuerURL = issuerURL
 	}
 }
 
@@ -68,6 +85,19 @@ func NewServer(addr string, opts ...Option) *Server {
 	health := NewHealthHandler()
 	r.Get("/healthz", health.Healthz)
 	r.Get("/readyz", health.Readyz)
+
+	// OIDC discovery endpoint
+	if s.issuerURL != "" {
+		discovery := NewDiscoveryHandler(s.issuerURL)
+		r.Get("/.well-known/openid-configuration", discovery.OpenIDConfiguration)
+	}
+
+	// JWKS endpoint
+	if s.keyService != nil {
+		jwks := NewJWKSHandler(s.keyService, s.logger)
+		r.Get("/.well-known/jwks.json", jwks.JWKS)
+		r.Get("/jwks", jwks.JWKS)
+	}
 
 	s.server = &http.Server{
 		Addr:         addr,
