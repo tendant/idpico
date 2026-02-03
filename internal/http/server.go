@@ -10,16 +10,20 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/crypto"
+	"github.com/tendant/simple-idp/internal/oidc"
 )
 
 // Server represents the HTTP server.
 type Server struct {
-	router      *chi.Mux
-	server      *http.Server
-	logger      *slog.Logger
-	keyService  *crypto.KeyService
-	authService *auth.Service
-	issuerURL   string
+	router           *chi.Mux
+	server           *http.Server
+	logger           *slog.Logger
+	keyService       *crypto.KeyService
+	authService      *auth.Service
+	authorizeService *oidc.AuthorizeService
+	tokenService     *oidc.TokenService
+	userInfoService  *oidc.UserInfoService
+	issuerURL        string
 }
 
 // Option configures the Server.
@@ -50,6 +54,15 @@ func WithIssuerURL(issuerURL string) Option {
 func WithAuthService(authService *auth.Service) Option {
 	return func(s *Server) {
 		s.authService = authService
+	}
+}
+
+// WithOIDCServices sets the OIDC services.
+func WithOIDCServices(authorizeService *oidc.AuthorizeService, tokenService *oidc.TokenService, userInfoService *oidc.UserInfoService) Option {
+	return func(s *Server) {
+		s.authorizeService = authorizeService
+		s.tokenService = tokenService
+		s.userInfoService = userInfoService
 	}
 }
 
@@ -115,6 +128,15 @@ func NewServer(addr string, opts ...Option) *Server {
 		r.Post("/login", login.Login)
 		r.Post("/logout", login.Logout)
 		r.Get("/logout", login.Logout) // Also support GET for simple links
+	}
+
+	// OIDC endpoints
+	if s.authorizeService != nil && s.tokenService != nil && s.userInfoService != nil && s.authService != nil {
+		oidcHandler := NewOIDCHandler(s.authService, s.authorizeService, s.tokenService, s.userInfoService, s.logger)
+		r.Get("/authorize", oidcHandler.Authorize)
+		r.Post("/token", oidcHandler.Token)
+		r.Get("/userinfo", oidcHandler.UserInfo)
+		r.Post("/userinfo", oidcHandler.UserInfo)
 	}
 
 	s.server = &http.Server{

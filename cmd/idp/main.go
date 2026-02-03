@@ -15,6 +15,7 @@ import (
 	"github.com/tendant/simple-idp/internal/config"
 	"github.com/tendant/simple-idp/internal/crypto"
 	idphttp "github.com/tendant/simple-idp/internal/http"
+	"github.com/tendant/simple-idp/internal/oidc"
 	"github.com/tendant/simple-idp/internal/store/file"
 )
 
@@ -80,6 +81,29 @@ func main() {
 		auth.WithLogger(logger),
 	)
 
+	// Initialize token generator
+	tokenGenerator := crypto.NewTokenGenerator(activeKey, cfg.IssuerURL, cfg.IssuerURL)
+
+	// Initialize OIDC services
+	authorizeService := oidc.NewAuthorizeService(
+		store.Clients(),
+		store.AuthCodes(),
+		cfg.AuthCodeTTL,
+	)
+
+	tokenService := oidc.NewTokenService(
+		store.Clients(),
+		store.AuthCodes(),
+		store.Tokens(),
+		store.Users(),
+		tokenGenerator,
+		cfg.IssuerURL,
+		cfg.AccessTokenTTL,
+		cfg.RefreshTokenTTL,
+	)
+
+	userInfoService := oidc.NewUserInfoService(store.Users(), tokenGenerator)
+
 	// Create HTTP server
 	server := idphttp.NewServer(
 		cfg.Addr(),
@@ -87,6 +111,7 @@ func main() {
 		idphttp.WithKeyService(keyService),
 		idphttp.WithIssuerURL(cfg.IssuerURL),
 		idphttp.WithAuthService(authService),
+		idphttp.WithOIDCServices(authorizeService, tokenService, userInfoService),
 	)
 
 	// Start server in goroutine
