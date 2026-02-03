@@ -8,16 +8,18 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/crypto"
 )
 
 // Server represents the HTTP server.
 type Server struct {
-	router     *chi.Mux
-	server     *http.Server
-	logger     *slog.Logger
-	keyService *crypto.KeyService
-	issuerURL  string
+	router      *chi.Mux
+	server      *http.Server
+	logger      *slog.Logger
+	keyService  *crypto.KeyService
+	authService *auth.Service
+	issuerURL   string
 }
 
 // Option configures the Server.
@@ -41,6 +43,13 @@ func WithKeyService(keyService *crypto.KeyService) Option {
 func WithIssuerURL(issuerURL string) Option {
 	return func(s *Server) {
 		s.issuerURL = issuerURL
+	}
+}
+
+// WithAuthService sets the auth service for login endpoints.
+func WithAuthService(authService *auth.Service) Option {
+	return func(s *Server) {
+		s.authService = authService
 	}
 }
 
@@ -97,6 +106,15 @@ func NewServer(addr string, opts ...Option) *Server {
 		jwks := NewJWKSHandler(s.keyService, s.logger)
 		r.Get("/.well-known/jwks.json", jwks.JWKS)
 		r.Get("/jwks", jwks.JWKS)
+	}
+
+	// Login endpoints
+	if s.authService != nil {
+		login := NewLoginHandler(s.authService, s.logger)
+		r.Get("/login", login.LoginPage)
+		r.Post("/login", login.Login)
+		r.Post("/logout", login.Logout)
+		r.Get("/logout", login.Logout) // Also support GET for simple links
 	}
 
 	s.server = &http.Server{

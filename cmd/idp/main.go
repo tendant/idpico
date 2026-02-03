@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/config"
 	"github.com/tendant/simple-idp/internal/crypto"
 	idphttp "github.com/tendant/simple-idp/internal/http"
@@ -61,12 +62,31 @@ func main() {
 	}
 	logger.Info("signing key ready", "kid", activeKey.Kid)
 
+	// Initialize auth services
+	sessionService := auth.NewSessionService(
+		store.Sessions(),
+		cfg.CookieSecret,
+		auth.WithCookieSecure(cfg.CookieSecure),
+		auth.WithCookieDomain(cfg.CookieDomain),
+		auth.WithSessionTTL(cfg.SessionDuration),
+	)
+
+	csrfService := auth.NewCSRFService(cfg.CookieSecret, cfg.CookieSecure, cfg.CookieDomain)
+
+	authService := auth.NewService(
+		store.Users(),
+		sessionService,
+		csrfService,
+		auth.WithLogger(logger),
+	)
+
 	// Create HTTP server
 	server := idphttp.NewServer(
 		cfg.Addr(),
 		idphttp.WithLogger(logger),
 		idphttp.WithKeyService(keyService),
 		idphttp.WithIssuerURL(cfg.IssuerURL),
+		idphttp.WithAuthService(authService),
 	)
 
 	// Start server in goroutine
