@@ -16,16 +16,18 @@ import (
 
 // Server represents the HTTP server.
 type Server struct {
-	router           *chi.Mux
-	server           *http.Server
-	logger           *slog.Logger
-	keyService       *crypto.KeyService
-	authService      *auth.Service
-	authorizeService *oidc.AuthorizeService
-	tokenService     *oidc.TokenService
-	userInfoService  *oidc.UserInfoService
-	issuerURL        string
-	loginRateLimit   int // requests per minute, 0 = disabled
+	router                *chi.Mux
+	server                *http.Server
+	logger                *slog.Logger
+	keyService            *crypto.KeyService
+	authService           *auth.Service
+	authorizeService      *oidc.AuthorizeService
+	tokenService          *oidc.TokenService
+	userInfoService       *oidc.UserInfoService
+	issuerURL             string
+	loginRateLimit        int // requests per minute, 0 = disabled
+	corsConfig            *CORSConfig
+	securityHeadersConfig *SecurityHeadersConfig
 }
 
 // Option configures the Server.
@@ -75,6 +77,20 @@ func WithLoginRateLimit(limit int) Option {
 	}
 }
 
+// WithCORS sets the CORS configuration.
+func WithCORS(config *CORSConfig) Option {
+	return func(s *Server) {
+		s.corsConfig = config
+	}
+}
+
+// WithSecurityHeaders sets the security headers configuration.
+func WithSecurityHeaders(config *SecurityHeadersConfig) Option {
+	return func(s *Server) {
+		s.securityHeadersConfig = config
+	}
+}
+
 // NewServer creates a new HTTP server with default middleware.
 func NewServer(addr string, opts ...Option) *Server {
 	r := chi.NewRouter()
@@ -93,6 +109,18 @@ func NewServer(addr string, opts ...Option) *Server {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
+
+	// Security headers middleware (applied to all routes)
+	if s.securityHeadersConfig != nil {
+		r.Use(SecurityHeadersMiddleware(s.securityHeadersConfig))
+		s.logger.Info("security headers enabled")
+	}
+
+	// CORS middleware (applied to all routes)
+	if s.corsConfig != nil && len(s.corsConfig.AllowedOrigins) > 0 {
+		r.Use(CORSMiddleware(s.corsConfig))
+		s.logger.Info("CORS enabled", "origins", s.corsConfig.AllowedOrigins)
+	}
 
 	// Request logging middleware
 	r.Use(func(next http.Handler) http.Handler {

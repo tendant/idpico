@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -126,16 +127,39 @@ func main() {
 
 	userInfoService := oidc.NewUserInfoService(store.Users(), tokenGenerator)
 
-	// Create HTTP server
-	server := idphttp.NewServer(
-		cfg.Addr(),
+	// Build server options
+	serverOpts := []idphttp.Option{
 		idphttp.WithLogger(logger),
 		idphttp.WithKeyService(keyService),
 		idphttp.WithIssuerURL(cfg.IssuerURL),
 		idphttp.WithAuthService(authService),
 		idphttp.WithOIDCServices(authorizeService, tokenService, userInfoService),
 		idphttp.WithLoginRateLimit(cfg.LoginRateLimit),
-	)
+	}
+
+	// Configure security headers
+	if cfg.SecurityHeadersEnabled {
+		securityConfig := idphttp.DefaultSecurityHeadersConfig()
+		if cfg.ContentSecurityPolicy != "" {
+			securityConfig.ContentSecurityPolicy = cfg.ContentSecurityPolicy
+		}
+		if cfg.HSTSMaxAge > 0 {
+			securityConfig.StrictTransportSecurity = fmt.Sprintf("max-age=%d; includeSubDomains", cfg.HSTSMaxAge)
+		}
+		serverOpts = append(serverOpts, idphttp.WithSecurityHeaders(securityConfig))
+	}
+
+	// Configure CORS
+	corsOrigins := cfg.ParseCORSAllowedOrigins()
+	if len(corsOrigins) > 0 {
+		corsConfig := idphttp.DefaultCORSConfig()
+		corsConfig.AllowedOrigins = corsOrigins
+		corsConfig.AllowCredentials = cfg.CORSAllowCredentials
+		serverOpts = append(serverOpts, idphttp.WithCORS(corsConfig))
+	}
+
+	// Create HTTP server
+	server := idphttp.NewServer(cfg.Addr(), serverOpts...)
 
 	// Start server in goroutine
 	go func() {

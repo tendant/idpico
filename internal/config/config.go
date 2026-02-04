@@ -48,6 +48,15 @@ type Config struct {
 	LogLevel  string `env:"IDP_LOG_LEVEL" env-default:"info"`
 	LogFormat string `env:"IDP_LOG_FORMAT" env-default:"json"` // json or text
 
+	// CORS settings
+	CORSAllowedOrigins string `env:"IDP_CORS_ALLOWED_ORIGINS" env-default:""` // Comma-separated origins, empty = disabled
+	CORSAllowCredentials bool `env:"IDP_CORS_ALLOW_CREDENTIALS" env-default:"true"`
+
+	// Security headers
+	SecurityHeadersEnabled bool   `env:"IDP_SECURITY_HEADERS_ENABLED" env-default:"true"`
+	ContentSecurityPolicy  string `env:"IDP_CONTENT_SECURITY_POLICY" env-default:"default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'"`
+	HSTSMaxAge             int    `env:"IDP_HSTS_MAX_AGE" env-default:"0"` // 0 = disabled, recommended: 31536000 (1 year)
+
 	// Bootstrap data (created on startup if not exists)
 	// Format: "email:password:name,email2:password2:name2"
 	BootstrapUsers string `env:"IDP_BOOTSTRAP_USERS"`
@@ -145,6 +154,22 @@ func (c *Config) ParseBootstrapUsers() []BootstrapUser {
 		users = append(users, user)
 	}
 	return users
+}
+
+// ParseCORSAllowedOrigins parses the comma-separated CORS allowed origins.
+func (c *Config) ParseCORSAllowedOrigins() []string {
+	if c.CORSAllowedOrigins == "" {
+		return nil
+	}
+
+	var origins []string
+	for _, origin := range strings.Split(c.CORSAllowedOrigins, ",") {
+		origin = strings.TrimSpace(origin)
+		if origin != "" {
+			origins = append(origins, origin)
+		}
+	}
+	return origins
 }
 
 // ParseBootstrapClients parses client configuration from environment variables.
