@@ -237,6 +237,7 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 		Email:         user.Email,
 		EmailVerified: true, // Assume verified for now
 		Name:          user.DisplayName,
+		ClientID:      client.ID,
 	}
 
 	// Add nonce if provided

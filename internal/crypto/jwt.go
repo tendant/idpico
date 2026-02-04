@@ -50,10 +50,16 @@ func (g *TokenGenerator) GenerateIDToken(subject string, expiry time.Duration, c
 		claims = &Claims{}
 	}
 
+	// Use ClientID as audience if set, otherwise fall back to default
+	audience := g.audience
+	if claims.ClientID != "" {
+		audience = claims.ClientID
+	}
+
 	claims.RegisteredClaims = jwt.RegisteredClaims{
 		Issuer:    g.issuer,
 		Subject:   subject,
-		Audience:  jwt.ClaimStrings{g.audience},
+		Audience:  jwt.ClaimStrings{audience},
 		ExpiresAt: jwt.NewNumericDate(expiresAt),
 		IssuedAt:  jwt.NewNumericDate(now),
 		NotBefore: jwt.NewNumericDate(now.Add(-5 * time.Minute)), // Clock skew tolerance
