@@ -102,14 +102,57 @@ func (h *LoginHandler) Login(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, returnURL, http.StatusFound)
 }
 
-// Logout handles POST /logout - terminates the session.
+// Logout handles GET/POST /logout - terminates the session.
+// Supports OIDC RP-initiated logout with post_logout_redirect_uri parameter.
 func (h *LoginHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if err := h.authService.Logout(r.Context(), w, r); err != nil {
 		h.logger.Error("logout error", "error", err)
 	}
 
-	// Redirect to login page
+	// Check for OIDC RP-initiated logout parameters
+	postLogoutRedirectURI := r.URL.Query().Get("post_logout_redirect_uri")
+	if postLogoutRedirectURI == "" {
+		postLogoutRedirectURI = r.FormValue("post_logout_redirect_uri")
+	}
+
+	// If post_logout_redirect_uri is provided, redirect there
+	if postLogoutRedirectURI != "" {
+		// Validate the redirect URI (basic validation - must be absolute URL)
+		if isValidPostLogoutRedirectURI(postLogoutRedirectURI) {
+			state := r.URL.Query().Get("state")
+			if state == "" {
+				state = r.FormValue("state")
+			}
+			redirectURL := postLogoutRedirectURI
+			if state != "" {
+				if u, err := url.Parse(redirectURL); err == nil {
+					q := u.Query()
+					q.Set("state", state)
+					u.RawQuery = q.Encode()
+					redirectURL = u.String()
+				}
+			}
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			return
+		}
+		h.logger.Warn("invalid post_logout_redirect_uri", "uri", postLogoutRedirectURI)
+	}
+
+	// Default: redirect to login page
 	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+// isValidPostLogoutRedirectURI validates the post-logout redirect URI.
+func isValidPostLogoutRedirectURI(uri string) bool {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return false
+	}
+	// Must be an absolute URL with https (or http for localhost)
+	if u.Scheme != "https" && !(u.Scheme == "http" && (u.Host == "localhost" || u.Hostname() == "127.0.0.1")) {
+		return false
+	}
+	return u.Host != ""
 }
 
 func (h *LoginHandler) renderLoginError(w http.ResponseWriter, errMsg, returnURL string) {

@@ -13,6 +13,7 @@ type OIDCDiscovery struct {
 	TokenEndpoint                    string   `json:"token_endpoint"`
 	UserinfoEndpoint                 string   `json:"userinfo_endpoint,omitempty"`
 	JwksURI                          string   `json:"jwks_uri"`
+	EndSessionEndpoint               string   `json:"end_session_endpoint,omitempty"`
 	RegistrationEndpoint             string   `json:"registration_endpoint,omitempty"`
 	ScopesSupported                  []string `json:"scopes_supported"`
 	ResponseTypesSupported           []string `json:"response_types_supported"`
@@ -50,6 +51,7 @@ func (h *DiscoveryHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Re
 		TokenEndpoint:         h.issuerURL + "/token",
 		UserinfoEndpoint:      h.issuerURL + "/userinfo",
 		JwksURI:               h.issuerURL + "/.well-known/jwks.json",
+		EndSessionEndpoint:    h.issuerURL + "/logout",
 
 		ScopesSupported: []string{
 			"openid",
