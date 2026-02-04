@@ -1,6 +1,7 @@
 package crypto
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -27,9 +28,10 @@ type Claims struct {
 
 // TokenGenerator generates and parses JWTs.
 type TokenGenerator struct {
-	keyPair  *KeyPair
-	issuer   string
-	audience string
+	keyPair    *KeyPair
+	keyService *KeyService // For looking up keys by kid during verification
+	issuer     string
+	audience   string
 }
 
 // NewTokenGenerator creates a new TokenGenerator.
@@ -38,6 +40,17 @@ func NewTokenGenerator(keyPair *KeyPair, issuer, audience string) *TokenGenerato
 		keyPair:  keyPair,
 		issuer:   issuer,
 		audience: audience,
+	}
+}
+
+// NewTokenGeneratorWithKeyService creates a TokenGenerator that can verify tokens
+// signed by any key in the key service (for key rotation support).
+func NewTokenGeneratorWithKeyService(keyPair *KeyPair, keyService *KeyService, issuer, audience string) *TokenGenerator {
+	return &TokenGenerator{
+		keyPair:    keyPair,
+		keyService: keyService,
+		issuer:     issuer,
+		audience:   audience,
 	}
 }
 
@@ -87,7 +100,13 @@ func (g *TokenGenerator) GenerateAccessToken(subject string, expiry time.Duratio
 }
 
 // ParseToken parses and validates a JWT token.
+// If a KeyService is configured, it will look up keys by kid to support key rotation.
 func (g *TokenGenerator) ParseToken(tokenString string) (*jwt.Token, *Claims, error) {
+	return g.ParseTokenWithContext(context.Background(), tokenString)
+}
+
+// ParseTokenWithContext parses and validates a JWT token with a context.
+func (g *TokenGenerator) ParseTokenWithContext(ctx context.Context, tokenString string) (*jwt.Token, *Claims, error) {
 	claims := &Claims{}
 
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
@@ -96,10 +115,28 @@ func (g *TokenGenerator) ParseToken(tokenString string) (*jwt.Token, *Claims, er
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 
-		// Verify key ID matches
+		// Get key ID from token
 		kid, ok := token.Header["kid"].(string)
-		if !ok || kid != g.keyPair.Kid {
-			return nil, fmt.Errorf("unknown key ID: %v", token.Header["kid"])
+		if !ok {
+			return nil, fmt.Errorf("missing key ID in token header")
+		}
+
+		// If we have a KeyService, look up the key by kid (supports rotated keys)
+		if g.keyService != nil {
+			keyPair, err := g.keyService.GetKeyByID(ctx, kid)
+			if err != nil {
+				return nil, fmt.Errorf("unknown key ID: %s", kid)
+			}
+			// Don't verify with expired keys (unless token was issued before expiry)
+			if keyPair.IsExpired() {
+				return nil, fmt.Errorf("key has expired: %s", kid)
+			}
+			return keyPair.PublicKey, nil
+		}
+
+		// Fallback: verify key ID matches the current key
+		if kid != g.keyPair.Kid {
+			return nil, fmt.Errorf("unknown key ID: %s", kid)
 		}
 
 		return g.keyPair.PublicKey, nil

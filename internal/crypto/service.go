@@ -155,6 +155,27 @@ func (s *KeyService) RotateKey(ctx context.Context, expiresIn time.Duration) (*K
 	return newKey, nil
 }
 
+// GetKeyByID returns a key by its ID (kid).
+// Used for token verification to support rotated keys.
+func (s *KeyService) GetKeyByID(ctx context.Context, kid string) (*KeyPair, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	key, err := s.repo.GetByID(ctx, kid)
+	if err != nil {
+		return nil, err
+	}
+
+	// Restore RSA keys from PEM if needed
+	if key.PrivateKey == nil || key.PublicKey == nil {
+		if err := key.LoadFromPEM(); err != nil {
+			return nil, fmt.Errorf("failed to load key from PEM: %w", err)
+		}
+	}
+
+	return key, nil
+}
+
 // CleanupExpiredKeys removes keys that have expired.
 func (s *KeyService) CleanupExpiredKeys(ctx context.Context) error {
 	s.mu.Lock()

@@ -37,7 +37,9 @@ func (h *JWKSHandler) JWKS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	// Short cache to allow clients to pick up key rotations quickly
+	// Clients should also refresh on unknown kid
+	w.Header().Set("Cache-Control", "public, max-age=300")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if err := json.NewEncoder(w).Encode(jwks); err != nil {

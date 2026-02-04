@@ -103,8 +103,8 @@ func main() {
 		auth.WithLockout(lockoutService),
 	)
 
-	// Initialize token generator
-	tokenGenerator := crypto.NewTokenGenerator(activeKey, cfg.IssuerURL, cfg.IssuerURL)
+	// Initialize token generator with KeyService for key rotation support
+	tokenGenerator := crypto.NewTokenGeneratorWithKeyService(activeKey, keyService, cfg.IssuerURL, cfg.IssuerURL)
 
 	// Initialize OIDC services
 	authorizeService := oidc.NewAuthorizeService(
