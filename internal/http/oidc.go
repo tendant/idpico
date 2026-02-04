@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"html"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -204,7 +205,7 @@ func (h *OIDCHandler) renderAuthError(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 
-	// Otherwise show error page
+	// Otherwise show error page (escape HTML to prevent XSS)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusBadRequest)
 	w.Write([]byte(`<!DOCTYPE html>
@@ -212,7 +213,7 @@ func (h *OIDCHandler) renderAuthError(w http.ResponseWriter, r *http.Request, re
 <head><title>Authorization Error</title></head>
 <body>
 <h1>Authorization Error</h1>
-<p>` + errorDesc + `</p>
+<p>` + html.EscapeString(errorDesc) + `</p>
 </body>
 </html>`))
 }

@@ -2,6 +2,7 @@ package oidc
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -152,9 +153,9 @@ func (s *TokenService) HandleAuthorizationCode(ctx context.Context, req *TokenRe
 		return nil, idperrors.InvalidInput("invalid client")
 	}
 
-	// Validate client secret for confidential clients
+	// Validate client secret for confidential clients (constant-time comparison)
 	if !client.Public {
-		if req.ClientSecret != client.Secret {
+		if subtle.ConstantTimeCompare([]byte(req.ClientSecret), []byte(client.Secret)) != 1 {
 			return nil, idperrors.Unauthorized("invalid client credentials")
 		}
 	}
@@ -203,9 +204,9 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 		return nil, idperrors.InvalidInput("invalid client")
 	}
 
-	// Validate client secret for confidential clients
+	// Validate client secret for confidential clients (constant-time comparison)
 	if !client.Public {
-		if req.ClientSecret != client.Secret {
+		if subtle.ConstantTimeCompare([]byte(req.ClientSecret), []byte(client.Secret)) != 1 {
 			return nil, idperrors.Unauthorized("invalid client credentials")
 		}
 	}

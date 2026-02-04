@@ -188,15 +188,10 @@ func (s *Service) CreateUser(ctx context.Context, email, password, displayName s
 }
 
 // getClientIP extracts the client IP from the request.
+// Note: This IdP is for development use only and does not trust proxy headers
+// (X-Forwarded-For, X-Real-IP) to prevent IP spoofing attacks.
 func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
-	}
-	// Check X-Real-IP header
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
+	// Only use direct RemoteAddr for security (no proxy header trust)
 	return r.RemoteAddr
 }
 
