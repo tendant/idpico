@@ -4,7 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-**simple-idp** is a standalone Identity Provider (IdP) currently in design phase with no implementation yet. See DESIGN.md for the complete architectural specification.
+**simple-idp** is a standalone Identity Provider (IdP) with **Phase 1 (File Storage) complete**. The IdP is fully functional with:
+
+- Complete OIDC Authorization Code + PKCE flow
+- JWT ID tokens and access tokens (RS256)
+- Refresh token rotation
+- File-based JSON storage for all persistence
+- Bootstrap users and clients via environment variables
+
+See DESIGN.md for the complete architectural specification.
 
 ## Reference Project
 
@@ -25,21 +33,26 @@ The **simple-idm** project (`../simple-idm`) serves as a reference for coding pa
 
 Implementation proceeds in phases to enable faster iteration:
 
-1. **Phase 1 - File Storage**: Local file storage (JSON files) for all persistence
-   - Enables rapid development and testing without database setup
-   - Repository interfaces allow easy swap to database later
+1. **Phase 1 - File Storage**: ✅ **COMPLETE**
+   - Local file storage (JSON files) for all persistence
+   - Full OIDC Authorization Code + PKCE flow
+   - JWT tokens with RS256 signing
+   - User authentication with Argon2id password hashing
+   - Session management with secure cookies
 
-2. **Phase 2 - PostgreSQL**: Full database implementation
+2. **Phase 2 - PostgreSQL**: Planned
    - Implement postgres repository implementations
    - Add migrations
    - Production-ready persistence
 
-## Expected Build Commands
+## Build Commands
 
-Once implemented (Go project):
 ```bash
-go build ./cmd/idp      # Build the IdP server
-go test ./...           # Run all tests
+make build              # Build the binary
+make run                # Build and run the server
+make run-dev            # Run with debug logging
+make test               # Run all tests
+make test-flow          # Test full OIDC flow
 go vet ./...            # Lint
 go fmt ./...            # Format code
 ```
@@ -52,7 +65,7 @@ go fmt ./...            # Format code
 - **Security by default** - Argon2id passwords, secure cookies, strict redirect URI validation, PKCE required for public clients
 - **Independent of simple-idm** - no runtime or build-time coupling (patterns are shared, code is not)
 
-### Planned Directory Structure
+### Directory Structure
 ```
 cmd/idp/main.go           # Entry point
 internal/
@@ -61,10 +74,9 @@ internal/
   auth/                   # Login/session, cookies, CSRF
   oidc/                   # OAuth 2.0/OIDC flows
   crypto/                 # JWKS, key rotation, JWT signing
-  store/                  # Persistence interfaces + SQL implementation
+  store/                  # Persistence interfaces (file-based JSON)
   domain/                 # Core types (User, Client, Token, etc.)
-  audit/                  # Event logging (optional)
-migrations/               # Database migrations
+data/                     # JSON file storage (auto-created)
 ```
 
 All production code goes under `internal/` to prevent accidental coupling.

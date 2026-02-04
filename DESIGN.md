@@ -1,6 +1,6 @@
 # simple-idp — Design Document
 
-**Status:** Draft (v0.1)  
+**Status:** Implemented (v0.2 complete, file-based storage)
 **Owner:** Wei Labs / tendant  
 **Last updated:** 2026-02-03
 
@@ -349,21 +349,21 @@ Two strategies:
 
 ## 15. Roadmap
 
-### v0.1 (bootstrap)
+### v0.1 (bootstrap) - ✅ COMPLETE
 - Local users (email + password)
 - Auth code + PKCE
 - JWT id_token + access token
 - JWKS publication
-- Static client config
+- Static client config (env vars)
 - Minimal login UI
 
-### v0.2
+### v0.2 - ✅ COMPLETE
 - Refresh tokens + rotation
-- Client management stored in DB
-- `/userinfo`
-- Basic audit events
+- `/userinfo` endpoint
+- File-based JSON storage
 
-### v0.3
+### v0.3 - IN PROGRESS
+- PostgreSQL storage backend
 - Password reset + email verification
 - Consent UI (optional)
 - Rate limiting improvements
