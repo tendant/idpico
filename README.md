@@ -15,6 +15,7 @@ A lightweight Identity Provider (IdP) implementing OAuth 2.0 and OpenID Connect 
 - **Secure session cookies** (HttpOnly, Secure, SameSite)
 - **CSRF protection** on login forms
 - **Rate limiting** on login and token endpoints
+- **Account lockout** after failed login attempts
 - **File-based JSON storage** (no database required)
 - **Bootstrap users and clients** via environment variables
 
@@ -62,6 +63,10 @@ IDP_LOG_FORMAT=json          # json or text
 
 # Rate limiting
 IDP_LOGIN_RATE_LIMIT=5       # requests per minute per IP (0 = disabled)
+
+# Account lockout
+IDP_LOCKOUT_MAX_ATTEMPTS=5   # failed attempts before lockout (0 = disabled)
+IDP_LOCKOUT_DURATION=15m     # how long account stays locked
 
 # Bootstrap a single client
 IDP_CLIENT_ID=my-app
@@ -165,6 +170,17 @@ The IdP includes rate limiting to prevent brute-force attacks:
 When the limit is exceeded, the server returns HTTP 429 (Too Many Requests).
 
 Configure via `IDP_LOGIN_RATE_LIMIT` environment variable. Set to `0` to disable.
+
+### Account Lockout
+
+Accounts are temporarily locked after too many failed login attempts:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `IDP_LOCKOUT_MAX_ATTEMPTS` | 5 | Failed attempts before lockout |
+| `IDP_LOCKOUT_DURATION` | 15m | How long account stays locked |
+
+Set `IDP_LOCKOUT_MAX_ATTEMPTS=0` to disable account lockout.
 
 ## Guides
 

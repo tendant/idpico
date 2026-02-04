@@ -88,11 +88,19 @@ func main() {
 
 	csrfService := auth.NewCSRFService(cfg.CookieSecret, cfg.CookieSecure, cfg.CookieDomain)
 
+	// Initialize lockout service for account lockout after failed attempts
+	var lockoutService *auth.LockoutService
+	if cfg.LockoutMaxAttempts > 0 {
+		lockoutService = auth.NewLockoutService(cfg.LockoutMaxAttempts, cfg.LockoutDuration)
+		logger.Info("account lockout enabled", "max_attempts", cfg.LockoutMaxAttempts, "duration", cfg.LockoutDuration)
+	}
+
 	authService := auth.NewService(
 		store.Users(),
 		sessionService,
 		csrfService,
 		auth.WithLogger(logger),
+		auth.WithLockout(lockoutService),
 	)
 
 	// Initialize token generator

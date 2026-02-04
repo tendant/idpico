@@ -16,6 +16,7 @@ type Service struct {
 	users    store.UserRepository
 	sessions *SessionService
 	csrf     *CSRFService
+	lockout  *LockoutService
 	logger   *slog.Logger
 }
 
@@ -26,6 +27,13 @@ type ServiceOption func(*Service)
 func WithLogger(logger *slog.Logger) ServiceOption {
 	return func(s *Service) {
 		s.logger = logger
+	}
+}
+
+// WithLockout sets the lockout service for account lockout after failed attempts.
+func WithLockout(lockout *LockoutService) ServiceOption {
+	return func(s *Service) {
+		s.lockout = lockout
 	}
 }
 
@@ -90,10 +98,28 @@ func (s *Service) Login(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		return nil, idperrors.New(idperrors.CodeForbidden, "invalid CSRF token")
 	}
 
+	// Check if account is locked
+	if s.lockout != nil && s.lockout.IsLocked(email) {
+		remaining := s.lockout.GetLockoutRemaining(email)
+		s.logger.Warn("login attempt on locked account", "email", email, "unlock_in", remaining)
+		return nil, idperrors.New(idperrors.CodeForbidden, "account is temporarily locked")
+	}
+
 	// Authenticate
 	user, err := s.Authenticate(ctx, email, password)
 	if err != nil {
+		// Record failed attempt
+		if s.lockout != nil {
+			if s.lockout.RecordFailure(email) {
+				s.logger.Warn("account locked due to failed attempts", "email", email)
+			}
+		}
 		return nil, err
+	}
+
+	// Clear failed attempts on successful login
+	if s.lockout != nil {
+		s.lockout.RecordSuccess(email)
 	}
 
 	// Get existing session token for rotation

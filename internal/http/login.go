@@ -82,7 +82,12 @@ func (h *LoginHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 		errMsg := "Invalid email or password"
 		if idperrors.IsCode(err, idperrors.CodeForbidden) {
-			errMsg = "Invalid request. Please try again."
+			// Check if it's a lockout error
+			if e, ok := err.(*idperrors.Error); ok && e.Message == "account is temporarily locked" {
+				errMsg = "Account is temporarily locked due to too many failed attempts. Please try again later."
+			} else {
+				errMsg = "Invalid request. Please try again."
+			}
 		}
 
 		h.renderLoginError(w, errMsg, returnURL)

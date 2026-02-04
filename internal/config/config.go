@@ -40,6 +40,10 @@ type Config struct {
 	// Rate limiting
 	LoginRateLimit int `env:"IDP_LOGIN_RATE_LIMIT" env-default:"5"` // attempts per minute
 
+	// Account lockout
+	LockoutMaxAttempts int           `env:"IDP_LOCKOUT_MAX_ATTEMPTS" env-default:"5"`  // 0 = disabled
+	LockoutDuration    time.Duration `env:"IDP_LOCKOUT_DURATION" env-default:"15m"`
+
 	// Logging
 	LogLevel  string `env:"IDP_LOG_LEVEL" env-default:"info"`
 	LogFormat string `env:"IDP_LOG_FORMAT" env-default:"json"` // json or text
