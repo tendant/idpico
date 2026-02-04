@@ -11,11 +11,17 @@ A lightweight Identity Provider (IdP) implementing OAuth 2.0 and OpenID Connect 
 - **OIDC Authorization Code + PKCE** flow
 - **JWT tokens** (ID token and access token) with RS256 signing
 - **Refresh token rotation**
+- **Token revocation** (RFC 7009)
+- **Token introspection** (RFC 7662)
+- **OIDC logout** (end_session_endpoint)
 - **Argon2id password hashing**
 - **Secure session cookies** (HttpOnly, Secure, SameSite)
 - **CSRF protection** on login forms
+- **CORS support** with configurable origins
+- **Security headers** (CSP, X-Frame-Options, HSTS, etc.)
 - **Rate limiting** on login and token endpoints
 - **Account lockout** after failed login attempts
+- **Prometheus metrics** for observability
 - **File-based JSON storage** (no database required)
 - **Bootstrap users and clients** via environment variables
 
@@ -68,6 +74,15 @@ IDP_LOGIN_RATE_LIMIT=5       # requests per minute per IP (0 = disabled)
 IDP_LOCKOUT_MAX_ATTEMPTS=5   # failed attempts before lockout (0 = disabled)
 IDP_LOCKOUT_DURATION=15m     # how long account stays locked
 
+# CORS (empty = disabled)
+IDP_CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
+IDP_CORS_ALLOW_CREDENTIALS=true
+
+# Security headers
+IDP_SECURITY_HEADERS_ENABLED=true
+IDP_CONTENT_SECURITY_POLICY=default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'
+IDP_HSTS_MAX_AGE=31536000    # 1 year, 0 = disabled
+
 # Bootstrap a single client
 IDP_CLIENT_ID=my-app
 IDP_CLIENT_SECRET=my-secret
@@ -89,6 +104,8 @@ You can also use a `.env` file (copy from `.env.example`).
 | `GET /authorize` | Authorization endpoint (start OIDC flow) |
 | `POST /token` | Token endpoint (exchange code for tokens) |
 | `GET /userinfo` | User info endpoint (requires access token) |
+| `POST /revoke` | Token revocation endpoint (RFC 7009) |
+| `POST /introspect` | Token introspection endpoint (RFC 7662) |
 
 ### Authentication
 | Endpoint | Description |
@@ -102,6 +119,7 @@ You can also use a `.env` file (copy from `.env.example`).
 |----------|-------------|
 | `GET /healthz` | Liveness check |
 | `GET /readyz` | Readiness check |
+| `GET /metrics` | Prometheus metrics (if enabled) |
 
 ## OIDC Flow Example
 
@@ -181,6 +199,120 @@ Accounts are temporarily locked after too many failed login attempts:
 | `IDP_LOCKOUT_DURATION` | 15m | How long account stays locked |
 
 Set `IDP_LOCKOUT_MAX_ATTEMPTS=0` to disable account lockout.
+
+### CORS
+
+Cross-Origin Resource Sharing can be enabled for specific origins:
+
+```bash
+IDP_CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
+IDP_CORS_ALLOW_CREDENTIALS=true
+```
+
+Leave `IDP_CORS_ALLOWED_ORIGINS` empty to disable CORS (default).
+
+### Security Headers
+
+Security headers are enabled by default and include:
+
+| Header | Default Value |
+|--------|---------------|
+| Content-Security-Policy | `default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'` |
+| X-Frame-Options | `DENY` |
+| X-Content-Type-Options | `nosniff` |
+| Referrer-Policy | `strict-origin-when-cross-origin` |
+| X-XSS-Protection | `1; mode=block` |
+| Permissions-Policy | `geolocation=(), microphone=(), camera=()` |
+| Strict-Transport-Security | Disabled by default (set `IDP_HSTS_MAX_AGE` to enable) |
+
+Configure via environment variables:
+
+```bash
+IDP_SECURITY_HEADERS_ENABLED=true
+IDP_CONTENT_SECURITY_POLICY="default-src 'self'"
+IDP_HSTS_MAX_AGE=31536000  # Enable HSTS with 1-year max-age
+```
+
+### Token Revocation (RFC 7009)
+
+Revoke refresh tokens:
+
+```bash
+curl -X POST http://localhost:8080/revoke \
+  -u "my-app:my-secret" \
+  -d "token=<refresh-token>" \
+  -d "token_type_hint=refresh_token"
+```
+
+Per RFC 7009, the endpoint always returns 200 OK (except for authentication errors) to prevent token enumeration.
+
+### Token Introspection (RFC 7662)
+
+Check if a token is active and get its metadata:
+
+```bash
+curl -X POST http://localhost:8080/introspect \
+  -u "my-app:my-secret" \
+  -d "token=<token>" \
+  -d "token_type_hint=access_token"
+```
+
+Response for an active token:
+```json
+{
+  "active": true,
+  "scope": "openid profile email",
+  "client_id": "my-app",
+  "username": "user@example.com",
+  "token_type": "Bearer",
+  "exp": 1234567890,
+  "iat": 1234567000,
+  "sub": "user-id"
+}
+```
+
+Response for an inactive/invalid token:
+```json
+{
+  "active": false
+}
+```
+
+### OIDC Logout (end_session_endpoint)
+
+The `/logout` endpoint supports OIDC RP-Initiated Logout:
+
+```
+GET /logout?id_token_hint=<id-token>&post_logout_redirect_uri=/callback&state=abc123
+```
+
+Parameters:
+- `id_token_hint`: Optional. The ID token previously issued.
+- `post_logout_redirect_uri`: Optional. URL to redirect after logout (must be a relative path).
+- `state`: Optional. Opaque value passed through to the redirect.
+
+### Prometheus Metrics
+
+Metrics are enabled by default. Disable with:
+
+```bash
+IDP_METRICS_ENABLED=false
+```
+
+Available metrics at `/metrics`:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `idp_http_requests_total` | Counter | Total HTTP requests by method, path, status |
+| `idp_http_request_duration_seconds` | Histogram | Request duration |
+| `idp_login_attempts_total` | Counter | Login attempts by status (success/failure/locked) |
+| `idp_active_sessions` | Gauge | Number of active sessions |
+| `idp_tokens_issued_total` | Counter | Tokens issued by type and grant type |
+| `idp_token_introspections_total` | Counter | Token introspection requests |
+| `idp_token_revocations_total` | Counter | Token revocation requests |
+| `idp_auth_codes_issued_total` | Counter | Authorization codes issued |
+| `idp_rate_limit_exceeded_total` | Counter | Rate limit exceeded events |
+| `idp_account_lockouts_total` | Counter | Account lockout events |
 
 ## Guides
 

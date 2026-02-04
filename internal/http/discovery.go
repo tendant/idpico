@@ -8,22 +8,26 @@ import (
 
 // OIDCDiscovery represents the OIDC discovery document.
 type OIDCDiscovery struct {
-	Issuer                           string   `json:"issuer"`
-	AuthorizationEndpoint            string   `json:"authorization_endpoint"`
-	TokenEndpoint                    string   `json:"token_endpoint"`
-	UserinfoEndpoint                 string   `json:"userinfo_endpoint,omitempty"`
-	JwksURI                          string   `json:"jwks_uri"`
-	EndSessionEndpoint               string   `json:"end_session_endpoint,omitempty"`
-	RegistrationEndpoint             string   `json:"registration_endpoint,omitempty"`
-	ScopesSupported                  []string `json:"scopes_supported"`
-	ResponseTypesSupported           []string `json:"response_types_supported"`
-	ResponseModesSupported           []string `json:"response_modes_supported,omitempty"`
-	GrantTypesSupported              []string `json:"grant_types_supported"`
-	SubjectTypesSupported            []string `json:"subject_types_supported"`
-	IDTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported"`
+	Issuer                            string   `json:"issuer"`
+	AuthorizationEndpoint             string   `json:"authorization_endpoint"`
+	TokenEndpoint                     string   `json:"token_endpoint"`
+	UserinfoEndpoint                  string   `json:"userinfo_endpoint,omitempty"`
+	JwksURI                           string   `json:"jwks_uri"`
+	EndSessionEndpoint                string   `json:"end_session_endpoint,omitempty"`
+	RevocationEndpoint                string   `json:"revocation_endpoint,omitempty"`
+	IntrospectionEndpoint             string   `json:"introspection_endpoint,omitempty"`
+	RegistrationEndpoint              string   `json:"registration_endpoint,omitempty"`
+	ScopesSupported                   []string `json:"scopes_supported"`
+	ResponseTypesSupported            []string `json:"response_types_supported"`
+	ResponseModesSupported            []string `json:"response_modes_supported,omitempty"`
+	GrantTypesSupported               []string `json:"grant_types_supported"`
+	SubjectTypesSupported             []string `json:"subject_types_supported"`
+	IDTokenSigningAlgValuesSupported  []string `json:"id_token_signing_alg_values_supported"`
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
-	ClaimsSupported                  []string `json:"claims_supported,omitempty"`
-	CodeChallengeMethodsSupported    []string `json:"code_challenge_methods_supported,omitempty"`
+	ClaimsSupported                   []string `json:"claims_supported,omitempty"`
+	CodeChallengeMethodsSupported     []string `json:"code_challenge_methods_supported,omitempty"`
+	RevocationEndpointAuthMethods     []string `json:"revocation_endpoint_auth_methods_supported,omitempty"`
+	IntrospectionEndpointAuthMethods  []string `json:"introspection_endpoint_auth_methods_supported,omitempty"`
 }
 
 // DiscoveryHandler handles OIDC discovery endpoints.
@@ -52,6 +56,8 @@ func (h *DiscoveryHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Re
 		UserinfoEndpoint:      h.issuerURL + "/userinfo",
 		JwksURI:               h.issuerURL + "/.well-known/jwks.json",
 		EndSessionEndpoint:    h.issuerURL + "/logout",
+		RevocationEndpoint:    h.issuerURL + "/revoke",
+		IntrospectionEndpoint: h.issuerURL + "/introspect",
 
 		ScopesSupported: []string{
 			"openid",
@@ -100,6 +106,16 @@ func (h *DiscoveryHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Re
 
 		CodeChallengeMethodsSupported: []string{
 			"S256",
+		},
+
+		RevocationEndpointAuthMethods: []string{
+			"client_secret_basic",
+			"client_secret_post",
+		},
+
+		IntrospectionEndpointAuthMethods: []string{
+			"client_secret_basic",
+			"client_secret_post",
 		},
 	}
 

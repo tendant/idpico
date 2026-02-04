@@ -158,6 +158,11 @@ func main() {
 		serverOpts = append(serverOpts, idphttp.WithCORS(corsConfig))
 	}
 
+	// Configure metrics
+	if cfg.MetricsEnabled {
+		serverOpts = append(serverOpts, idphttp.WithMetrics(true))
+	}
+
 	// Create HTTP server
 	server := idphttp.NewServer(cfg.Addr(), serverOpts...)
 

@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/httprate"
 	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/crypto"
+	"github.com/tendant/simple-idp/internal/metrics"
 	"github.com/tendant/simple-idp/internal/oidc"
 )
 
@@ -28,6 +29,7 @@ type Server struct {
 	loginRateLimit        int // requests per minute, 0 = disabled
 	corsConfig            *CORSConfig
 	securityHeadersConfig *SecurityHeadersConfig
+	metricsEnabled        bool
 }
 
 // Option configures the Server.
@@ -91,6 +93,13 @@ func WithSecurityHeaders(config *SecurityHeadersConfig) Option {
 	}
 }
 
+// WithMetrics enables Prometheus metrics.
+func WithMetrics(enabled bool) Option {
+	return func(s *Server) {
+		s.metricsEnabled = enabled
+	}
+}
+
 // NewServer creates a new HTTP server with default middleware.
 func NewServer(addr string, opts ...Option) *Server {
 	r := chi.NewRouter()
@@ -122,6 +131,12 @@ func NewServer(addr string, opts ...Option) *Server {
 		s.logger.Info("CORS enabled", "origins", s.corsConfig.AllowedOrigins)
 	}
 
+	// Metrics middleware (applied to all routes)
+	if s.metricsEnabled {
+		r.Use(metrics.Middleware)
+		s.logger.Info("metrics enabled")
+	}
+
 	// Request logging middleware
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -144,6 +159,11 @@ func NewServer(addr string, opts ...Option) *Server {
 	health := NewHealthHandler()
 	r.Get("/healthz", health.Healthz)
 	r.Get("/readyz", health.Readyz)
+
+	// Metrics endpoint
+	if s.metricsEnabled {
+		r.Handle("/metrics", metrics.Handler())
+	}
 
 	// OIDC discovery endpoint
 	if s.issuerURL != "" {
@@ -190,6 +210,12 @@ func NewServer(addr string, opts ...Option) *Server {
 
 		r.Get("/userinfo", oidcHandler.UserInfo)
 		r.Post("/userinfo", oidcHandler.UserInfo)
+
+		// Token revocation endpoint (RFC 7009)
+		r.Post("/revoke", oidcHandler.Revoke)
+
+		// Token introspection endpoint (RFC 7662)
+		r.Post("/introspect", oidcHandler.Introspect)
 	}
 
 	s.server = &http.Server{

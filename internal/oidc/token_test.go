@@ -784,3 +784,273 @@ func TestRefreshTokenRotation(t *testing.T) {
 		t.Error("New refresh token should be different from old one")
 	}
 }
+
+func TestHandleRevocation(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		setupFn func(*mockClientRepository, *mockTokenRepository)
+		request *RevocationRequest
+		wantErr bool
+	}{
+		{
+			name: "revoke valid refresh token",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository) {
+				clientRepo.Create(ctx, &domain.Client{
+					ID:     "test-app",
+					Secret: "test-secret",
+					Public: false,
+				})
+				tokenRepo.Create(ctx, &domain.Token{
+					ID:        "token-to-revoke",
+					UserID:    "user-123",
+					ClientID:  "test-app",
+					ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+					Revoked:   false,
+				})
+			},
+			request: &RevocationRequest{
+				Token:         "token-to-revoke",
+				TokenTypeHint: "refresh_token",
+				ClientID:      "test-app",
+				ClientSecret:  "test-secret",
+			},
+			wantErr: false,
+		},
+		{
+			name: "revoke nonexistent token (should not error per RFC 7009)",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository) {
+				clientRepo.Create(ctx, &domain.Client{
+					ID:     "test-app",
+					Secret: "test-secret",
+					Public: false,
+				})
+			},
+			request: &RevocationRequest{
+				Token:        "nonexistent-token",
+				ClientID:     "test-app",
+				ClientSecret: "test-secret",
+			},
+			wantErr: false,
+		},
+		{
+			name: "revoke without client auth (should succeed for public tokens)",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository) {
+				tokenRepo.Create(ctx, &domain.Token{
+					ID:        "public-token",
+					UserID:    "user-123",
+					ClientID:  "public-app",
+					ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+					Revoked:   false,
+				})
+			},
+			request: &RevocationRequest{
+				Token: "public-token",
+			},
+			wantErr: false,
+		},
+		{
+			name: "revoke with invalid client credentials",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository) {
+				clientRepo.Create(ctx, &domain.Client{
+					ID:     "test-app",
+					Secret: "correct-secret",
+					Public: false,
+				})
+			},
+			request: &RevocationRequest{
+				Token:        "some-token",
+				ClientID:     "test-app",
+				ClientSecret: "wrong-secret",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, clientRepo, _, tokenRepo, _ := setupTokenService()
+			if tt.setupFn != nil {
+				tt.setupFn(clientRepo, tokenRepo)
+			}
+
+			err := svc.HandleRevocation(ctx, tt.request)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestHandleIntrospection(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name         string
+		setupFn      func(*mockClientRepository, *mockTokenRepository, *mockUserRepository)
+		request      *IntrospectionRequest
+		wantErr      bool
+		wantActive   bool
+		errContains  string
+	}{
+		{
+			name: "introspect valid refresh token",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
+				clientRepo.Create(ctx, &domain.Client{
+					ID:     "test-app",
+					Secret: "test-secret",
+					Public: false,
+				})
+				userRepo.Create(ctx, &domain.User{
+					ID:    "user-123",
+					Email: "test@example.com",
+				})
+				tokenRepo.Create(ctx, &domain.Token{
+					ID:        "valid-token",
+					UserID:    "user-123",
+					ClientID:  "test-app",
+					Scope:     "openid profile",
+					ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+					Revoked:   false,
+				})
+			},
+			request: &IntrospectionRequest{
+				Token:         "valid-token",
+				TokenTypeHint: "refresh_token",
+				ClientID:      "test-app",
+				ClientSecret:  "test-secret",
+			},
+			wantErr:    false,
+			wantActive: true,
+		},
+		{
+			name: "introspect expired token",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
+				clientRepo.Create(ctx, &domain.Client{
+					ID:     "test-app",
+					Secret: "test-secret",
+					Public: false,
+				})
+				tokenRepo.Create(ctx, &domain.Token{
+					ID:        "expired-token",
+					UserID:    "user-123",
+					ClientID:  "test-app",
+					Scope:     "openid",
+					ExpiresAt: time.Now().Add(-1 * time.Hour),
+					Revoked:   false,
+				})
+			},
+			request: &IntrospectionRequest{
+				Token:    "expired-token",
+				ClientID: "test-app",
+				ClientSecret: "test-secret",
+			},
+			wantErr:    false,
+			wantActive: false,
+		},
+		{
+			name: "introspect revoked token",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
+				clientRepo.Create(ctx, &domain.Client{
+					ID:     "test-app",
+					Secret: "test-secret",
+					Public: false,
+				})
+				tokenRepo.Create(ctx, &domain.Token{
+					ID:        "revoked-token",
+					UserID:    "user-123",
+					ClientID:  "test-app",
+					Scope:     "openid",
+					ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+					Revoked:   true,
+				})
+			},
+			request: &IntrospectionRequest{
+				Token:        "revoked-token",
+				ClientID:     "test-app",
+				ClientSecret: "test-secret",
+			},
+			wantErr:    false,
+			wantActive: false,
+		},
+		{
+			name: "introspect without client auth fails",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
+			},
+			request: &IntrospectionRequest{
+				Token: "some-token",
+			},
+			wantErr:     true,
+			errContains: "client authentication required",
+		},
+		{
+			name: "introspect with wrong client secret",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
+				clientRepo.Create(ctx, &domain.Client{
+					ID:     "test-app",
+					Secret: "correct-secret",
+					Public: false,
+				})
+			},
+			request: &IntrospectionRequest{
+				Token:        "some-token",
+				ClientID:     "test-app",
+				ClientSecret: "wrong-secret",
+			},
+			wantErr:     true,
+			errContains: "invalid client credentials",
+		},
+		{
+			name: "introspect nonexistent token",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
+				clientRepo.Create(ctx, &domain.Client{
+					ID:     "test-app",
+					Secret: "test-secret",
+					Public: false,
+				})
+			},
+			request: &IntrospectionRequest{
+				Token:        "nonexistent-token",
+				ClientID:     "test-app",
+				ClientSecret: "test-secret",
+			},
+			wantErr:    false,
+			wantActive: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, clientRepo, _, tokenRepo, userRepo := setupTokenService()
+			if tt.setupFn != nil {
+				tt.setupFn(clientRepo, tokenRepo, userRepo)
+			}
+
+			response, err := svc.HandleIntrospection(ctx, tt.request)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				} else if tt.errContains != "" && !containsString(err.Error(), tt.errContains) {
+					t.Errorf("Error should contain '%s', got '%s'", tt.errContains, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error: %v", err)
+					return
+				}
+				if response.Active != tt.wantActive {
+					t.Errorf("Expected active=%v, got active=%v", tt.wantActive, response.Active)
+				}
+			}
+		})
+	}
+}

@@ -28,6 +28,36 @@ type TokenRequest struct {
 	Scope        string
 }
 
+// RevocationRequest represents a token revocation request (RFC 7009).
+type RevocationRequest struct {
+	Token         string
+	TokenTypeHint string // "access_token" or "refresh_token"
+	ClientID      string
+	ClientSecret  string
+}
+
+// IntrospectionRequest represents a token introspection request (RFC 7662).
+type IntrospectionRequest struct {
+	Token         string
+	TokenTypeHint string // "access_token" or "refresh_token"
+	ClientID      string
+	ClientSecret  string
+}
+
+// IntrospectionResponse represents the introspection response.
+type IntrospectionResponse struct {
+	Active    bool   `json:"active"`
+	Scope     string `json:"scope,omitempty"`
+	ClientID  string `json:"client_id,omitempty"`
+	Username  string `json:"username,omitempty"`
+	TokenType string `json:"token_type,omitempty"`
+	Exp       int64  `json:"exp,omitempty"`
+	Iat       int64  `json:"iat,omitempty"`
+	Sub       string `json:"sub,omitempty"`
+	Aud       string `json:"aud,omitempty"`
+	Iss       string `json:"iss,omitempty"`
+}
+
 // TokenResponse represents the token endpoint response.
 type TokenResponse struct {
 	AccessToken  string `json:"access_token"`
@@ -230,6 +260,168 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 
 	// Generate new tokens
 	return s.generateTokens(ctx, user, client, scope, "")
+}
+
+// ParseRevocationRequest parses a token revocation request.
+func (s *TokenService) ParseRevocationRequest(r *http.Request) (*RevocationRequest, error) {
+	if err := r.ParseForm(); err != nil {
+		return nil, idperrors.InvalidInput("invalid form data")
+	}
+
+	req := &RevocationRequest{
+		Token:         r.FormValue("token"),
+		TokenTypeHint: r.FormValue("token_type_hint"),
+		ClientID:      r.FormValue("client_id"),
+		ClientSecret:  r.FormValue("client_secret"),
+	}
+
+	// Check for client credentials in Authorization header (Basic auth)
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		if strings.HasPrefix(auth, "Basic ") {
+			decoded, err := base64.StdEncoding.DecodeString(auth[6:])
+			if err == nil {
+				parts := strings.SplitN(string(decoded), ":", 2)
+				if len(parts) == 2 {
+					req.ClientID = parts[0]
+					req.ClientSecret = parts[1]
+				}
+			}
+		}
+	}
+
+	if req.Token == "" {
+		return nil, idperrors.InvalidInput("token is required")
+	}
+
+	return req, nil
+}
+
+// HandleRevocation handles token revocation (RFC 7009).
+// Per RFC 7009, this endpoint always returns 200 OK regardless of whether
+// the token was valid, revoked, or never existed - this prevents token
+// enumeration attacks.
+func (s *TokenService) HandleRevocation(ctx context.Context, req *RevocationRequest) error {
+	// Validate client credentials if provided
+	if req.ClientID != "" {
+		client, err := s.clients.GetByID(ctx, req.ClientID)
+		if err != nil {
+			// Don't reveal client existence
+			return nil
+		}
+		if !client.Public {
+			if subtle.ConstantTimeCompare([]byte(req.ClientSecret), []byte(client.Secret)) != 1 {
+				return idperrors.Unauthorized("invalid client credentials")
+			}
+		}
+	}
+
+	// Try to revoke as refresh token
+	if req.TokenTypeHint == "" || req.TokenTypeHint == "refresh_token" {
+		if err := s.tokens.Revoke(ctx, req.Token); err == nil {
+			return nil
+		}
+	}
+
+	// For access tokens (JWTs), we can't truly revoke them since they're
+	// stateless. The best we can do is acknowledge the request.
+	// In a production system, you might maintain a blocklist.
+
+	return nil
+}
+
+// ParseIntrospectionRequest parses a token introspection request.
+func (s *TokenService) ParseIntrospectionRequest(r *http.Request) (*IntrospectionRequest, error) {
+	if err := r.ParseForm(); err != nil {
+		return nil, idperrors.InvalidInput("invalid form data")
+	}
+
+	req := &IntrospectionRequest{
+		Token:         r.FormValue("token"),
+		TokenTypeHint: r.FormValue("token_type_hint"),
+		ClientID:      r.FormValue("client_id"),
+		ClientSecret:  r.FormValue("client_secret"),
+	}
+
+	// Check for client credentials in Authorization header (Basic auth)
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		if strings.HasPrefix(auth, "Basic ") {
+			decoded, err := base64.StdEncoding.DecodeString(auth[6:])
+			if err == nil {
+				parts := strings.SplitN(string(decoded), ":", 2)
+				if len(parts) == 2 {
+					req.ClientID = parts[0]
+					req.ClientSecret = parts[1]
+				}
+			}
+		}
+	}
+
+	if req.Token == "" {
+		return nil, idperrors.InvalidInput("token is required")
+	}
+
+	return req, nil
+}
+
+// HandleIntrospection handles token introspection (RFC 7662).
+func (s *TokenService) HandleIntrospection(ctx context.Context, req *IntrospectionRequest) (*IntrospectionResponse, error) {
+	// Validate client credentials (introspection requires authentication)
+	if req.ClientID == "" {
+		return nil, idperrors.Unauthorized("client authentication required")
+	}
+
+	client, err := s.clients.GetByID(ctx, req.ClientID)
+	if err != nil {
+		return nil, idperrors.Unauthorized("invalid client credentials")
+	}
+	if !client.Public {
+		if subtle.ConstantTimeCompare([]byte(req.ClientSecret), []byte(client.Secret)) != 1 {
+			return nil, idperrors.Unauthorized("invalid client credentials")
+		}
+	}
+
+	// Try to introspect as access token (JWT) first
+	if req.TokenTypeHint == "" || req.TokenTypeHint == "access_token" {
+		claims, err := s.tokenGenerator.ValidateAccessToken(req.Token)
+		if err == nil {
+			return &IntrospectionResponse{
+				Active:    true,
+				Scope:     claims.Scope,
+				ClientID:  claims.ClientID,
+				Sub:       claims.Subject,
+				Iss:       claims.Issuer,
+				Aud:       claims.ClientID,
+				Exp:       claims.ExpiresAt.Unix(),
+				Iat:       claims.IssuedAt.Unix(),
+				TokenType: "Bearer",
+			}, nil
+		}
+	}
+
+	// Try to introspect as refresh token
+	if req.TokenTypeHint == "" || req.TokenTypeHint == "refresh_token" {
+		token, err := s.tokens.GetByID(ctx, req.Token)
+		if err == nil && token.IsValid() {
+			// Get user for username
+			var username string
+			if user, err := s.users.GetByID(ctx, token.UserID); err == nil {
+				username = user.Email
+			}
+
+			return &IntrospectionResponse{
+				Active:    true,
+				Scope:     token.Scope,
+				ClientID:  token.ClientID,
+				Username:  username,
+				Sub:       token.UserID,
+				Exp:       token.ExpiresAt.Unix(),
+				TokenType: "refresh_token",
+			}, nil
+		}
+	}
+
+	// Token is not active (invalid, expired, revoked, or doesn't exist)
+	return &IntrospectionResponse{Active: false}, nil
 }
 
 func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, client *domain.Client, scope, nonce string) (*TokenResponse, error) {

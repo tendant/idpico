@@ -57,6 +57,9 @@ type Config struct {
 	ContentSecurityPolicy  string `env:"IDP_CONTENT_SECURITY_POLICY" env-default:"default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'"`
 	HSTSMaxAge             int    `env:"IDP_HSTS_MAX_AGE" env-default:"0"` // 0 = disabled, recommended: 31536000 (1 year)
 
+	// Metrics
+	MetricsEnabled bool `env:"IDP_METRICS_ENABLED" env-default:"true"`
+
 	// Bootstrap data (created on startup if not exists)
 	// Format: "email:password:name,email2:password2:name2"
 	BootstrapUsers string `env:"IDP_BOOTSTRAP_USERS"`

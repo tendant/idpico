@@ -107,15 +107,51 @@ func (h *LoginHandler) Login(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, returnURL, http.StatusFound)
 }
 
-// Logout handles GET/POST /logout - terminates the session.
-// Note: post_logout_redirect_uri is not supported to prevent open redirect vulnerabilities.
-// This IdP is for development use only - always redirects to /login after logout.
+// Logout handles GET/POST /logout - terminates the session (OIDC end_session_endpoint).
+// Supports the following parameters:
+// - id_token_hint: Optional. The ID token previously issued to the client.
+// - post_logout_redirect_uri: Optional. URL to redirect after logout (must be registered).
+// - state: Optional. Opaque value to maintain state between logout request and callback.
 func (h *LoginHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if err := h.authService.Logout(r.Context(), w, r); err != nil {
 		h.logger.Error("logout error", "error", err)
 	}
 
-	// Always redirect to login page (no external redirects for security)
+	// Parse logout parameters
+	idTokenHint := r.URL.Query().Get("id_token_hint")
+	postLogoutRedirectURI := r.URL.Query().Get("post_logout_redirect_uri")
+	state := r.URL.Query().Get("state")
+
+	// If post_logout_redirect_uri is provided, validate it
+	if postLogoutRedirectURI != "" {
+		// For security, we only allow redirect URIs that:
+		// 1. Are relative paths (start with /)
+		// 2. Or match a registered client's redirect URI (when id_token_hint is provided)
+		valid := false
+
+		// Check if it's a relative path
+		if isValidReturnURL(postLogoutRedirectURI) {
+			valid = true
+		}
+
+		// If id_token_hint is provided, we could validate against client's registered URIs
+		// For now, we accept the hint but don't validate (development use)
+		_ = idTokenHint
+
+		if valid {
+			redirectURL := postLogoutRedirectURI
+			if state != "" {
+				redirectURL += "?state=" + url.QueryEscape(state)
+			}
+			h.logger.Info("logout completed", "redirect", redirectURL)
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			return
+		}
+
+		h.logger.Warn("invalid post_logout_redirect_uri", "uri", postLogoutRedirectURI)
+	}
+
+	// Default: redirect to login page
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 

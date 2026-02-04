@@ -153,3 +153,22 @@ func (g *TokenGenerator) ParseTokenWithContext(ctx context.Context, tokenString 
 func (g *TokenGenerator) GetKeyID() string {
 	return g.keyPair.Kid
 }
+
+// ValidateAccessToken validates an access token and returns its claims.
+func (g *TokenGenerator) ValidateAccessToken(tokenString string) (*Claims, error) {
+	token, claims, err := g.ParseToken(tokenString)
+	if err != nil {
+		return nil, err
+	}
+
+	if !token.Valid {
+		return nil, fmt.Errorf("token is not valid")
+	}
+
+	// Verify issuer matches
+	if claims.Issuer != g.issuer {
+		return nil, fmt.Errorf("invalid issuer")
+	}
+
+	return claims, nil
+}

@@ -228,3 +228,72 @@ func (h *OIDCHandler) writeTokenError(w http.ResponseWriter, errorCode, errorDes
 		"error_description": errorDesc,
 	})
 }
+
+// Revoke handles POST /revoke - token revocation endpoint (RFC 7009).
+func (h *OIDCHandler) Revoke(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.writeTokenError(w, "invalid_request", "method must be POST", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := r.Context()
+
+	// Parse revocation request
+	req, err := h.tokenService.ParseRevocationRequest(r)
+	if err != nil {
+		h.writeTokenError(w, "invalid_request", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Handle revocation
+	if err := h.tokenService.HandleRevocation(ctx, req); err != nil {
+		if idperrors.IsCode(err, idperrors.CodeUnauthorized) {
+			h.writeTokenError(w, "invalid_client", "invalid client credentials", http.StatusUnauthorized)
+			return
+		}
+		// Per RFC 7009, return 200 OK even on errors (except auth errors)
+	}
+
+	h.logger.Info("token revocation processed", "client_id", req.ClientID)
+
+	// RFC 7009: Always return 200 OK with empty body on success
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	w.WriteHeader(http.StatusOK)
+}
+
+// Introspect handles POST /introspect - token introspection endpoint (RFC 7662).
+func (h *OIDCHandler) Introspect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		h.writeTokenError(w, "invalid_request", "method must be POST", http.StatusMethodNotAllowed)
+		return
+	}
+
+	ctx := r.Context()
+
+	// Parse introspection request
+	req, err := h.tokenService.ParseIntrospectionRequest(r)
+	if err != nil {
+		h.writeTokenError(w, "invalid_request", err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Handle introspection
+	response, err := h.tokenService.HandleIntrospection(ctx, req)
+	if err != nil {
+		if idperrors.IsCode(err, idperrors.CodeUnauthorized) {
+			h.writeTokenError(w, "invalid_client", "client authentication required", http.StatusUnauthorized)
+			return
+		}
+		h.logger.Error("introspection failed", "error", err)
+		h.writeTokenError(w, "server_error", "introspection failed", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("token introspection processed", "client_id", req.ClientID, "active", response.Active)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	json.NewEncoder(w).Encode(response)
+}
