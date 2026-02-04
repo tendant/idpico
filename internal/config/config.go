@@ -47,6 +47,13 @@ type Config struct {
 	// Bootstrap data (created on startup if not exists)
 	// Format: "email:password:name,email2:password2:name2"
 	BootstrapUsers string `env:"IDP_BOOTSTRAP_USERS"`
+
+	// Simple single-client configuration (takes precedence if IDP_CLIENT_ID is set)
+	ClientID          string `env:"IDP_CLIENT_ID"`
+	ClientSecret      string `env:"IDP_CLIENT_SECRET"`      // Empty for public clients
+	ClientRedirectURI string `env:"IDP_CLIENT_REDIRECT_URI"` // Space-separated for multiple URIs
+
+	// Complex multi-client configuration
 	// Format: "client_id|client_secret|redirect_uri" (use | as delimiter to avoid URL conflicts)
 	// Multiple redirect URIs separated by space: "client_id|secret|http://uri1 http://uri2"
 	// Multiple clients separated by comma: "client1|secret1|uri1,client2|secret2|uri2"
@@ -136,33 +143,46 @@ func (c *Config) ParseBootstrapUsers() []BootstrapUser {
 	return users
 }
 
-// ParseBootstrapClients parses the IDP_BOOTSTRAP_CLIENTS environment variable.
-// Format: "client_id|client_secret|redirect_uri" (uses | delimiter to avoid URL conflicts)
+// ParseBootstrapClients parses client configuration from environment variables.
+// Simple single-client: IDP_CLIENT_ID, IDP_CLIENT_SECRET, IDP_CLIENT_REDIRECT_URI
+// Complex multi-client: IDP_BOOTSTRAP_CLIENTS with format "client_id|client_secret|redirect_uri"
 // Multiple redirect URIs separated by space: "client_id|secret|http://uri1 http://uri2"
 func (c *Config) ParseBootstrapClients() []BootstrapClient {
-	if c.BootstrapClients == "" {
-		return nil
-	}
-
 	var clients []BootstrapClient
-	for _, entry := range strings.Split(c.BootstrapClients, ",") {
-		entry = strings.TrimSpace(entry)
-		if entry == "" {
-			continue
-		}
-		parts := strings.SplitN(entry, "|", 3)
-		if len(parts) < 3 {
-			continue
-		}
 
-		secret := strings.TrimSpace(parts[1])
+	// Simple single-client configuration (IDP_CLIENT_ID takes precedence)
+	if c.ClientID != "" && c.ClientRedirectURI != "" {
 		client := BootstrapClient{
-			ID:           strings.TrimSpace(parts[0]),
-			Secret:       secret,
-			RedirectURIs: strings.Fields(parts[2]), // Split by whitespace
-			Public:       secret == "",
+			ID:           c.ClientID,
+			Secret:       c.ClientSecret,
+			RedirectURIs: strings.Fields(c.ClientRedirectURI), // Split by whitespace
+			Public:       c.ClientSecret == "",
 		}
 		clients = append(clients, client)
 	}
+
+	// Complex multi-client configuration
+	if c.BootstrapClients != "" {
+		for _, entry := range strings.Split(c.BootstrapClients, ",") {
+			entry = strings.TrimSpace(entry)
+			if entry == "" {
+				continue
+			}
+			parts := strings.SplitN(entry, "|", 3)
+			if len(parts) < 3 {
+				continue
+			}
+
+			secret := strings.TrimSpace(parts[1])
+			client := BootstrapClient{
+				ID:           strings.TrimSpace(parts[0]),
+				Secret:       secret,
+				RedirectURIs: strings.Fields(parts[2]), // Split by whitespace
+				Public:       secret == "",
+			}
+			clients = append(clients, client)
+		}
+	}
+
 	return clients
 }
