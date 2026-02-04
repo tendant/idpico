@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/httprate"
 	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/crypto"
 	"github.com/tendant/simple-idp/internal/oidc"
@@ -24,6 +25,7 @@ type Server struct {
 	tokenService     *oidc.TokenService
 	userInfoService  *oidc.UserInfoService
 	issuerURL        string
+	loginRateLimit   int // requests per minute, 0 = disabled
 }
 
 // Option configures the Server.
@@ -63,6 +65,13 @@ func WithOIDCServices(authorizeService *oidc.AuthorizeService, tokenService *oid
 		s.authorizeService = authorizeService
 		s.tokenService = tokenService
 		s.userInfoService = userInfoService
+	}
+}
+
+// WithLoginRateLimit sets the login rate limit (requests per minute per IP).
+func WithLoginRateLimit(limit int) Option {
+	return func(s *Server) {
+		s.loginRateLimit = limit
 	}
 }
 
@@ -125,7 +134,15 @@ func NewServer(addr string, opts ...Option) *Server {
 	if s.authService != nil {
 		login := NewLoginHandler(s.authService, s.logger)
 		r.Get("/login", login.LoginPage)
-		r.Post("/login", login.Login)
+
+		// Apply rate limiting to login POST to prevent brute-force attacks
+		if s.loginRateLimit > 0 {
+			r.With(httprate.LimitByIP(s.loginRateLimit, time.Minute)).Post("/login", login.Login)
+			s.logger.Info("login rate limiting enabled", "limit", s.loginRateLimit, "window", "1m")
+		} else {
+			r.Post("/login", login.Login)
+		}
+
 		r.Post("/logout", login.Logout)
 		r.Get("/logout", login.Logout) // Also support GET for simple links
 	}
@@ -134,7 +151,15 @@ func NewServer(addr string, opts ...Option) *Server {
 	if s.authorizeService != nil && s.tokenService != nil && s.userInfoService != nil && s.authService != nil {
 		oidcHandler := NewOIDCHandler(s.authService, s.authorizeService, s.tokenService, s.userInfoService, s.logger)
 		r.Get("/authorize", oidcHandler.Authorize)
-		r.Post("/token", oidcHandler.Token)
+
+		// Apply rate limiting to token endpoint to prevent brute-force attacks
+		if s.loginRateLimit > 0 {
+			// Token endpoint gets higher limit since legitimate apps make frequent requests
+			r.With(httprate.LimitByIP(s.loginRateLimit*10, time.Minute)).Post("/token", oidcHandler.Token)
+		} else {
+			r.Post("/token", oidcHandler.Token)
+		}
+
 		r.Get("/userinfo", oidcHandler.UserInfo)
 		r.Post("/userinfo", oidcHandler.UserInfo)
 	}

@@ -126,6 +126,7 @@ func main() {
 		idphttp.WithIssuerURL(cfg.IssuerURL),
 		idphttp.WithAuthService(authService),
 		idphttp.WithOIDCServices(authorizeService, tokenService, userInfoService),
+		idphttp.WithLoginRateLimit(cfg.LoginRateLimit),
 	)
 
 	// Start server in goroutine
