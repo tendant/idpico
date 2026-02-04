@@ -11,9 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/config"
 	"github.com/tendant/simple-idp/internal/crypto"
+	"github.com/tendant/simple-idp/internal/domain"
 	idphttp "github.com/tendant/simple-idp/internal/http"
 	"github.com/tendant/simple-idp/internal/oidc"
 	"github.com/tendant/simple-idp/internal/store/file"
@@ -55,6 +57,9 @@ func main() {
 	defer store.Close()
 
 	logger.Info("initialized file store", "data_dir", cfg.DataDir)
+
+	// Bootstrap users and clients from environment variables
+	bootstrapData(context.Background(), cfg, store, logger)
 
 	// Initialize key service for JWT signing
 	keyRepo := file.NewKeyRepository(cfg.DataDir)
@@ -160,5 +165,60 @@ func parseLogLevel(level string) slog.Level {
 		return slog.LevelError
 	default:
 		return slog.LevelInfo
+	}
+}
+
+// bootstrapData creates users and clients from environment variables if they don't exist.
+func bootstrapData(ctx context.Context, cfg *config.Config, store *file.Store, logger *slog.Logger) {
+	// Bootstrap users
+	for _, u := range cfg.ParseBootstrapUsers() {
+		// Check if user already exists
+		if _, err := store.Users().GetByEmail(ctx, u.Email); err == nil {
+			continue
+		}
+
+		hash, err := auth.HashPassword(u.Password)
+		if err != nil {
+			logger.Error("failed to hash password for bootstrap user", "email", u.Email, "error", err)
+			continue
+		}
+
+		user := &domain.User{
+			ID:           uuid.New().String(),
+			Email:        u.Email,
+			PasswordHash: hash,
+			DisplayName:  u.Name,
+			Active:       true,
+		}
+
+		if err := store.Users().Create(ctx, user); err != nil {
+			logger.Error("failed to create bootstrap user", "email", u.Email, "error", err)
+		} else {
+			logger.Info("created bootstrap user", "email", u.Email)
+		}
+	}
+
+	// Bootstrap clients
+	for _, c := range cfg.ParseBootstrapClients() {
+		// Check if client already exists
+		if _, err := store.Clients().GetByID(ctx, c.ID); err == nil {
+			continue
+		}
+
+		client := &domain.Client{
+			ID:           c.ID,
+			Secret:       c.Secret,
+			Name:         c.ID,
+			RedirectURIs: c.RedirectURIs,
+			GrantTypes:   []string{"authorization_code", "refresh_token"},
+			Scopes:       []string{"openid", "profile", "email", "offline_access"},
+			Public:       c.Public,
+		}
+
+		if err := store.Clients().Create(ctx, client); err != nil {
+			logger.Error("failed to create bootstrap client", "client_id", c.ID, "error", err)
+		} else {
+			logger.Info("created bootstrap client", "client_id", c.ID, "public", c.Public)
+		}
 	}
 }

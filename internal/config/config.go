@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -43,6 +44,15 @@ type Config struct {
 	LogLevel  string `env:"IDP_LOG_LEVEL" env-default:"info"`
 	LogFormat string `env:"IDP_LOG_FORMAT" env-default:"json"` // json or text
 
+	// Bootstrap data (created on startup if not exists)
+	// Format: "email:password:name,email2:password2:name2"
+	BootstrapUsers string `env:"IDP_BOOTSTRAP_USERS"`
+	// Format: "client_id|client_secret|redirect_uri" (use | as delimiter to avoid URL conflicts)
+	// Multiple redirect URIs separated by space: "client_id|secret|http://uri1 http://uri2"
+	// Multiple clients separated by comma: "client1|secret1|uri1,client2|secret2|uri2"
+	// Empty secret for public clients: "public-app||http://localhost:3000/callback"
+	BootstrapClients string `env:"IDP_BOOTSTRAP_CLIENTS"`
+
 	// Internal flags (not from env)
 	CookieSecretGenerated bool `env:"-"` // True if secret was auto-generated
 }
@@ -79,4 +89,80 @@ func generateRandomSecret(length int) (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(bytes), nil
+}
+
+// BootstrapUser represents a user to be created on startup.
+type BootstrapUser struct {
+	Email    string
+	Password string
+	Name     string
+}
+
+// BootstrapClient represents a client to be created on startup.
+type BootstrapClient struct {
+	ID           string
+	Secret       string
+	RedirectURIs []string
+	Public       bool
+}
+
+// ParseBootstrapUsers parses the IDP_BOOTSTRAP_USERS environment variable.
+// Format: "email:password:name,email2:password2:name2"
+func (c *Config) ParseBootstrapUsers() []BootstrapUser {
+	if c.BootstrapUsers == "" {
+		return nil
+	}
+
+	var users []BootstrapUser
+	for _, entry := range strings.Split(c.BootstrapUsers, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		parts := strings.SplitN(entry, ":", 3)
+		if len(parts) < 2 {
+			continue
+		}
+
+		user := BootstrapUser{
+			Email:    strings.TrimSpace(parts[0]),
+			Password: strings.TrimSpace(parts[1]),
+		}
+		if len(parts) >= 3 {
+			user.Name = strings.TrimSpace(parts[2])
+		}
+		users = append(users, user)
+	}
+	return users
+}
+
+// ParseBootstrapClients parses the IDP_BOOTSTRAP_CLIENTS environment variable.
+// Format: "client_id|client_secret|redirect_uri" (uses | delimiter to avoid URL conflicts)
+// Multiple redirect URIs separated by space: "client_id|secret|http://uri1 http://uri2"
+func (c *Config) ParseBootstrapClients() []BootstrapClient {
+	if c.BootstrapClients == "" {
+		return nil
+	}
+
+	var clients []BootstrapClient
+	for _, entry := range strings.Split(c.BootstrapClients, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		parts := strings.SplitN(entry, "|", 3)
+		if len(parts) < 3 {
+			continue
+		}
+
+		secret := strings.TrimSpace(parts[1])
+		client := BootstrapClient{
+			ID:           strings.TrimSpace(parts[0]),
+			Secret:       secret,
+			RedirectURIs: strings.Fields(parts[2]), // Split by whitespace
+			Public:       secret == "",
+		}
+		clients = append(clients, client)
+	}
+	return clients
 }
