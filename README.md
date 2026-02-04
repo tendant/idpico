@@ -147,6 +147,10 @@ Data is stored as JSON files in `./data/` (configurable via `IDP_DATA_DIR`):
 - `tokens.json` - Refresh tokens
 - `signing_keys.json` - RSA signing keys
 
+## Guides
+
+- [k3s + Headlamp OIDC Setup](docs/k3s-headlamp-setup.md) - Complete guide for setting up OIDC authentication with Kubernetes
+
 ## Development
 
 ```bash
