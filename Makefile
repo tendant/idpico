@@ -4,7 +4,7 @@
 BINARY := idp
 
 # Default target
-all: build
+all: help
 
 ## Build
 build: ## Build the binary
