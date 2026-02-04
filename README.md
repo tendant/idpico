@@ -14,6 +14,7 @@ A lightweight Identity Provider (IdP) implementing OAuth 2.0 and OpenID Connect 
 - **Argon2id password hashing**
 - **Secure session cookies** (HttpOnly, Secure, SameSite)
 - **CSRF protection** on login forms
+- **Rate limiting** on login and token endpoints
 - **File-based JSON storage** (no database required)
 - **Bootstrap users and clients** via environment variables
 
@@ -58,6 +59,9 @@ IDP_AUTH_CODE_TTL=10m
 # Logging
 IDP_LOG_LEVEL=info           # debug, info, warn, error
 IDP_LOG_FORMAT=json          # json or text
+
+# Rate limiting
+IDP_LOGIN_RATE_LIMIT=5       # requests per minute per IP (0 = disabled)
 
 # Bootstrap a single client
 IDP_CLIENT_ID=my-app
@@ -146,6 +150,21 @@ Data is stored as JSON files in `./data/` (configurable via `IDP_DATA_DIR`):
 - `auth_codes.json` - Authorization codes
 - `tokens.json` - Refresh tokens
 - `signing_keys.json` - RSA signing keys
+
+## Security
+
+### Rate Limiting
+
+The IdP includes rate limiting to prevent brute-force attacks:
+
+| Endpoint | Default Limit | Window |
+|----------|---------------|--------|
+| `POST /login` | 5 requests | 1 minute |
+| `POST /token` | 50 requests | 1 minute |
+
+When the limit is exceeded, the server returns HTTP 429 (Too Many Requests).
+
+Configure via `IDP_LOGIN_RATE_LIMIT` environment variable. Set to `0` to disable.
 
 ## Guides
 
