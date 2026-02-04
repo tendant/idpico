@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-**simple-idp** is a standalone Identity Provider (IdP) with **Phase 1 (File Storage) complete**. The IdP is fully functional with:
+**simple-idp** is a lightweight Identity Provider (IdP) for **local testing and development**. Phase 1 (File Storage) is complete. The IdP is fully functional with:
 
 - Complete OIDC Authorization Code + PKCE flow
 - JWT ID tokens and access tokens (RS256)

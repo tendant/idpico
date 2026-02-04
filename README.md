@@ -1,6 +1,10 @@
 # simple-idp
 
-A standalone, self-hostable Identity Provider (IdP) implementing OAuth 2.0 and OpenID Connect (OIDC).
+A lightweight Identity Provider (IdP) implementing OAuth 2.0 and OpenID Connect (OIDC).
+
+> **⚠️ Development Use Only**
+>
+> This IdP is designed for **local testing and development** purposes. It uses file-based JSON storage and is not intended for production use. For production environments, use a battle-tested identity provider.
 
 ## Features
 
