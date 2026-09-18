@@ -894,12 +894,12 @@ func TestHandleIntrospection(t *testing.T) {
 	ctx := context.Background()
 
 	tests := []struct {
-		name         string
-		setupFn      func(*mockClientRepository, *mockTokenRepository, *mockUserRepository)
-		request      *IntrospectionRequest
-		wantErr      bool
-		wantActive   bool
-		errContains  string
+		name        string
+		setupFn     func(*mockClientRepository, *mockTokenRepository, *mockUserRepository)
+		request     *IntrospectionRequest
+		wantErr     bool
+		wantActive  bool
+		errContains string
 	}{
 		{
 			name: "introspect valid refresh token",
@@ -949,8 +949,8 @@ func TestHandleIntrospection(t *testing.T) {
 				})
 			},
 			request: &IntrospectionRequest{
-				Token:    "expired-token",
-				ClientID: "test-app",
+				Token:        "expired-token",
+				ClientID:     "test-app",
 				ClientSecret: "test-secret",
 			},
 			wantErr:    false,

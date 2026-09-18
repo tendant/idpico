@@ -18,13 +18,13 @@ type User struct {
 
 // Client represents an OAuth 2.0 / OIDC client application.
 type Client struct {
-	ID           string   `json:"id"`
-	Secret       string   `json:"secret,omitempty"` // Empty for public clients
-	Name         string   `json:"name"`
-	RedirectURIs []string `json:"redirect_uris"`
-	GrantTypes   []string `json:"grant_types"`   // e.g., authorization_code, refresh_token
-	Scopes       []string `json:"scopes"`        // Allowed scopes
-	Public       bool     `json:"public"`        // True for public clients (PKCE required)
+	ID           string    `json:"id"`
+	Secret       string    `json:"secret,omitempty"` // Empty for public clients
+	Name         string    `json:"name"`
+	RedirectURIs []string  `json:"redirect_uris"`
+	GrantTypes   []string  `json:"grant_types"` // e.g., authorization_code, refresh_token
+	Scopes       []string  `json:"scopes"`      // Allowed scopes
+	Public       bool      `json:"public"`      // True for public clients (PKCE required)
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -94,7 +94,7 @@ type SigningKey struct {
 	PublicKey  []byte    `json:"public_key"`  // PEM or raw key bytes
 	Active     bool      `json:"active"`      // Currently used for signing
 	CreatedAt  time.Time `json:"created_at"`
-	ExpiresAt  time.Time `json:"expires_at"`  // After this, key is only valid for verification
+	ExpiresAt  time.Time `json:"expires_at"` // After this, key is only valid for verification
 }
 
 // IsExpired checks if the signing key has expired.

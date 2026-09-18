@@ -20,10 +20,10 @@ func TestCORSMiddleware_AllowedOrigin(t *testing.T) {
 	}))
 
 	tests := []struct {
-		name           string
-		origin         string
-		expectAllowed  bool
-		expectOrigin   string
+		name          string
+		origin        string
+		expectAllowed bool
+		expectOrigin  string
 	}{
 		{
 			name:          "allowed origin",

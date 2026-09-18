@@ -12,12 +12,12 @@ type JWKS struct {
 
 // JWK represents a JSON Web Key (public key only for JWKS endpoint).
 type JWK struct {
-	Kty string `json:"kty"`           // Key type: "RSA"
-	Use string `json:"use"`           // Key use: "sig"
-	Kid string `json:"kid"`           // Key ID
-	Alg string `json:"alg"`           // Algorithm: "RS256"
-	N   string `json:"n"`             // RSA modulus (base64url)
-	E   string `json:"e"`             // RSA exponent (base64url)
+	Kty string `json:"kty"` // Key type: "RSA"
+	Use string `json:"use"` // Key use: "sig"
+	Kid string `json:"kid"` // Key ID
+	Alg string `json:"alg"` // Algorithm: "RS256"
+	N   string `json:"n"`   // RSA modulus (base64url)
+	E   string `json:"e"`   // RSA exponent (base64url)
 }
 
 // ToJWK converts a KeyPair to a JWK (public key only).

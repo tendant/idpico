@@ -57,13 +57,13 @@ func NewStore(dataDir string, opts ...Option) (*Store, error) {
 	return s, nil
 }
 
-func (s *Store) Users() store.UserRepository           { return s.users }
-func (s *Store) Clients() store.ClientRepository       { return s.clients }
-func (s *Store) Sessions() store.SessionRepository     { return s.sessions }
-func (s *Store) AuthCodes() store.AuthCodeRepository   { return s.authCodes }
-func (s *Store) Tokens() store.TokenRepository         { return s.tokens }
+func (s *Store) Users() store.UserRepository             { return s.users }
+func (s *Store) Clients() store.ClientRepository         { return s.clients }
+func (s *Store) Sessions() store.SessionRepository       { return s.sessions }
+func (s *Store) AuthCodes() store.AuthCodeRepository     { return s.authCodes }
+func (s *Store) Tokens() store.TokenRepository           { return s.tokens }
 func (s *Store) SigningKeys() store.SigningKeyRepository { return s.signingKeys }
-func (s *Store) Close() error                          { return nil }
+func (s *Store) Close() error                            { return nil }
 
 // Helper methods for file operations
 
