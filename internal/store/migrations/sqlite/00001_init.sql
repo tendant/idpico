@@ -46,6 +46,7 @@ CREATE TABLE auth_codes (
     code_challenge        TEXT NOT NULL DEFAULT '',
     code_challenge_method TEXT NOT NULL DEFAULT '',
     nonce                 TEXT NOT NULL DEFAULT '',
+    auth_time             TIMESTAMP NOT NULL,
     created_at            TIMESTAMP NOT NULL,
     expires_at            TIMESTAMP NOT NULL,
     used                  BOOLEAN NOT NULL DEFAULT FALSE

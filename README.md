@@ -414,8 +414,11 @@ requested scopes. Allowing is remembered per user and client; a later request fo
 scope prompts again, and `prompt=consent` always prompts. Standard OIDC `prompt` handling:
 
 - `prompt=none` — never interact; returns `login_required` or `consent_required` to the client
-- `prompt=login` — drop the current session and re-authenticate
+- `prompt=login` / `prompt=select_account` — drop the current session and re-authenticate
+  (there is no account chooser, so `select_account` re-authenticates)
 - `prompt=consent` — re-show the consent page even if already granted
+- `max_age=N` — re-authenticate if the session is older than N seconds; ID tokens carry
+  `auth_time` (the session start) so clients can check it themselves
 
 Clients marked `skip_consent` (first-party apps) never prompt. Set `IDP_REQUIRE_CONSENT=false`
 to disable the screen globally.

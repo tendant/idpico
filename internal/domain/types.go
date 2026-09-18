@@ -115,6 +115,7 @@ type AuthCode struct {
 	CodeChallenge       string    `json:"code_challenge,omitempty"`
 	CodeChallengeMethod string    `json:"code_challenge_method,omitempty"` // plain or S256
 	Nonce               string    `json:"nonce,omitempty"`
+	AuthTime            time.Time `json:"auth_time,omitempty"` // When the user last authenticated (session start)
 	CreatedAt           time.Time `json:"created_at"`
 	ExpiresAt           time.Time `json:"expires_at"`
 	Used                bool      `json:"used"`

@@ -199,6 +199,22 @@ func (s *Service) GetCurrentUser(ctx context.Context, r *http.Request) (*domain.
 	return user, nil
 }
 
+// CurrentSession returns the session and user behind the request.
+func (s *Service) CurrentSession(ctx context.Context, r *http.Request) (*domain.Session, *domain.User, error) {
+	session, err := s.sessions.GetSessionFromRequest(ctx, r)
+	if err != nil {
+		return nil, nil, err
+	}
+	user, err := s.users.GetByID(ctx, session.UserID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !user.Active {
+		return nil, nil, idperrors.New(idperrors.CodeUnauthorized, "account is disabled")
+	}
+	return session, user, nil
+}
+
 // IsAuthenticated checks if the request has a valid session.
 func (s *Service) IsAuthenticated(ctx context.Context, r *http.Request) bool {
 	_, err := s.sessions.GetSessionFromRequest(ctx, r)

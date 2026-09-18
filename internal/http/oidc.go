@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/tendant/simple-idp/internal/audit"
 	"github.com/tendant/simple-idp/internal/auth"
@@ -82,19 +83,25 @@ func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user is authenticated (prompt=login forces re-authentication)
-	user, err := h.authService.GetCurrentUser(ctx, r)
-	if err != nil || authReq.HasPrompt("login") {
+	// Check if user is authenticated. prompt=login / select_account and a
+	// session older than max_age all force re-authentication.
+	var authTime time.Time
+	session, user, err := h.authService.CurrentSession(ctx, r)
+	if err == nil {
+		authTime = session.CreatedAt
+	}
+	if err != nil || authReq.RequiresFreshLogin(authTime) {
 		if authReq.HasPrompt("none") {
 			h.redirectError(w, r, authReq, "login_required", "user is not authenticated")
 			return
 		}
-		if authReq.HasPrompt("login") {
-			// Drop the session and strip prompt=login so the post-login
-			// redirect does not loop back here.
+		if err == nil {
+			// Drop the session and strip the prompt so the post-login
+			// redirect does not loop back here (max_age is satisfied by the
+			// fresh session and can stay).
 			_ = h.authService.Logout(ctx, w, r)
 		}
-		loginURL := "/login?return_url=" + url.QueryEscape(withoutPrompt(r.URL, "login"))
+		loginURL := "/login?return_url=" + url.QueryEscape(withoutPrompt(r.URL, "login", "select_account"))
 		http.Redirect(w, r, loginURL, http.StatusFound)
 		return
 	}
@@ -117,7 +124,7 @@ func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.issueCode(w, r, authReq, user.ID)
+	h.issueCode(w, r, authReq, user.ID, authTime)
 }
 
 // Consent handles POST /consent - the user allowed or denied the client.
@@ -151,7 +158,7 @@ func (h *OIDCHandler) Consent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.authService.GetCurrentUser(ctx, r)
+	session, user, err := h.authService.CurrentSession(ctx, r)
 	if err != nil {
 		loginURL := "/login?return_url=" + url.QueryEscape("/authorize?"+query.Encode())
 		http.Redirect(w, r, loginURL, http.StatusFound)
@@ -175,14 +182,14 @@ func (h *OIDCHandler) Consent(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("consent granted", "client_id", client.ID, "user_id", user.ID, "scope", authReq.Scope)
 	h.audit.Record(ctx, audit.Event{Actor: user, Action: audit.ConsentGranted, TargetType: "client", TargetID: client.ID, Detail: authReq.Scope, IP: audit.ClientIP(r)})
 
-	h.issueCode(w, r, authReq, user.ID)
+	h.issueCode(w, r, authReq, user.ID, session.CreatedAt)
 }
 
 // issueCode creates an authorization code and redirects back to the client.
-func (h *OIDCHandler) issueCode(w http.ResponseWriter, r *http.Request, authReq *oidc.AuthorizeRequest, userID string) {
+func (h *OIDCHandler) issueCode(w http.ResponseWriter, r *http.Request, authReq *oidc.AuthorizeRequest, userID string, authTime time.Time) {
 	ctx := r.Context()
 
-	authCode, err := h.authorizeService.CreateAuthCode(ctx, authReq, userID)
+	authCode, err := h.authorizeService.CreateAuthCode(ctx, authReq, userID, authTime)
 	if err != nil {
 		h.logger.Error("failed to create auth code", "error", err)
 		redirectURL := h.authorizeService.BuildErrorResponse(
@@ -257,12 +264,16 @@ func (h *OIDCHandler) renderConsent(w http.ResponseWriter, r *http.Request, auth
 	})
 }
 
-// withoutPrompt returns u's path and query with the given prompt value removed.
-func withoutPrompt(u *url.URL, value string) string {
+// withoutPrompt returns u's path and query with the given prompt values removed.
+func withoutPrompt(u *url.URL, values ...string) string {
 	q := u.Query()
+	drop := make(map[string]bool, len(values))
+	for _, v := range values {
+		drop[v] = true
+	}
 	var kept []string
 	for _, p := range strings.Fields(q.Get("prompt")) {
-		if p != value {
+		if !drop[p] {
 			kept = append(kept, p)
 		}
 	}

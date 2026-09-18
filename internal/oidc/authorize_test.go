@@ -316,7 +316,7 @@ func TestCreateAuthCode(t *testing.T) {
 		CodeChallengeMethod: "S256",
 	}
 
-	code, err := svc.CreateAuthCode(context.Background(), req, "user-123")
+	code, err := svc.CreateAuthCode(context.Background(), req, "user-123", time.Now())
 	if err != nil {
 		t.Fatalf("CreateAuthCode failed: %v", err)
 	}
@@ -452,8 +452,8 @@ func TestAuthCodeUniqueness(t *testing.T) {
 		Scope:       "openid",
 	}
 
-	code1, _ := svc.CreateAuthCode(context.Background(), req, "user-1")
-	code2, _ := svc.CreateAuthCode(context.Background(), req, "user-2")
+	code1, _ := svc.CreateAuthCode(context.Background(), req, "user-1", time.Time{})
+	code2, _ := svc.CreateAuthCode(context.Background(), req, "user-2", time.Time{})
 
 	if code1.Code == code2.Code {
 		t.Error("Auth codes should be unique")

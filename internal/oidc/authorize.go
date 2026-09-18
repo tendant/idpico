@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +28,20 @@ type AuthorizeRequest struct {
 	CodeChallenge       string
 	CodeChallengeMethod string
 	Prompt              []string // OIDC prompt values: none, login, consent, select_account
+	MaxAge              int      // Seconds since authentication the session may be; -1 when absent
+}
+
+// RequiresFreshLogin reports whether the request insists on re-authentication:
+// prompt=login, prompt=select_account (no account chooser exists, so the user
+// signs in again), or a session older than max_age.
+func (r *AuthorizeRequest) RequiresFreshLogin(authTime time.Time) bool {
+	if r.HasPrompt("login") || r.HasPrompt("select_account") {
+		return true
+	}
+	if r.MaxAge >= 0 && (authTime.IsZero() || time.Since(authTime) > time.Duration(r.MaxAge)*time.Second) {
+		return true
+	}
+	return false
 }
 
 // HasPrompt reports whether the request carries the given prompt value.
@@ -77,6 +92,15 @@ func (s *AuthorizeService) ParseAuthorizeQuery(q url.Values) (*AuthorizeRequest,
 		CodeChallenge:       q.Get("code_challenge"),
 		CodeChallengeMethod: q.Get("code_challenge_method"),
 		Prompt:              strings.Fields(q.Get("prompt")),
+		MaxAge:              -1,
+	}
+
+	if v := q.Get("max_age"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return nil, idperrors.InvalidInput("max_age must be a non-negative integer")
+		}
+		req.MaxAge = n
 	}
 
 	// prompt=none is exclusive per OIDC Core 3.1.2.1
@@ -165,8 +189,10 @@ func (s *AuthorizeService) ValidateClient(ctx contextInterface, req *AuthorizeRe
 	return client, nil
 }
 
-// CreateAuthCode creates an authorization code for the user.
-func (s *AuthorizeService) CreateAuthCode(ctx contextInterface, req *AuthorizeRequest, userID string) (*domain.AuthCode, error) {
+// CreateAuthCode creates an authorization code for the user. authTime is
+// when the user's current session was established and is carried into the
+// ID token's auth_time claim.
+func (s *AuthorizeService) CreateAuthCode(ctx contextInterface, req *AuthorizeRequest, userID string, authTime time.Time) (*domain.AuthCode, error) {
 	code := &domain.AuthCode{
 		Code:                uuid.New().String(),
 		ClientID:            req.ClientID,
@@ -176,6 +202,7 @@ func (s *AuthorizeService) CreateAuthCode(ctx contextInterface, req *AuthorizeRe
 		CodeChallenge:       req.CodeChallenge,
 		CodeChallengeMethod: req.CodeChallengeMethod,
 		Nonce:               req.Nonce,
+		AuthTime:            authTime,
 		ExpiresAt:           time.Now().Add(s.codeTTL),
 		Used:                false,
 	}

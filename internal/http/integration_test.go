@@ -21,6 +21,7 @@ import (
 	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/crypto"
 	"github.com/tendant/simple-idp/internal/domain"
+	idperrors "github.com/tendant/simple-idp/internal/errors"
 	"github.com/tendant/simple-idp/internal/mail"
 	"github.com/tendant/simple-idp/internal/oidc"
 	"github.com/tendant/simple-idp/internal/store"
@@ -1515,4 +1516,81 @@ func TestIntegration_RateLimitCoversConsentAndVerify(t *testing.T) {
 	if n := hits("/forgot-password", http.MethodPost); n == 0 {
 		t.Error("forgot-password should be rate limited")
 	}
+}
+
+func TestIntegration_MaxAgeAndAuthTime(t *testing.T) {
+	forEachDriver(t, func(t *testing.T, driver string) {
+		env := setupTestEnv(t, driver)
+		defer env.cleanup()
+		base := env.server.URL
+		ctx := context.Background()
+
+		client := newClientWithCookies()
+		loginAs(t, client, base, "test@example.com", "password123")
+
+		// auth_time is the session start and lands in the ID token
+		tokens := pkceAuthorize(t, client, base, "openid")
+		sessions, _ := env.store.Sessions().ListByUserID(ctx, env.testUser.ID)
+		authTime, ok := jwtPayload(t, tokens.IDToken)["auth_time"].(float64)
+		if !ok || int64(authTime) != sessions[0].CreatedAt.Unix() {
+			t.Errorf("auth_time should equal the session start %d, got %v", sessions[0].CreatedAt.Unix(), jwtPayload(t, tokens.IDToken)["auth_time"])
+		}
+
+		// A generous max_age is satisfied by the current session
+		p := url.Values{"client_id": {"public-client"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"code"},
+			"scope": {"openid"}, "max_age": {"3600"}, "code_challenge": {"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"}, "code_challenge_method": {"S256"}}
+		resp, _ := client.Get(base + "/authorize?" + p.Encode())
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusFound || mustParseURL(resp.Header.Get("Location")).Query().Get("code") == "" {
+			t.Errorf("max_age=3600 should be satisfied, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
+		}
+
+		// Age the session past max_age: re-authentication is required and max_age survives the round trip
+		p.Set("max_age", "0")
+		time.Sleep(1100 * time.Millisecond) // session is now > 0s old
+		resp, _ = client.Get(base + "/authorize?" + p.Encode())
+		resp.Body.Close()
+		loc := resp.Header.Get("Location")
+		if resp.StatusCode != http.StatusFound || !strings.HasPrefix(loc, "/login") {
+			t.Fatalf("stale session should require login, got %d %s", resp.StatusCode, loc)
+		}
+		ret := mustParseURL(mustParseURL(loc).Query().Get("return_url"))
+		if ret.Query().Get("max_age") != "0" {
+			t.Error("max_age should be preserved in return_url")
+		}
+		// The old session was dropped
+		if _, err := env.store.Sessions().GetByID(ctx, sessions[0].ID); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+			t.Error("stale session should be terminated before re-login")
+		}
+
+		// prompt=none with a stale session -> login_required
+		p.Set("prompt", "none")
+		resp, _ = newClientWithCookies().Get(base + "/authorize?" + p.Encode())
+		resp.Body.Close()
+		if mustParseURL(resp.Header.Get("Location")).Query().Get("error") != "login_required" {
+			t.Errorf("expected login_required, got %s", resp.Header.Get("Location"))
+		}
+
+		// Invalid max_age is rejected
+		p.Del("prompt")
+		p.Set("max_age", "-5")
+		resp, _ = client.Get(base + "/authorize?" + p.Encode())
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("negative max_age should be 400, got %d", resp.StatusCode)
+		}
+
+		// prompt=select_account behaves like login (no chooser exists)
+		client = newClientWithCookies()
+		loginAs(t, client, base, "test@example.com", "password123")
+		p.Del("max_age")
+		p.Set("prompt", "select_account")
+		resp, _ = client.Get(base + "/authorize?" + p.Encode())
+		resp.Body.Close()
+		loc = resp.Header.Get("Location")
+		ret = mustParseURL(mustParseURL(loc).Query().Get("return_url"))
+		if !strings.HasPrefix(loc, "/login") || ret.Query().Get("prompt") != "" {
+			t.Errorf("select_account should re-authenticate and be stripped, got %s", loc)
+		}
+	})
 }

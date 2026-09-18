@@ -53,7 +53,7 @@ func (h *DiscoveryHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Re
 	}
 
 	scopes := []string{"openid", "profile", "email", "offline_access"}
-	claims := []string{"iss", "sub", "aud", "exp", "iat", "email", "email_verified", "name"}
+	claims := []string{"iss", "sub", "aud", "exp", "iat", "auth_time", "nonce", "email", "email_verified", "name"}
 	if h.groupsClaim != "" {
 		scopes = append(scopes, "groups")
 		claims = append(claims, h.groupsClaim)

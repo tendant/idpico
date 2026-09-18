@@ -213,7 +213,7 @@ func (s *TokenService) HandleAuthorizationCode(ctx context.Context, req *TokenRe
 	}
 
 	// Generate tokens
-	return s.generateTokens(ctx, user, client, authCode.Scope, authCode.Nonce)
+	return s.generateTokens(ctx, user, client, authCode.Scope, authCode.Nonce, authCode.AuthTime)
 }
 
 // HandleRefreshToken handles the refresh_token grant type.
@@ -268,7 +268,7 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 	}
 
 	// Generate new tokens
-	return s.generateTokens(ctx, user, client, scope, "")
+	return s.generateTokens(ctx, user, client, scope, "", time.Time{})
 }
 
 // ParseRevocationRequest parses a token revocation request.
@@ -429,7 +429,7 @@ func (s *TokenService) HandleIntrospection(ctx context.Context, req *Introspecti
 	return &IntrospectionResponse{Active: false}, nil
 }
 
-func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, client *domain.Client, scope, nonce string) (*TokenResponse, error) {
+func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, client *domain.Client, scope, nonce string, authTime time.Time) (*TokenResponse, error) {
 	// Build claims for ID token
 	idTokenClaims := &crypto.Claims{
 		Email:         user.Email,
@@ -441,6 +441,10 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 	// Add nonce if provided
 	if nonce != "" {
 		idTokenClaims.SetExtra("nonce", nonce)
+	}
+	// auth_time lets clients enforce max_age themselves
+	if !authTime.IsZero() {
+		idTokenClaims.SetExtra("auth_time", authTime.Unix())
 	}
 
 	// Group memberships go in both tokens: the ID token for the client, the
