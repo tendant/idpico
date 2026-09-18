@@ -1,7 +1,10 @@
 package crypto
 
 import (
+	"context"
+	"fmt"
 	"testing"
+	"time"
 )
 
 func TestGenerateKeyPair(t *testing.T) {
@@ -124,5 +127,99 @@ func TestGenerateKeyPairDifferentKids(t *testing.T) {
 func BenchmarkGenerateKeyPair(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _ = GenerateKeyPair(2048)
+	}
+}
+
+// memKeyRepo is a minimal in-memory KeyRepository shared between services in tests.
+type memKeyRepo struct {
+	keys   map[string]*KeyPair
+	active string
+}
+
+func newMemKeyRepo() *memKeyRepo { return &memKeyRepo{keys: map[string]*KeyPair{}} }
+
+func (r *memKeyRepo) GetByID(_ context.Context, kid string) (*KeyPair, error) {
+	if k, ok := r.keys[kid]; ok {
+		return k, nil
+	}
+	return nil, fmt.Errorf("not found")
+}
+func (r *memKeyRepo) GetActive(ctx context.Context) (*KeyPair, error) {
+	if r.active == "" {
+		return nil, fmt.Errorf("no active key")
+	}
+	return r.GetByID(ctx, r.active)
+}
+func (r *memKeyRepo) GetAll(context.Context) ([]*KeyPair, error) {
+	out := make([]*KeyPair, 0, len(r.keys))
+	for _, k := range r.keys {
+		out = append(out, k)
+	}
+	return out, nil
+}
+func (r *memKeyRepo) Save(_ context.Context, k *KeyPair) error { r.keys[k.Kid] = k; return nil }
+func (r *memKeyRepo) SetActive(_ context.Context, kid string) error {
+	if _, ok := r.keys[kid]; !ok {
+		return fmt.Errorf("not found")
+	}
+	for id, k := range r.keys {
+		k.Active = id == kid
+	}
+	r.active = kid
+	return nil
+}
+func (r *memKeyRepo) Delete(_ context.Context, kid string) error { delete(r.keys, kid); return nil }
+
+func TestKeyService_ActiveKeyCacheExpires(t *testing.T) {
+	ctx := context.Background()
+	repo := newMemKeyRepo()
+
+	now := time.Now()
+	clock := func() time.Time { return now }
+
+	// Two services over one repository, as two replicas sharing a database would be.
+	a := NewKeyService(repo, WithActiveKeyCacheTTL(time.Minute))
+	a.now = clock
+	b := NewKeyService(repo, WithActiveKeyCacheTTL(time.Minute))
+	b.now = clock
+
+	first, err := a.EnsureActiveKey(ctx)
+	if err != nil {
+		t.Fatalf("EnsureActiveKey: %v", err)
+	}
+	if got, _ := b.GetActiveKey(ctx); got.Kid != first.Kid {
+		t.Fatalf("b should load the active key from the repo")
+	}
+
+	second, err := a.RotateKey(ctx, time.Hour)
+	if err != nil {
+		t.Fatalf("RotateKey: %v", err)
+	}
+
+	// Within the TTL, b still serves its cached key.
+	if got, _ := b.GetActiveKey(ctx); got.Kid != first.Kid {
+		t.Errorf("b should serve cached key inside TTL, got %s", got.Kid)
+	}
+
+	// After the TTL, b re-reads and sees the rotation.
+	now = now.Add(2 * time.Minute)
+	if got, _ := b.GetActiveKey(ctx); got.Kid != second.Kid {
+		t.Errorf("b should pick up rotated key after TTL, got %s want %s", got.Kid, second.Kid)
+	}
+}
+
+func TestKeyService_CacheDisabled(t *testing.T) {
+	ctx := context.Background()
+	repo := newMemKeyRepo()
+
+	a := NewKeyService(repo, WithActiveKeyCacheTTL(0))
+	b := NewKeyService(repo, WithActiveKeyCacheTTL(0))
+
+	first, _ := a.EnsureActiveKey(ctx)
+	b.GetActiveKey(ctx)
+	second, _ := a.RotateKey(ctx, time.Hour)
+
+	if got, _ := b.GetActiveKey(ctx); got.Kid != second.Kid || got.Kid == first.Kid {
+		t.Errorf("with caching disabled b should always see the current key, got %s", got.Kid)
 	}
 }

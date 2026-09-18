@@ -23,17 +23,33 @@ type KeyService struct {
 	mu   sync.RWMutex
 
 	// active caches the current signing key so token issuance does not hit
-	// the repository. It is refreshed by EnsureActiveKey and RotateKey.
-	active *KeyPair
+	// the repository. It is refreshed by EnsureActiveKey and RotateKey, and
+	// re-read from the repository once cacheTTL has elapsed so that a rotation
+	// performed by another instance sharing the store is picked up.
+	active   *KeyPair
+	activeAt time.Time
+	cacheTTL time.Duration
+	now      func() time.Time
 }
+
+// DefaultActiveKeyCacheTTL bounds how stale the cached signing key can be.
+const DefaultActiveKeyCacheTTL = time.Minute
 
 // KeyServiceOption configures the KeyService.
 type KeyServiceOption func(*KeyService)
 
+// WithActiveKeyCacheTTL sets how long the active key is cached before being
+// re-read from the repository. Zero disables caching.
+func WithActiveKeyCacheTTL(ttl time.Duration) KeyServiceOption {
+	return func(s *KeyService) { s.cacheTTL = ttl }
+}
+
 // NewKeyService creates a new KeyService.
 func NewKeyService(repo KeyRepository, opts ...KeyServiceOption) *KeyService {
 	s := &KeyService{
-		repo: repo,
+		repo:     repo,
+		cacheTTL: DefaultActiveKeyCacheTTL,
+		now:      time.Now,
 	}
 
 	for _, opt := range opts {
@@ -57,7 +73,7 @@ func (s *KeyService) EnsureActiveKey(ctx context.Context) (*KeyPair, error) {
 				return nil, fmt.Errorf("failed to load key from PEM: %w", err)
 			}
 		}
-		s.active = key
+		s.setActive(key)
 		return key, nil
 	}
 
@@ -76,16 +92,15 @@ func (s *KeyService) EnsureActiveKey(ctx context.Context) (*KeyPair, error) {
 		return nil, fmt.Errorf("failed to activate key: %w", err)
 	}
 
-	s.active = key
+	s.setActive(key)
 	return key, nil
 }
 
 // GetActiveKey returns the current active signing key. The key is served
-// from an in-process cache once loaded; RotateKey refreshes it.
+// from an in-process cache (see WithActiveKeyCacheTTL); RotateKey refreshes it.
 func (s *KeyService) GetActiveKey(ctx context.Context) (*KeyPair, error) {
 	s.mu.RLock()
-	if s.active != nil {
-		key := s.active
+	if key := s.cachedActive(); key != nil {
 		s.mu.RUnlock()
 		return key, nil
 	}
@@ -93,8 +108,8 @@ func (s *KeyService) GetActiveKey(ctx context.Context) (*KeyPair, error) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.active != nil {
-		return s.active, nil
+	if key := s.cachedActive(); key != nil {
+		return key, nil
 	}
 
 	key, err := s.repo.GetActive(ctx)
@@ -109,8 +124,25 @@ func (s *KeyService) GetActiveKey(ctx context.Context) (*KeyPair, error) {
 		}
 	}
 
-	s.active = key
+	s.setActive(key)
 	return key, nil
+}
+
+// cachedActive returns the cached key if it is still fresh. Caller holds mu.
+func (s *KeyService) cachedActive() *KeyPair {
+	if s.active == nil {
+		return nil
+	}
+	if s.cacheTTL <= 0 || s.now().Sub(s.activeAt) >= s.cacheTTL {
+		return nil
+	}
+	return s.active
+}
+
+// setActive stores key in the cache. Caller holds mu.
+func (s *KeyService) setActive(key *KeyPair) {
+	s.active = key
+	s.activeAt = s.now()
 }
 
 // GetJWKS returns all public keys in JWKS format.
@@ -171,7 +203,7 @@ func (s *KeyService) RotateKey(ctx context.Context, expiresIn time.Duration) (*K
 		return nil, fmt.Errorf("failed to activate key: %w", err)
 	}
 
-	s.active = newKey
+	s.setActive(newKey)
 	return newKey, nil
 }
 
