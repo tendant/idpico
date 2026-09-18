@@ -157,6 +157,23 @@ Pick scopes (`groups`, `offline_access`, …) and `prompt`/`max_age` values to s
 reacts. Open it at the configured `IDP_ISSUER_URL` host, since the callback is an absolute
 URL under the issuer. Disable with `IDP_PLAYGROUND_ENABLED=false`.
 
+## idpctl
+
+`idpctl` manages the same store from the shell, for Makefiles, CI and scripts:
+
+```bash
+make build                          # builds ./idp and ./idpctl
+./idpctl user add alice@example.com -name Alice -password s3cret-pass -admin -verified
+./idpctl group add admins && ./idpctl group add-member admins alice@example.com
+./idpctl client add my-app -redirect http://localhost:3000/callback   # prints the secret once
+./idpctl client add spa -public -redirect http://localhost:5173/callback
+./idpctl key rotate -grace 24h
+./idpctl user list | group list | client list | key list
+```
+
+It takes `-driver`, `-data-dir` and `-dsn` like the server. With the SQLite driver it can run
+while the server is up; with the JSON file driver stop the server first.
+
 ## Admin UI
 | Endpoint | Description |
 |----------|-------------|
@@ -230,6 +247,23 @@ endpoints an external app would use, then shows:
 Pick scopes (`groups`, `offline_access`, …) and `prompt`/`max_age` values to see how the IdP
 reacts. Open it at the configured `IDP_ISSUER_URL` host, since the callback is an absolute
 URL under the issuer. Disable with `IDP_PLAYGROUND_ENABLED=false`.
+
+## idpctl
+
+`idpctl` manages the same store from the shell, for Makefiles, CI and scripts:
+
+```bash
+make build                          # builds ./idp and ./idpctl
+./idpctl user add alice@example.com -name Alice -password s3cret-pass -admin -verified
+./idpctl group add admins && ./idpctl group add-member admins alice@example.com
+./idpctl client add my-app -redirect http://localhost:3000/callback   # prints the secret once
+./idpctl client add spa -public -redirect http://localhost:5173/callback
+./idpctl key rotate -grace 24h
+./idpctl user list | group list | client list | key list
+```
+
+It takes `-driver`, `-data-dir` and `-dsn` like the server. With the SQLite driver it can run
+while the server is up; with the JSON file driver stop the server first.
 
 ## Admin UI
 

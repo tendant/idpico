@@ -7,8 +7,9 @@ BINARY := idp
 all: help
 
 ## Build
-build: ## Build the binary
+build: ## Build the server and idpctl binaries
 	go build -o $(BINARY) ./cmd/idp
+	go build -o idpctl ./cmd/idpctl
 
 ## Run
 run: build ## Build and run the server
@@ -39,7 +40,7 @@ lint: fmt vet ## Run all linters
 
 ## Clean
 clean: ## Clean build artifacts
-	rm -f $(BINARY) coverage.out coverage.html
+	rm -f $(BINARY) idpctl coverage.out coverage.html
 
 ## Example: full OIDC flow test
 test-flow: build ## Test the full OIDC authorization code flow

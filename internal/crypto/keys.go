@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"time"
@@ -129,4 +130,14 @@ func (kp *KeyPair) IsExpired() bool {
 		return false
 	}
 	return time.Now().After(kp.ExpiresAt)
+}
+
+// RandomToken returns n random bytes encoded as URL-safe base64, for
+// secrets and one-time tokens.
+func RandomToken(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }

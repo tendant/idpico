@@ -71,7 +71,9 @@ go fmt ./...            # Format code
 
 ### Directory Structure
 ```
-cmd/idp/main.go           # Entry point
+cmd/idp/main.go           # Server entry point
+cmd/idpctl/               # CLI for users, groups, clients, keys (same store)
+cmd/seed/                 # Dev seed data
 internal/
   config/                 # Configuration loading/validation
   http/                   # Router, middleware, handlers, embedded templates (templates/, templates/admin/)

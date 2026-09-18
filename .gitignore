@@ -8,6 +8,7 @@
 *.so
 *.dylib
 /idp
+/idpctl
 
 # Data directory (file-based storage)
 /data/
