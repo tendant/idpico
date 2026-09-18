@@ -1,6 +1,6 @@
 # simple-idp — Design Document
 
-**Status:** Implemented (v0.2 complete, file-based storage)
+**Status:** Implemented (v0.3 in progress — SQLite storage is the default, JSON file storage retained)
 **Owner:** Wei Labs / tendant  
 **Last updated:** 2026-02-03
 
@@ -92,7 +92,11 @@ simple-idp/
     auth/            # login/session, cookie, csrf
     oidc/            # authorize/token/userinfo flows
     crypto/          # jwks, key rotation, jwt signing
-    store/           # persistence interfaces + sql implementation
+    store/           # persistence interfaces
+      file/          #   JSON file backend
+      sqlite/        #   SQLite backend (modernc.org/sqlite, pure Go)
+      migrations/    #   embedded goose migrations, one directory per dialect
+      storetest/     #   conformance suite every backend must pass
     domain/          # types: User, Client, Consent, Token, etc.
     audit/           # optional
   migrations/
@@ -363,7 +367,9 @@ Two strategies:
 - File-based JSON storage
 
 ### v0.3 - IN PROGRESS
-- PostgreSQL storage backend
+- ✅ SQLite storage backend (default) with embedded goose migrations
+- ✅ Store conformance test suite shared by all backends
+- PostgreSQL storage backend (reuses the SQLite schema/migration layout)
 - Password reset + email verification
 - Consent UI (optional)
 - Rate limiting improvements

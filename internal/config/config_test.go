@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -26,6 +27,12 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.DataDir != "./data" {
 		t.Errorf("Expected default data dir './data', got '%s'", cfg.DataDir)
+	}
+	if cfg.StoreDriver != StoreDriverSQLite {
+		t.Errorf("Expected default store driver 'sqlite', got '%s'", cfg.StoreDriver)
+	}
+	if cfg.SQLitePath() != filepath.Join("./data", "idp.db") {
+		t.Errorf("Expected default sqlite path 'data/idp.db', got '%s'", cfg.SQLitePath())
 	}
 	if cfg.LogLevel != "info" {
 		t.Errorf("Expected default log level 'info', got '%s'", cfg.LogLevel)
@@ -474,4 +481,43 @@ func clearIDPEnvVars() {
 	for _, v := range vars {
 		os.Unsetenv(v)
 	}
+}
+
+func TestStoreDriver(t *testing.T) {
+	clearIDPEnvVars()
+
+	t.Run("file driver", func(t *testing.T) {
+		os.Setenv("IDP_STORE_DRIVER", "File")
+		defer os.Unsetenv("IDP_STORE_DRIVER")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+		if cfg.StoreDriver != StoreDriverFile {
+			t.Errorf("Expected normalized driver 'file', got '%s'", cfg.StoreDriver)
+		}
+	})
+
+	t.Run("custom dsn", func(t *testing.T) {
+		os.Setenv("IDP_STORE_DSN", "/tmp/custom.db")
+		defer os.Unsetenv("IDP_STORE_DSN")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+		if cfg.SQLitePath() != "/tmp/custom.db" {
+			t.Errorf("Expected IDP_STORE_DSN to override sqlite path, got '%s'", cfg.SQLitePath())
+		}
+	})
+
+	t.Run("invalid driver", func(t *testing.T) {
+		os.Setenv("IDP_STORE_DRIVER", "postgres")
+		defer os.Unsetenv("IDP_STORE_DRIVER")
+
+		if _, err := Load(); err == nil {
+			t.Error("Expected error for unsupported store driver")
+		}
+	})
 }

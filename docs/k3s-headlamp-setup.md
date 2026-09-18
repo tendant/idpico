@@ -110,7 +110,7 @@ spec:
         - name: IDP_ISSUER_URL
           value: "https://idp.example.com"
         - name: IDP_DATA_DIR
-          value: "/app/data"
+          value: "/app/data"   # SQLite database (idp.db) lives here; back it with a PVC
         - name: IDP_COOKIE_SECURE
           value: "true"
         - name: IDP_LOG_LEVEL

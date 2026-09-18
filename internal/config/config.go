@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,7 +22,12 @@ type Config struct {
 	IssuerURL string `env:"IDP_ISSUER_URL" env-default:"http://localhost:8080"`
 
 	// Storage settings
+	// StoreDriver selects the persistence backend: "sqlite" (default) or "file" (JSON files).
+	StoreDriver string `env:"IDP_STORE_DRIVER" env-default:"sqlite"`
+	// DataDir holds the SQLite database (idp.db) or the JSON files for the file driver.
 	DataDir string `env:"IDP_DATA_DIR" env-default:"./data"`
+	// StoreDSN overrides the SQLite database location. Defaults to <DataDir>/idp.db.
+	StoreDSN string `env:"IDP_STORE_DSN" env-default:""`
 
 	// Session settings
 	SessionDuration   time.Duration `env:"IDP_SESSION_DURATION" env-default:"24h"`
@@ -97,7 +103,36 @@ func Load() (*Config, error) {
 		cfg.CookieSecretGenerated = true
 	}
 
+	if err := cfg.validateStore(); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
+}
+
+// Store drivers.
+const (
+	StoreDriverSQLite = "sqlite"
+	StoreDriverFile   = "file"
+)
+
+func (c *Config) validateStore() error {
+	c.StoreDriver = strings.ToLower(strings.TrimSpace(c.StoreDriver))
+	switch c.StoreDriver {
+	case StoreDriverSQLite, StoreDriverFile:
+		return nil
+	default:
+		return fmt.Errorf("invalid IDP_STORE_DRIVER %q (expected %q or %q)", c.StoreDriver, StoreDriverSQLite, StoreDriverFile)
+	}
+}
+
+// SQLitePath returns the SQLite database path: IDP_STORE_DSN if set,
+// otherwise <IDP_DATA_DIR>/idp.db.
+func (c *Config) SQLitePath() string {
+	if c.StoreDSN != "" {
+		return c.StoreDSN
+	}
+	return filepath.Join(c.DataDir, "idp.db")
 }
 
 // Addr returns the server address in host:port format.

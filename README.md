@@ -51,7 +51,9 @@ IDP_PORT=8080
 IDP_ISSUER_URL=http://localhost:8080
 
 # Storage
-IDP_DATA_DIR=./data
+IDP_STORE_DRIVER=sqlite      # sqlite (default) or file
+IDP_DATA_DIR=./data          # Holds idp.db (sqlite) or the JSON files (file)
+IDP_STORE_DSN=               # Optional: explicit SQLite path, overrides <IDP_DATA_DIR>/idp.db
 
 # Session
 IDP_SESSION_DURATION=24h
@@ -165,7 +167,23 @@ You can also use a `.env` file (copy from `.env.example`).
 
 ## Data Storage
 
-Data is stored as JSON files in `./data/` (configurable via `IDP_DATA_DIR`):
+Two persistence backends are available, selected with `IDP_STORE_DRIVER`:
+
+### SQLite (default)
+
+A single-file database at `./data/idp.db` (configurable via `IDP_DATA_DIR`, or point
+`IDP_STORE_DSN` at any path). No external services or cgo required — the driver is
+pure Go (`modernc.org/sqlite`), so the static Docker image works unchanged.
+
+- Schema is created and migrated automatically on startup (embedded [goose](https://github.com/pressly/goose) migrations under `internal/store/migrations/`)
+- WAL journaling with a 5s busy timeout
+- Tables: `users`, `clients`, `sessions`, `auth_codes`, `tokens`, `signing_keys`
+
+Inspect it with any SQLite client, e.g. `sqlite3 data/idp.db '.tables'`.
+
+### JSON files (`IDP_STORE_DRIVER=file`)
+
+The original backend: one JSON file per collection in `IDP_DATA_DIR`:
 
 - `users.json` - User accounts with Argon2id password hashes
 - `clients.json` - OAuth 2.0 client configurations
@@ -173,6 +191,11 @@ Data is stored as JSON files in `./data/` (configurable via `IDP_DATA_DIR`):
 - `auth_codes.json` - Authorization codes
 - `tokens.json` - Refresh tokens
 - `signing_keys.json` - RSA signing keys
+
+Every write rewrites the whole file, so it is best suited to tiny single-user setups
+or when you want to hand-edit the data. There is no automatic migration between
+backends; switching drivers starts from an empty store (bootstrap users/clients are
+re-created from the environment).
 
 ## Security
 

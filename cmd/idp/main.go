@@ -20,7 +20,9 @@ import (
 	"github.com/tendant/simple-idp/internal/domain"
 	idphttp "github.com/tendant/simple-idp/internal/http"
 	"github.com/tendant/simple-idp/internal/oidc"
+	"github.com/tendant/simple-idp/internal/store"
 	"github.com/tendant/simple-idp/internal/store/file"
+	"github.com/tendant/simple-idp/internal/store/sqlite"
 )
 
 func main() {
@@ -53,21 +55,18 @@ func main() {
 		logger.Warn("using auto-generated cookie secret - sessions will not persist across restarts. Set IDP_COOKIE_SECRET for production.")
 	}
 
-	// Initialize file store
-	store, err := file.NewStore(cfg.DataDir)
+	// Initialize persistence
+	store, keyRepo, err := openStore(context.Background(), cfg, logger)
 	if err != nil {
-		logger.Error("failed to initialize store", "error", err)
+		logger.Error("failed to initialize store", "driver", cfg.StoreDriver, "error", err)
 		os.Exit(1)
 	}
 	defer store.Close()
-
-	logger.Info("initialized file store", "data_dir", cfg.DataDir)
 
 	// Bootstrap users and clients from environment variables
 	bootstrapData(context.Background(), cfg, store, logger)
 
 	// Initialize key service for JWT signing
-	keyRepo := file.NewKeyRepository(cfg.DataDir)
 	keyService := crypto.NewKeyService(keyRepo)
 
 	// Ensure we have an active signing key
@@ -195,6 +194,32 @@ func main() {
 	logger.Info("server stopped")
 }
 
+// openStore opens the persistence backend selected by IDP_STORE_DRIVER and
+// returns it together with the matching signing-key repository.
+func openStore(ctx context.Context, cfg *config.Config, logger *slog.Logger) (store.Store, crypto.KeyRepository, error) {
+	switch cfg.StoreDriver {
+	case config.StoreDriverSQLite:
+		path := cfg.SQLitePath()
+		s, err := sqlite.NewStore(ctx, path)
+		if err != nil {
+			return nil, nil, err
+		}
+		logger.Info("initialized sqlite store", "path", path)
+		return s, s.Keys(), nil
+
+	case config.StoreDriverFile:
+		s, err := file.NewStore(cfg.DataDir)
+		if err != nil {
+			return nil, nil, err
+		}
+		logger.Info("initialized file store", "data_dir", cfg.DataDir)
+		return s, file.NewKeyRepository(cfg.DataDir), nil
+
+	default:
+		return nil, nil, fmt.Errorf("unsupported store driver %q", cfg.StoreDriver)
+	}
+}
+
 func parseLogLevel(level string) slog.Level {
 	switch level {
 	case "debug":
@@ -211,7 +236,7 @@ func parseLogLevel(level string) slog.Level {
 }
 
 // bootstrapData creates users and clients from environment variables if they don't exist.
-func bootstrapData(ctx context.Context, cfg *config.Config, store *file.Store, logger *slog.Logger) {
+func bootstrapData(ctx context.Context, cfg *config.Config, store store.Store, logger *slog.Logger) {
 	// Bootstrap users
 	for _, u := range cfg.ParseBootstrapUsers() {
 		// Check if user already exists

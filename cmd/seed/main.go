@@ -7,25 +7,45 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/google/uuid"
 	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/domain"
+	"github.com/tendant/simple-idp/internal/store"
 	"github.com/tendant/simple-idp/internal/store/file"
+	"github.com/tendant/simple-idp/internal/store/sqlite"
 )
 
 func main() {
+	driver := flag.String("driver", "sqlite", "Store driver: sqlite or file")
 	dataDir := flag.String("data-dir", "./data", "Data directory")
+	dsn := flag.String("dsn", "", "SQLite database path (default: <data-dir>/idp.db)")
 	flag.Parse()
 
+	ctx := context.Background()
+
 	// Initialize store
-	store, err := file.NewStore(*dataDir)
+	var (
+		store store.Store
+		err   error
+	)
+	switch *driver {
+	case "sqlite":
+		path := *dsn
+		if path == "" {
+			path = filepath.Join(*dataDir, "idp.db")
+		}
+		store, err = sqlite.NewStore(ctx, path)
+	case "file":
+		store, err = file.NewStore(*dataDir)
+	default:
+		log.Fatalf("Unknown driver %q (expected sqlite or file)", *driver)
+	}
 	if err != nil {
 		log.Fatalf("Failed to initialize store: %v", err)
 	}
 	defer store.Close()
-
-	ctx := context.Background()
 
 	// Create test client
 	client := &domain.Client{

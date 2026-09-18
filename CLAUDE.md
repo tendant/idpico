@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-**simple-idp** is a lightweight Identity Provider (IdP) for **local testing and development**. Phase 1 (File Storage) is complete. The IdP is fully functional with:
+**simple-idp** is a lightweight Identity Provider (IdP) for **local testing and development**. Phase 1 (File Storage) and the SQLite backend are complete. The IdP is fully functional with:
 
 - Complete OIDC Authorization Code + PKCE flow
 - JWT ID tokens and access tokens (RS256)
 - Refresh token rotation
-- File-based JSON storage for all persistence
+- SQLite storage by default (`IDP_STORE_DRIVER=sqlite`), JSON file storage as an alternative (`file`)
 - Bootstrap users and clients via environment variables
 
 See DESIGN.md for the complete architectural specification.
@@ -40,9 +40,13 @@ Implementation proceeds in phases to enable faster iteration:
    - User authentication with Argon2id password hashing
    - Session management with secure cookies
 
-2. **Phase 2 - PostgreSQL**: Planned
-   - Implement postgres repository implementations
-   - Add migrations
+2. **Phase 1.5 - SQLite**: ✅ **COMPLETE** (default backend)
+   - `internal/store/sqlite/` using `modernc.org/sqlite` (pure Go, keeps `CGO_ENABLED=0` builds)
+   - Embedded goose migrations in `internal/store/migrations/<dialect>/`
+   - `internal/store/storetest/` conformance suite — run it against every backend
+
+3. **Phase 2 - PostgreSQL**: Planned
+   - Implement postgres repository implementations (same schema; add `migrations/postgres/`)
    - Production-ready persistence
 
 ## Build Commands
@@ -74,9 +78,13 @@ internal/
   auth/                   # Login/session, cookies, CSRF
   oidc/                   # OAuth 2.0/OIDC flows
   crypto/                 # JWKS, key rotation, JWT signing
-  store/                  # Persistence interfaces (file-based JSON)
+  store/                  # Persistence interfaces
+    file/                 #   JSON file backend
+    sqlite/               #   SQLite backend (default)
+    migrations/           #   Embedded goose migrations per dialect
+    storetest/            #   Conformance suite shared by all backends
   domain/                 # Core types (User, Client, Token, etc.)
-data/                     # JSON file storage (auto-created)
+data/                     # idp.db (SQLite) or JSON files, auto-created
 ```
 
 All production code goes under `internal/` to prevent accidental coupling.
@@ -84,8 +92,10 @@ All production code goes under `internal/` to prevent accidental coupling.
 ### Key Technical Decisions
 - **Signing keys**: Ed25519 recommended (or RSA)
 - **Tokens**: JWT for both ID and access tokens with short TTL + refresh token rotation
-- **Database**: Postgres with tables for users, credentials, sessions, oauth_clients, auth_codes, tokens, signing_keys
-- **Config**: Environment variables with `IDP_` prefix (e.g., `IDP_ISSUER_URL`, `IDP_DB_DSN`, `IDP_COOKIE_SECRET`)
+- **Database**: SQLite (default) or JSON files today; Postgres planned. Tables: users, clients, sessions, auth_codes, tokens, signing_keys
+- **Migrations**: goose, embedded via `embed.FS` and applied at startup. Keep SQL portable; dialect-specific DDL lives in its own directory
+- **Dependency versions**: `go.mod` targets Go 1.24 (matches the Dockerfile). Newer goose/modernc releases require Go 1.25+; check a dependency's `go` directive before bumping
+- **Config**: Environment variables with `IDP_` prefix (e.g., `IDP_ISSUER_URL`, `IDP_STORE_DRIVER`, `IDP_COOKIE_SECRET`)
 
 ### OIDC Flow
 1. App redirects to `/authorize` with PKCE challenge
