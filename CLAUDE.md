@@ -74,7 +74,7 @@ go fmt ./...            # Format code
 cmd/idp/main.go           # Entry point
 internal/
   config/                 # Configuration loading/validation
-  http/                   # Router + middleware
+  http/                   # Router, middleware, handlers, embedded templates (templates/, templates/admin/)
   auth/                   # Login/session, cookies, CSRF
   oidc/                   # OAuth 2.0/OIDC flows
   crypto/                 # JWKS, key rotation, JWT signing
@@ -108,7 +108,8 @@ All production code goes under `internal/` to prevent accidental coupling.
 
 ### Public Endpoints
 - OIDC: `/.well-known/openid-configuration`, `/authorize`, `/token`, `/userinfo`, `/.well-known/jwks.json`
-- Auth UI: `/login`, `/logout`
+- Auth UI: `/login`, `/logout`, `/consent`, `/forgot-password`, `/reset-password`, `/verify-email`
+- Admin UI: `/admin` (users, clients, signing keys; requires `User.Admin`, granted via `IDP_ADMIN_EMAILS`)
 - Ops: `/healthz`, `/readyz`, `/metrics`
 
 ## Security Requirements

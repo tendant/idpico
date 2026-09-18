@@ -1,0 +1,27 @@
+{{define "title"}}Users{{end}}
+{{define "content"}}
+<div class="toolbar">
+    <h1 style="margin:0">Users</h1>
+    <a class="button" href="/admin/users/new">New user</a>
+</div>
+<table>
+    <thead><tr><th>Email</th><th>Name</th><th>Status</th><th>Created</th><th></th></tr></thead>
+    <tbody>
+    {{range .Users}}
+    <tr>
+        <td><a href="/admin/users/{{.ID}}">{{.Email}}</a></td>
+        <td>{{.DisplayName}}</td>
+        <td>
+            {{if .Active}}<span class="badge on">active</span>{{else}}<span class="badge off">disabled</span>{{end}}
+            {{if .EmailVerified}}<span class="badge on">verified</span>{{else}}<span class="badge warn">unverified</span>{{end}}
+            {{if .Admin}}<span class="badge on">admin</span>{{end}}
+        </td>
+        <td class="muted">{{date .CreatedAt}}</td>
+        <td class="actions"><a class="button small secondary" href="/admin/users/{{.ID}}">Edit</a></td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" class="muted">No users yet.</td></tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}

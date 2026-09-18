@@ -3,6 +3,7 @@ package crypto
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
@@ -170,6 +171,19 @@ func (s *KeyService) GetJWKS(ctx context.Context) (*JWKS, error) {
 	}
 
 	return jwks, nil
+}
+
+// ListKeys returns every stored key, newest first, without loading RSA material.
+func (s *KeyService) ListKeys(ctx context.Context) ([]*KeyPair, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	keys, err := s.repo.GetAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i].CreatedAt.After(keys[j].CreatedAt) })
+	return keys, nil
 }
 
 // RotateKey generates a new key and sets it as active.

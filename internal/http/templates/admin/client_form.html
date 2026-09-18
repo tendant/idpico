@@ -1,0 +1,89 @@
+{{define "title"}}{{if .IsNew}}New Client{{else}}{{.Client.ID}}{{end}}{{end}}
+{{define "content"}}
+<h1>{{if .IsNew}}New Client{{else}}{{.Client.Name}} <span class="muted">({{.Client.ID}})</span>{{end}}</h1>
+
+{{if .NewSecret}}
+<div class="secret-box">
+    <strong>Client secret</strong> — copy it now, it will not be shown again:<br>
+    <code>{{.NewSecret}}</code>
+</div>
+{{end}}
+
+<div class="card">
+<form method="POST" action="{{if .IsNew}}/admin/clients{{else}}/admin/clients/{{.Client.ID}}{{end}}">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <div class="form-row two">
+        <div>
+            <label for="id">Client ID</label>
+            {{if .IsNew}}
+            <input type="text" id="id" name="id" value="{{.Client.ID}}" required autofocus pattern="[A-Za-z0-9._:-]+">
+            <div class="help">Letters, digits, <code>. _ : -</code>. Cannot be changed later.</div>
+            {{else}}
+            <input type="text" id="id" value="{{.Client.ID}}" disabled>
+            {{end}}
+        </div>
+        <div>
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" value="{{.Client.Name}}" required>
+            <div class="help">Shown to users on the consent screen.</div>
+        </div>
+    </div>
+    <div class="form-row">
+        <label for="redirect_uris">Redirect URIs (one per line, exact match)</label>
+        <textarea id="redirect_uris" name="redirect_uris" required>{{join .Client.RedirectURIs "\n"}}</textarea>
+    </div>
+    <div class="form-row two">
+        <div>
+            <label for="scopes">Allowed scopes</label>
+            <input type="text" id="scopes" name="scopes" value="{{join .Client.Scopes " "}}">
+            <div class="help">Space separated. Default: <code>openid profile email offline_access</code></div>
+        </div>
+        <div>
+            <label for="grant_types">Grant types</label>
+            <input type="text" id="grant_types" name="grant_types" value="{{join .Client.GrantTypes " "}}">
+            <div class="help">Space separated. Default: <code>authorization_code refresh_token</code></div>
+        </div>
+    </div>
+    <div class="form-row">
+        <label class="check"><input type="checkbox" name="public" value="1"{{if .Client.Public}} checked{{end}}> Public client (no secret, PKCE required)</label>
+        <label class="check"><input type="checkbox" name="skip_consent" value="1"{{if .Client.SkipConsent}} checked{{end}}> First-party: skip the consent screen</label>
+        {{if .IsNew}}
+        <div class="help">A secret is generated automatically for confidential clients and shown once after creation.</div>
+        {{end}}
+    </div>
+    <button type="submit">{{if .IsNew}}Create client{{else}}Save changes{{end}}</button>
+    <a class="button secondary" href="/admin/clients">Cancel</a>
+</form>
+</div>
+
+{{if not .IsNew}}
+{{if not .Client.Public}}
+<h2>Client Secret</h2>
+<div class="card">
+    <p class="muted">The current secret is stored and cannot be displayed. Regenerating it invalidates the old one immediately.</p>
+    <form class="inline" method="POST" action="/admin/clients/{{.Client.ID}}/secret">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="secondary">Regenerate secret</button>
+    </form>
+</div>
+{{end}}
+
+<h2>Tokens</h2>
+<div class="card">
+    <p class="muted">Revoke every refresh token issued to this client.</p>
+    <form class="inline" method="POST" action="/admin/clients/{{.Client.ID}}/revoke-tokens">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="secondary">Revoke all tokens</button>
+    </form>
+</div>
+
+<h2>Danger Zone</h2>
+<div class="card danger-zone">
+    <p class="muted">Deleting the client also removes its auth codes, tokens and user consents.</p>
+    <form class="inline" method="POST" action="/admin/clients/{{.Client.ID}}/delete">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="danger">Delete client</button>
+    </form>
+</div>
+{{end}}
+{{end}}

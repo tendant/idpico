@@ -10,9 +10,10 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 )
 
-//go:embed templates/*.html
+//go:embed templates/*.html templates/admin/*.html
 var templateFS embed.FS
 
 // Templates renders the server-side HTML pages. Every page is parsed together
@@ -26,14 +27,29 @@ type Templates struct {
 // template since that is a build defect, not a runtime condition.
 func LoadTemplates(logger *slog.Logger) *Templates {
 	t := &Templates{pages: map[string]*template.Template{}, logger: logger}
-	if err := t.loadDir(templateFS, "templates", "layout.html"); err != nil {
+	if err := t.loadDir(templateFS, "templates", "layout.html", ""); err != nil {
+		panic(err)
+	}
+	if err := t.loadDir(templateFS, "templates/admin", "layout.html", "admin/"); err != nil {
 		panic(err)
 	}
 	return t
 }
 
-// loadDir parses every page under dir (except the layout) against layout.
-func (t *Templates) loadDir(fsys fs.FS, dir, layout string) error {
+// templateFuncs are available to every page.
+var templateFuncs = template.FuncMap{
+	"join": strings.Join,
+	"date": func(t time.Time) string {
+		if t.IsZero() {
+			return "-"
+		}
+		return t.Local().Format("2006-01-02 15:04")
+	},
+}
+
+// loadDir parses every page under dir (except the layout) against layout and
+// registers it under prefix+name.
+func (t *Templates) loadDir(fsys fs.FS, dir, layout, prefix string) error {
 	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
 		return err
@@ -44,11 +60,11 @@ func (t *Templates) loadDir(fsys fs.FS, dir, layout string) error {
 		if e.IsDir() || name == layout || !strings.HasSuffix(name, ".html") {
 			continue
 		}
-		tmpl, err := template.New(name).ParseFS(fsys, layoutPath, path.Join(dir, name))
+		tmpl, err := template.New(name).Funcs(templateFuncs).ParseFS(fsys, layoutPath, path.Join(dir, name))
 		if err != nil {
 			return fmt.Errorf("parse template %s: %w", name, err)
 		}
-		t.pages[strings.TrimSuffix(name, ".html")] = tmpl
+		t.pages[prefix+strings.TrimSuffix(name, ".html")] = tmpl
 	}
 	return nil
 }

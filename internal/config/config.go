@@ -86,6 +86,10 @@ type Config struct {
 	// Metrics
 	MetricsEnabled bool `env:"IDP_METRICS_ENABLED" env-default:"true"`
 
+	// AdminEmails lists users (comma-separated) granted access to the admin UI
+	// on startup. Admins can promote further users from the UI.
+	AdminEmails string `env:"IDP_ADMIN_EMAILS" env-default:""`
+
 	// Bootstrap data (created on startup if not exists)
 	// Format: "email:password:name,email2:password2:name2"
 	BootstrapUsers string `env:"IDP_BOOTSTRAP_USERS"`
@@ -245,6 +249,24 @@ func (c *Config) ParseBootstrapUsers() []BootstrapUser {
 		users = append(users, user)
 	}
 	return users
+}
+
+// ParseAdminEmails parses the comma-separated IDP_ADMIN_EMAILS list.
+func (c *Config) ParseAdminEmails() []string {
+	return splitList(c.AdminEmails)
+}
+
+func splitList(v string) []string {
+	if v == "" {
+		return nil
+	}
+	var out []string
+	for _, item := range strings.Split(v, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 // ParseCORSAllowedOrigins parses the comma-separated CORS allowed origins.

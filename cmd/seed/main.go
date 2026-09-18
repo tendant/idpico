@@ -94,6 +94,7 @@ func main() {
 		DisplayName:   "Test User",
 		Active:        true,
 		EmailVerified: true,
+		Admin:         true,
 	}
 
 	if err := store.Users().Create(ctx, user); err != nil {

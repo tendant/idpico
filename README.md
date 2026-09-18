@@ -65,6 +65,9 @@ IDP_ACCESS_TOKEN_TTL=15m
 IDP_REFRESH_TOKEN_TTL=168h   # 7 days
 IDP_AUTH_CODE_TTL=10m
 
+# Admin UI
+IDP_ADMIN_EMAILS=admin@example.com # who may open /admin (comma-separated)
+
 # Consent
 IDP_REQUIRE_CONSENT=true           # consent screen for third-party clients
 
@@ -134,6 +137,14 @@ You can also use a `.env` file (copy from `.env.example`).
 | `GET/POST /reset-password` | Choose a new password from an emailed link |
 | `GET /verify-email` | Confirm an email address from an emailed link |
 
+### Admin UI
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin` | Dashboard (requires a signed-in user with the admin flag) |
+| `/admin/users` | List, create, edit, invite, set password, revoke sessions/consents, delete |
+| `/admin/clients` | List, create, edit, regenerate secret, revoke tokens, delete |
+| `/admin/keys` | List signing keys, rotate now |
+
 ### Operations
 | Endpoint | Description |
 |----------|-------------|
@@ -182,6 +193,23 @@ You can also use a `.env` file (copy from `.env.example`).
      "scope": "openid profile email"
    }
    ```
+
+## Admin UI
+
+A server-rendered admin console lives at `/admin`. Sign in with a user that has the admin
+flag — grant it with `IDP_ADMIN_EMAILS` (applied on startup to existing or bootstrap users)
+or from the Users page once you have one admin. `make seed` makes `test@example.com` an admin.
+
+- **Users**: create (with a password, or leave it blank to send an invite link), edit email /
+  name / active / verified / admin, set a password (signs the user out everywhere), send reset
+  or verification emails, revoke sessions and refresh tokens, revoke consents, delete.
+  You cannot delete or disable your own account or drop your own admin flag.
+- **Clients**: create confidential or public (PKCE) clients; the secret is generated and shown
+  exactly once. Edit redirect URIs, scopes, grant types, first-party (skip consent);
+  regenerate the secret; revoke all tokens; delete.
+- **Signing keys**: see active / retiring keys and rotate immediately.
+
+Every form is CSRF-protected and every mutation is logged with the acting admin.
 
 ## Data Storage
 

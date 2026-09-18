@@ -17,6 +17,9 @@ run: build ## Build and run the server
 run-dev: build ## Run with debug logging
 	IDP_LOG_LEVEL=debug IDP_LOG_FORMAT=text ./$(BINARY)
 
+seed: ## Create test user (test@example.com / password123, admin) and clients in the default store
+	go run ./cmd/seed
+
 ## Test
 test: ## Run all tests
 	go test -v ./...

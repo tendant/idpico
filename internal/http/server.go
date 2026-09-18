@@ -33,6 +33,7 @@ type Server struct {
 	corsConfig            *CORSConfig
 	securityHeadersConfig *SecurityHeadersConfig
 	metricsEnabled        bool
+	adminConfig           *AdminConfig
 }
 
 // Option configures the Server.
@@ -81,6 +82,13 @@ func WithAccountService(accountService *auth.AccountService, resetTTL string) Op
 	return func(s *Server) {
 		s.accountService = accountService
 		s.accountResetTTL = resetTTL
+	}
+}
+
+// WithAdmin mounts the administration UI under /admin.
+func WithAdmin(cfg AdminConfig) Option {
+	return func(s *Server) {
+		s.adminConfig = &cfg
 	}
 }
 
@@ -255,6 +263,38 @@ func NewServer(addr string, opts ...Option) *Server {
 
 		// Token introspection endpoint (RFC 7662)
 		r.Post("/introspect", oidcHandler.Introspect)
+	}
+
+	// Landing page: admins go to the admin UI, everyone else sees a status page
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		if s.authService != nil {
+			if user, err := s.authService.GetCurrentUser(r.Context(), r); err == nil {
+				if user.Admin && s.adminConfig != nil {
+					http.Redirect(w, r, "/admin", http.StatusFound)
+					return
+				}
+				templates.Render(w, http.StatusOK, "message", messagePageData{
+					Title:     "Signed In",
+					Message:   "You are signed in as " + user.Email + ".",
+					BackURL:   "/logout",
+					BackLabel: "Sign out",
+				})
+				return
+			}
+		}
+		templates.Render(w, http.StatusOK, "message", messagePageData{
+			Title:     "Simple IdP",
+			Message:   "This is an OpenID Connect identity provider for local development.",
+			BackURL:   "/login",
+			BackLabel: "Sign in",
+		})
+	})
+
+	// Admin UI
+	if s.adminConfig != nil && s.authService != nil {
+		admin := NewAdminHandler(*s.adminConfig, templates, s.logger)
+		r.Route("/admin", admin.Routes)
+		s.logger.Info("admin UI enabled at /admin")
 	}
 
 	s.server = &http.Server{

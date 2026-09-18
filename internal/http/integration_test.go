@@ -115,6 +115,22 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		t.Fatalf("Failed to create test user: %v", err)
 	}
 
+	// Create admin user
+	adminUser := &domain.User{
+		ID:            "admin-user-id",
+		Email:         "admin@example.com",
+		PasswordHash:  passwordHash,
+		DisplayName:   "Admin",
+		Active:        true,
+		EmailVerified: true,
+		Admin:         true,
+	}
+	if err := store.Users().Create(ctx, adminUser); err != nil {
+		store.Close()
+		os.RemoveAll(dataDir)
+		t.Fatalf("Failed to create admin user: %v", err)
+	}
+
 	// Create test client
 	testClient := &domain.Client{
 		ID:           "test-client",
@@ -182,6 +198,14 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		WithAccountService(accountService, "1h0m0s"),
 		WithOIDCServices(authorizeService, tokenService, userInfoService),
 		WithConsentService(consentService),
+		WithAdmin(AdminConfig{
+			Store:          store,
+			AuthService:    authService,
+			AccountService: accountService,
+			KeyService:     keyService,
+			IssuerURL:      "http://localhost:8080",
+			KeyGracePeriod: time.Hour,
+		}),
 	)
 
 	// Start test server

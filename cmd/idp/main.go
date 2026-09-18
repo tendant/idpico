@@ -67,6 +67,7 @@ func main() {
 
 	// Bootstrap users and clients from environment variables
 	bootstrapData(context.Background(), cfg, store, logger)
+	grantAdmins(context.Background(), cfg, store, logger)
 
 	// Initialize key service for JWT signing
 	keyService := crypto.NewKeyService(keyRepo)
@@ -152,6 +153,16 @@ func main() {
 		idphttp.WithOIDCServices(authorizeService, tokenService, userInfoService),
 		idphttp.WithLoginRateLimit(cfg.LoginRateLimit),
 	}
+
+	// Admin UI
+	serverOpts = append(serverOpts, idphttp.WithAdmin(idphttp.AdminConfig{
+		Store:          store,
+		AuthService:    authService,
+		AccountService: accountService,
+		KeyService:     keyService,
+		IssuerURL:      cfg.IssuerURL,
+		KeyGracePeriod: cfg.SigningKeyGracePeriod,
+	}))
 
 	// Consent screen (per-client skip_consent still applies)
 	if cfg.RequireConsent {
@@ -258,6 +269,26 @@ func openStore(ctx context.Context, cfg *config.Config, logger *slog.Logger) (st
 
 	default:
 		return nil, nil, fmt.Errorf("unsupported store driver %q", cfg.StoreDriver)
+	}
+}
+
+// grantAdmins flags the users listed in IDP_ADMIN_EMAILS as administrators.
+func grantAdmins(ctx context.Context, cfg *config.Config, store store.Store, logger *slog.Logger) {
+	for _, email := range cfg.ParseAdminEmails() {
+		user, err := store.Users().GetByEmail(ctx, email)
+		if err != nil {
+			logger.Warn("admin email not found; create the user first (IDP_BOOTSTRAP_USERS or the admin UI)", "email", email)
+			continue
+		}
+		if user.Admin {
+			continue
+		}
+		user.Admin = true
+		if err := store.Users().Update(ctx, user); err != nil {
+			logger.Error("failed to grant admin", "email", email, "error", err)
+			continue
+		}
+		logger.Info("granted admin access", "email", email)
 	}
 }
 

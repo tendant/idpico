@@ -372,6 +372,7 @@ Two strategies:
 - ✅ Background maintenance: expired-row purge, signing key rotation with grace period
 - ✅ Consent UI with remembered grants, `prompt=none|login|consent`
 - ✅ Password reset + email verification (log or SMTP mailer)
+- ✅ Admin web UI (/admin): users, clients, signing keys
 - PostgreSQL storage backend (reuses the SQLite schema/migration layout)
 - Rate limiting improvements
 

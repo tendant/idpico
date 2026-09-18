@@ -1,0 +1,363 @@
+package http
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/tendant/simple-idp/internal/domain"
+	idperrors "github.com/tendant/simple-idp/internal/errors"
+)
+
+// adminClient returns a cookie-jar client signed in as the admin user.
+func adminClient(t *testing.T, env *testEnv) *http.Client {
+	t.Helper()
+	client := newClientWithCookies()
+	loginAs(t, client, env.server.URL, "admin@example.com", "password123")
+	return client
+}
+
+// get fetches a page and returns status + body.
+func get(t *testing.T, client *http.Client, u string) (int, string) {
+	t.Helper()
+	resp, err := client.Get(u)
+	if err != nil {
+		t.Fatalf("GET %s: %v", u, err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(body)
+}
+
+// postForm submits a form with the current CSRF token and returns the response.
+func postForm(t *testing.T, client *http.Client, base, path string, form url.Values) *http.Response {
+	t.Helper()
+	if form == nil {
+		form = url.Values{}
+	}
+	form.Set("csrf_token", csrfCookie(client, base))
+	resp, err := client.PostForm(base+path, form)
+	if err != nil {
+		t.Fatalf("POST %s: %v", path, err)
+	}
+	return resp
+}
+
+// postAndFollow submits and asserts a redirect, returning the Location.
+func postAndFollow(t *testing.T, client *http.Client, base, path string, form url.Values) string {
+	t.Helper()
+	resp := postForm(t, client, base, path, form)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("POST %s: expected redirect, got %d", path, resp.StatusCode)
+	}
+	return resp.Header.Get("Location")
+}
+
+func TestAdmin_Access(t *testing.T) {
+	forEachDriver(t, func(t *testing.T, driver string) {
+		env := setupTestEnv(t, driver)
+		defer env.cleanup()
+		base := env.server.URL
+
+		// Anonymous -> login with return_url
+		anon := newClientWithCookies()
+		resp, _ := anon.Get(base + "/admin/users")
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusFound || !strings.HasPrefix(resp.Header.Get("Location"), "/login?return_url=%2Fadmin%2Fusers") {
+			t.Errorf("anonymous should redirect to login, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
+		}
+
+		// Regular user -> 403
+		user := newClientWithCookies()
+		loginAs(t, user, base, "test@example.com", "password123")
+		if status, body := get(t, user, base+"/admin"); status != http.StatusForbidden || !strings.Contains(body, "not an administrator") {
+			t.Errorf("non-admin should get 403, got %d", status)
+		}
+
+		// Admin -> dashboard
+		admin := adminClient(t, env)
+		status, body := get(t, admin, base+"/admin")
+		if status != http.StatusOK || !strings.Contains(body, "Dashboard") || !strings.Contains(body, "admin@example.com") {
+			t.Errorf("admin should see dashboard, got %d", status)
+		}
+
+		// Landing page routes admins to /admin and others to a status page
+		resp, _ = admin.Get(base + "/")
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/admin" {
+			t.Errorf("admin landing should redirect to /admin, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
+		}
+		if status, body := get(t, user, base+"/"); status != http.StatusOK || !strings.Contains(body, "test@example.com") {
+			t.Errorf("user landing should show signed-in page, got %d", status)
+		}
+		if status, body := get(t, anon, base+"/"); status != http.StatusOK || !strings.Contains(body, "Sign in") {
+			t.Errorf("anonymous landing should offer sign in, got %d", status)
+		}
+
+		// POST without CSRF is rejected
+		resp, _ = admin.PostForm(base+"/admin/keys/rotate", url.Values{})
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("POST without CSRF should be 400, got %d", resp.StatusCode)
+		}
+	})
+}
+
+func TestAdmin_Users(t *testing.T) {
+	forEachDriver(t, func(t *testing.T, driver string) {
+		env := setupTestEnv(t, driver)
+		defer env.cleanup()
+		base := env.server.URL
+		ctx := context.Background()
+		admin := adminClient(t, env)
+
+		// List shows existing users
+		if status, body := get(t, admin, base+"/admin/users"); status != http.StatusOK || !strings.Contains(body, "test@example.com") {
+			t.Fatalf("user list should include test user, got %d", status)
+		}
+
+		// Create with password
+		get(t, admin, base+"/admin/users/new")
+		loc := postAndFollow(t, admin, base, "/admin/users", url.Values{
+			"email": {"new@example.com"}, "display_name": {"New Person"}, "password": {"strong-password-1"},
+			"active": {"1"}, "email_verified": {"1"},
+		})
+		if !strings.HasPrefix(loc, "/admin/users/") {
+			t.Fatalf("expected redirect to user page, got %s", loc)
+		}
+		created, err := env.store.Users().GetByEmail(ctx, "new@example.com")
+		if err != nil || created.DisplayName != "New Person" || !created.EmailVerified || created.Admin {
+			t.Fatalf("created user wrong: %+v err=%v", created, err)
+		}
+		// The new user can sign in
+		loginAs(t, newClientWithCookies(), base, "new@example.com", "strong-password-1")
+
+		// Duplicate email and weak password are rejected
+		get(t, admin, base+"/admin/users/new")
+		resp := postForm(t, admin, base, "/admin/users", url.Values{"email": {"new@example.com"}, "password": {"strong-password-1"}})
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("duplicate email should be 400, got %d", resp.StatusCode)
+		}
+		resp = postForm(t, admin, base, "/admin/users", url.Values{"email": {"x@example.com"}, "password": {"short"}})
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("weak password should be 400, got %d", resp.StatusCode)
+		}
+
+		// Invite (blank password) sends a reset email
+		mails := len(env.mailer.Messages)
+		get(t, admin, base+"/admin/users/new")
+		postAndFollow(t, admin, base, "/admin/users", url.Values{"email": {"invited@example.com"}, "active": {"1"}, "send_verification": {"1"}})
+		if len(env.mailer.Messages) != mails+2 {
+			t.Errorf("invite should send reset + verification emails, got %d new", len(env.mailer.Messages)-mails)
+		}
+		if tok := linkToken(t, env.mailer, "/verify-email"); tok == "" {
+			t.Error("verification link missing")
+		}
+
+		// Update: rename, promote to admin; changing email clears verified
+		page := "/admin/users/" + created.ID
+		get(t, admin, base+page)
+		postAndFollow(t, admin, base, page, url.Values{
+			"email": {"renamed@example.com"}, "display_name": {"Renamed"}, "active": {"1"}, "admin": {"1"},
+		})
+		updated, _ := env.store.Users().GetByID(ctx, created.ID)
+		if updated.Email != "renamed@example.com" || !updated.Admin || updated.EmailVerified {
+			t.Errorf("update not applied: %+v", updated)
+		}
+
+		// Set password signs the user out everywhere
+		userSession := newClientWithCookies()
+		loginAs(t, userSession, base, "renamed@example.com", "strong-password-1")
+		get(t, admin, base+page)
+		postAndFollow(t, admin, base, page+"/password", url.Values{"password": {"another-password-1"}})
+		resp, _ = userSession.Get(base + "/admin")
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusFound {
+			t.Errorf("user's session should be revoked after admin password change, got %d", resp.StatusCode)
+		}
+		loginAs(t, newClientWithCookies(), base, "renamed@example.com", "another-password-1")
+
+		// Consents: grant one, see it, revoke it
+		env.store.Consents().Upsert(ctx, &domain.Consent{UserID: created.ID, ClientID: "test-client", Scopes: []string{"openid"}})
+		if _, body := get(t, admin, base+page); !strings.Contains(body, "test-client") {
+			t.Error("user page should list consents")
+		}
+		postAndFollow(t, admin, base, page+"/consents/test-client/revoke", nil)
+		if _, err := env.store.Consents().Get(ctx, created.ID, "test-client"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+			t.Error("consent should be revoked")
+		}
+
+		// Self-protection: cannot delete or disable yourself, admin flag sticks
+		self := "/admin/users/admin-user-id"
+		get(t, admin, base+self)
+		resp = postForm(t, admin, base, self+"/delete", nil)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("self delete should be 400, got %d", resp.StatusCode)
+		}
+		get(t, admin, base+self)
+		postAndFollow(t, admin, base, self, url.Values{"email": {"admin@example.com"}, "active": {"1"}}) // admin unchecked
+		me, _ := env.store.Users().GetByID(ctx, "admin-user-id")
+		if !me.Admin {
+			t.Error("admin must not be able to drop their own admin flag")
+		}
+		get(t, admin, base+self)
+		resp = postForm(t, admin, base, self, url.Values{"email": {"admin@example.com"}}) // active unchecked
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("disabling yourself should be 400, got %d", resp.StatusCode)
+		}
+
+		// Delete another user
+		get(t, admin, base+page)
+		loc = postAndFollow(t, admin, base, page+"/delete", nil)
+		if !strings.HasPrefix(loc, "/admin/users") {
+			t.Errorf("expected redirect to list, got %s", loc)
+		}
+		if _, err := env.store.Users().GetByID(ctx, created.ID); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+			t.Error("user should be deleted")
+		}
+	})
+}
+
+var secretRe = regexp.MustCompile(`<code>([A-Za-z0-9_-]{40,})</code>`)
+
+func TestAdmin_Clients(t *testing.T) {
+	forEachDriver(t, func(t *testing.T, driver string) {
+		env := setupTestEnv(t, driver)
+		defer env.cleanup()
+		base := env.server.URL
+		ctx := context.Background()
+		admin := adminClient(t, env)
+
+		if status, body := get(t, admin, base+"/admin/clients"); status != http.StatusOK || !strings.Contains(body, "test-client") {
+			t.Fatalf("client list should include test-client, got %d", status)
+		}
+
+		// Validation
+		get(t, admin, base+"/admin/clients/new")
+		resp := postForm(t, admin, base, "/admin/clients", url.Values{"id": {"bad id"}, "name": {"x"}, "redirect_uris": {"http://a/cb"}})
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("bad client id should be 400, got %d", resp.StatusCode)
+		}
+		resp = postForm(t, admin, base, "/admin/clients", url.Values{"id": {"ok"}, "name": {"x"}, "redirect_uris": {"not a url"}})
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("bad redirect uri should be 400, got %d", resp.StatusCode)
+		}
+
+		// Create confidential client: secret shown once, defaults applied
+		resp = postForm(t, admin, base, "/admin/clients", url.Values{
+			"id": {"my-app"}, "name": {"My App"},
+			"redirect_uris": {"http://localhost:5000/cb\r\nhttp://localhost:5001/cb"},
+		})
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected client page with secret, got %d", resp.StatusCode)
+		}
+		m := secretRe.FindStringSubmatch(string(body))
+		if m == nil {
+			t.Fatal("secret should be displayed once after creation")
+		}
+		secret := m[1]
+		client, err := env.store.Clients().GetByID(ctx, "my-app")
+		if err != nil {
+			t.Fatalf("client not created: %v", err)
+		}
+		if client.Secret != secret || len(client.RedirectURIs) != 2 || client.Public || len(client.Scopes) == 0 || len(client.GrantTypes) == 0 {
+			t.Errorf("client not created as expected: %+v", client)
+		}
+
+		// The secret works at the token endpoint (wrong secret is rejected)
+		get(t, admin, base+"/admin/clients/my-app")
+		if _, body := get(t, admin, base+"/admin/clients/my-app"); strings.Contains(body, secret) {
+			t.Error("secret must not be shown on later visits")
+		}
+
+		// Update: make first-party, change redirect URIs
+		postAndFollow(t, admin, base, "/admin/clients/my-app", url.Values{
+			"name": {"My App v2"}, "redirect_uris": {"http://localhost:6000/cb"}, "skip_consent": {"1"},
+			"scopes": {"openid"}, "grant_types": {"authorization_code"},
+		})
+		client, _ = env.store.Clients().GetByID(ctx, "my-app")
+		if client.Name != "My App v2" || !client.SkipConsent || client.RedirectURIs[0] != "http://localhost:6000/cb" || client.Secret != secret {
+			t.Errorf("update not applied: %+v", client)
+		}
+
+		// Regenerate secret
+		get(t, admin, base+"/admin/clients/my-app")
+		resp = postForm(t, admin, base, "/admin/clients/my-app/secret", nil)
+		body, _ = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		m = secretRe.FindStringSubmatch(string(body))
+		if resp.StatusCode != http.StatusOK || m == nil || m[1] == secret {
+			t.Fatalf("regenerate should show a new secret, got %d", resp.StatusCode)
+		}
+		client, _ = env.store.Clients().GetByID(ctx, "my-app")
+		if client.Secret != m[1] {
+			t.Error("new secret should be stored")
+		}
+
+		// Public client has no secret
+		get(t, admin, base+"/admin/clients/new")
+		resp = postForm(t, admin, base, "/admin/clients", url.Values{"id": {"spa"}, "name": {"SPA"}, "redirect_uris": {"http://localhost:3000/cb"}, "public": {"1"}})
+		body, _ = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if secretRe.MatchString(string(body)) {
+			t.Error("public client should not get a secret")
+		}
+		spa, _ := env.store.Clients().GetByID(ctx, "spa")
+		if spa == nil || !spa.Public || spa.Secret != "" {
+			t.Errorf("public client wrong: %+v", spa)
+		}
+
+		// Revoke tokens + delete
+		env.store.Tokens().Create(ctx, &domain.Token{ID: "tok", UserID: env.testUser.ID, ClientID: "my-app", ExpiresAt: time.Now().Add(time.Hour)})
+		get(t, admin, base+"/admin/clients/my-app")
+		postAndFollow(t, admin, base, "/admin/clients/my-app/revoke-tokens", nil)
+		if tok, _ := env.store.Tokens().GetByID(ctx, "tok"); !tok.Revoked {
+			t.Error("client tokens should be revoked")
+		}
+		get(t, admin, base+"/admin/clients/my-app")
+		postAndFollow(t, admin, base, "/admin/clients/my-app/delete", nil)
+		if _, err := env.store.Clients().GetByID(ctx, "my-app"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+			t.Error("client should be deleted")
+		}
+	})
+}
+
+func TestAdmin_Keys(t *testing.T) {
+	forEachDriver(t, func(t *testing.T, driver string) {
+		env := setupTestEnv(t, driver)
+		defer env.cleanup()
+		base := env.server.URL
+		ctx := context.Background()
+		admin := adminClient(t, env)
+
+		before, _ := env.keyService.GetActiveKey(ctx)
+		status, body := get(t, admin, base+"/admin/keys")
+		if status != http.StatusOK || !strings.Contains(body, before.Kid) {
+			t.Fatalf("keys page should list the active key, got %d", status)
+		}
+
+		postAndFollow(t, admin, base, "/admin/keys/rotate", nil)
+		after, _ := env.keyService.GetActiveKey(ctx)
+		if after.Kid == before.Kid {
+			t.Error("rotate should activate a new key")
+		}
+		_, body = get(t, admin, base+"/admin/keys")
+		if !strings.Contains(body, before.Kid) || !strings.Contains(body, after.Kid) || !strings.Contains(body, "retiring") {
+			t.Error("keys page should list both keys with the old one retiring")
+		}
+	})
+}

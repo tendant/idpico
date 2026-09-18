@@ -1,0 +1,26 @@
+{{define "title"}}Clients{{end}}
+{{define "content"}}
+<div class="toolbar">
+    <h1 style="margin:0">Clients</h1>
+    <a class="button" href="/admin/clients/new">New client</a>
+</div>
+<table>
+    <thead><tr><th>Client ID</th><th>Name</th><th>Type</th><th>Redirect URIs</th><th></th></tr></thead>
+    <tbody>
+    {{range .Clients}}
+    <tr>
+        <td><a href="/admin/clients/{{.ID}}"><code>{{.ID}}</code></a></td>
+        <td>{{.Name}}</td>
+        <td>
+            {{if .Public}}<span class="badge off">public (PKCE)</span>{{else}}<span class="badge on">confidential</span>{{end}}
+            {{if .SkipConsent}}<span class="badge on">first-party</span>{{end}}
+        </td>
+        <td class="muted">{{range .RedirectURIs}}<div>{{.}}</div>{{end}}</td>
+        <td class="actions"><a class="button small secondary" href="/admin/clients/{{.ID}}">Edit</a></td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" class="muted">No clients yet.</td></tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}

@@ -1,0 +1,110 @@
+{{define "title"}}{{if .IsNew}}New User{{else}}{{.User.Email}}{{end}}{{end}}
+{{define "content"}}
+<h1>{{if .IsNew}}New User{{else}}{{.User.Email}}{{end}}</h1>
+
+<div class="card">
+<form method="POST" action="{{if .IsNew}}/admin/users{{else}}/admin/users/{{.User.ID}}{{end}}">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <div class="form-row two">
+        <div>
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" value="{{.User.Email}}" required{{if .IsNew}} autofocus{{end}}>
+        </div>
+        <div>
+            <label for="display_name">Display name</label>
+            <input type="text" id="display_name" name="display_name" value="{{.User.DisplayName}}">
+        </div>
+    </div>
+    {{if .IsNew}}
+    <div class="form-row">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" minlength="{{.MinPasswordLength}}" autocomplete="new-password">
+        <div class="help">Leave blank to invite the user by email: they will receive a link to choose their own password.</div>
+    </div>
+    {{end}}
+    <div class="form-row">
+        <label class="check"><input type="checkbox" name="active" value="1"{{if .User.Active}} checked{{end}}> Active (may sign in)</label>
+        <label class="check"><input type="checkbox" name="email_verified" value="1"{{if .User.EmailVerified}} checked{{end}}> Email verified</label>
+        <label class="check"><input type="checkbox" name="admin" value="1"{{if .User.Admin}} checked{{end}}{{if .IsSelf}} disabled{{end}}> Administrator{{if .IsSelf}} <span class="muted">(you cannot remove your own admin access)</span>{{end}}</label>
+        {{if .IsNew}}
+        <label class="check"><input type="checkbox" name="send_verification" value="1"> Send verification email</label>
+        {{end}}
+    </div>
+    <button type="submit">{{if .IsNew}}Create user{{else}}Save changes{{end}}</button>
+    <a class="button secondary" href="/admin/users">Cancel</a>
+</form>
+</div>
+
+{{if not .IsNew}}
+<h2>Password</h2>
+<div class="card">
+    <form method="POST" action="/admin/users/{{.User.ID}}/password">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="form-row two">
+            <div>
+                <label for="new_password">New password</label>
+                <input type="password" id="new_password" name="password" minlength="{{.MinPasswordLength}}" required autocomplete="new-password">
+                <div class="help">Setting a password signs the user out everywhere and revokes their refresh tokens.</div>
+            </div>
+        </div>
+        <button type="submit">Set password</button>
+    </form>
+    <p class="muted" style="margin-top:16px">Or let the user choose:</p>
+    <form class="inline" method="POST" action="/admin/users/{{.User.ID}}/send-reset">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="secondary">Send password reset email</button>
+    </form>
+    {{if not .User.EmailVerified}}
+    <form class="inline" method="POST" action="/admin/users/{{.User.ID}}/send-verification">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="secondary">Send verification email</button>
+    </form>
+    {{end}}
+</div>
+
+<h2>Sessions &amp; Tokens</h2>
+<div class="card">
+    <p class="muted">Sign the user out of every browser and revoke all refresh tokens issued to them.</p>
+    <form class="inline" method="POST" action="/admin/users/{{.User.ID}}/revoke-sessions">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="secondary">Revoke sessions and tokens</button>
+    </form>
+</div>
+
+<h2>Consents</h2>
+{{if .Consents}}
+<table>
+    <thead><tr><th>Client</th><th>Scopes</th><th>Granted</th><th></th></tr></thead>
+    <tbody>
+    {{range .Consents}}
+    <tr>
+        <td><a href="/admin/clients/{{.ClientID}}">{{.ClientID}}</a></td>
+        <td><code>{{join .Scopes " "}}</code></td>
+        <td class="muted">{{date .GrantedAt}}</td>
+        <td class="actions">
+            <form class="inline" method="POST" action="/admin/users/{{$.User.ID}}/consents/{{.ClientID}}/revoke">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button type="submit" class="small secondary">Revoke</button>
+            </form>
+        </td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<div class="card muted">This user has not consented to any client yet.</div>
+{{end}}
+
+{{if not .IsSelf}}
+<h2>Danger Zone</h2>
+<div class="card danger-zone">
+    <p class="muted">Deleting the user also removes their sessions, tokens, consents and pending links.</p>
+    <form class="inline" method="POST" action="/admin/users/{{.User.ID}}/delete">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="confirm" value="{{.User.Email}}">
+        <button type="submit" class="danger">Delete user</button>
+    </form>
+</div>
+{{end}}
+{{end}}
+{{end}}

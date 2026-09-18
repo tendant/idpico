@@ -1,0 +1,27 @@
+{{define "title"}}Signing Keys{{end}}
+{{define "content"}}
+<div class="toolbar">
+    <h1 style="margin:0">Signing Keys</h1>
+    <form class="inline" method="POST" action="/admin/keys/rotate">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit">Rotate now</button>
+    </form>
+</div>
+<p class="muted">New tokens are signed with the active key. Rotating keeps the previous key in JWKS for {{.GracePeriod}} so outstanding tokens still verify, then it is removed.</p>
+<table>
+    <thead><tr><th>Key ID</th><th>Algorithm</th><th>Status</th><th>Created</th><th>Expires</th></tr></thead>
+    <tbody>
+    {{range .Keys}}
+    <tr>
+        <td><code>{{.Kid}}</code></td>
+        <td>{{.Alg}}</td>
+        <td>{{if .Active}}<span class="badge on">active</span>{{else if .IsExpired}}<span class="badge off">expired</span>{{else}}<span class="badge warn">retiring</span>{{end}}</td>
+        <td class="muted">{{date .CreatedAt}}</td>
+        <td class="muted">{{date .ExpiresAt}}</td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" class="muted">No keys.</td></tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}
