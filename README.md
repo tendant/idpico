@@ -211,7 +211,8 @@ or from the Users page once you have one admin. `make seed` makes `test@example.
   You cannot delete or disable your own account or drop your own admin flag.
 - **Groups**: create groups, add members by email, or tick group checkboxes on a user's page.
 - **Clients**: create confidential or public (PKCE) clients; the secret is generated and shown
-  exactly once. Edit redirect URIs, scopes, grant types, first-party (skip consent);
+  exactly once — only an Argon2id hash is stored (plaintext secrets from older data files are
+  upgraded to a hash the first time they authenticate). Edit redirect URIs, scopes, grant types, first-party (skip consent);
   regenerate the secret; revoke all tokens; delete.
 - **Signing keys**: see active / retiring keys and rotate immediately.
 

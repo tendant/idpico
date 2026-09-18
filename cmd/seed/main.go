@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/domain"
+	"github.com/tendant/simple-idp/internal/oidc"
 	"github.com/tendant/simple-idp/internal/store"
 	"github.com/tendant/simple-idp/internal/store/file"
 	"github.com/tendant/simple-idp/internal/store/sqlite"
@@ -47,10 +48,14 @@ func main() {
 	}
 	defer store.Close()
 
-	// Create test client
+	// Create test client (secret: test-secret)
+	secretHash, err := oidc.HashClientSecret("test-secret")
+	if err != nil {
+		log.Fatalf("Failed to hash client secret: %v", err)
+	}
 	client := &domain.Client{
 		ID:           "test-client",
-		Secret:       "test-secret",
+		Secret:       secretHash,
 		Name:         "Test Application",
 		RedirectURIs: []string{"http://localhost:3000/callback", "http://localhost:8081/callback"},
 		GrantTypes:   []string{"authorization_code", "refresh_token"},

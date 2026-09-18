@@ -396,9 +396,19 @@ func bootstrapData(ctx context.Context, cfg *config.Config, store store.Store, l
 			continue
 		}
 
+		secretHash := ""
+		if c.Secret != "" {
+			hash, err := oidc.HashClientSecret(c.Secret)
+			if err != nil {
+				logger.Error("failed to hash bootstrap client secret", "client_id", c.ID, "error", err)
+				continue
+			}
+			secretHash = hash
+		}
+
 		client := &domain.Client{
 			ID:           c.ID,
-			Secret:       c.Secret,
+			Secret:       secretHash,
 			Name:         c.ID,
 			RedirectURIs: c.RedirectURIs,
 			GrantTypes:   []string{"authorization_code", "refresh_token"},

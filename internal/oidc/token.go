@@ -2,7 +2,6 @@ package oidc
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -198,10 +197,8 @@ func (s *TokenService) HandleAuthorizationCode(ctx context.Context, req *TokenRe
 	}
 
 	// Validate client secret for confidential clients (constant-time comparison)
-	if !client.Public {
-		if subtle.ConstantTimeCompare([]byte(req.ClientSecret), []byte(client.Secret)) != 1 {
-			return nil, idperrors.Unauthorized("invalid client credentials")
-		}
+	if !authenticateClient(ctx, s.clients, client, req.ClientSecret) {
+		return nil, idperrors.Unauthorized("invalid client credentials")
 	}
 
 	// Mark code as used
@@ -249,10 +246,8 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 	}
 
 	// Validate client secret for confidential clients (constant-time comparison)
-	if !client.Public {
-		if subtle.ConstantTimeCompare([]byte(req.ClientSecret), []byte(client.Secret)) != 1 {
-			return nil, idperrors.Unauthorized("invalid client credentials")
-		}
+	if !authenticateClient(ctx, s.clients, client, req.ClientSecret) {
+		return nil, idperrors.Unauthorized("invalid client credentials")
 	}
 
 	// Get user
@@ -322,10 +317,8 @@ func (s *TokenService) HandleRevocation(ctx context.Context, req *RevocationRequ
 			// Don't reveal client existence
 			return nil
 		}
-		if !client.Public {
-			if subtle.ConstantTimeCompare([]byte(req.ClientSecret), []byte(client.Secret)) != 1 {
-				return idperrors.Unauthorized("invalid client credentials")
-			}
+		if !authenticateClient(ctx, s.clients, client, req.ClientSecret) {
+			return idperrors.Unauthorized("invalid client credentials")
 		}
 	}
 
@@ -388,10 +381,8 @@ func (s *TokenService) HandleIntrospection(ctx context.Context, req *Introspecti
 	if err != nil {
 		return nil, idperrors.Unauthorized("invalid client credentials")
 	}
-	if !client.Public {
-		if subtle.ConstantTimeCompare([]byte(req.ClientSecret), []byte(client.Secret)) != 1 {
-			return nil, idperrors.Unauthorized("invalid client credentials")
-		}
+	if !authenticateClient(ctx, s.clients, client, req.ClientSecret) {
+		return nil, idperrors.Unauthorized("invalid client credentials")
 	}
 
 	// Try to introspect as access token (JWT) first

@@ -18,6 +18,7 @@ import (
 	"github.com/tendant/simple-idp/internal/crypto"
 	"github.com/tendant/simple-idp/internal/domain"
 	idperrors "github.com/tendant/simple-idp/internal/errors"
+	"github.com/tendant/simple-idp/internal/oidc"
 	"github.com/tendant/simple-idp/internal/store"
 )
 
@@ -889,11 +890,10 @@ func (h *AdminHandler) CreateClient(w http.ResponseWriter, r *http.Request) {
 	var secret string
 	if !client.Public {
 		var err error
-		if secret, err = randomSecret(32); err != nil {
+		if secret, err = newClientSecret(client); err != nil {
 			renderErr("Failed to generate client secret")
 			return
 		}
-		client.Secret = secret
 	}
 
 	if err := h.cfg.Store.Clients().Create(r.Context(), client); err != nil {
@@ -956,11 +956,10 @@ func (h *AdminHandler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 	var newSecret string
 	if wasPublic && !client.Public {
 		var err error
-		if newSecret, err = randomSecret(32); err != nil {
+		if newSecret, err = newClientSecret(client); err != nil {
 			h.fail(w, r, http.StatusInternalServerError, "Failed to generate client secret")
 			return
 		}
-		client.Secret = newSecret
 	}
 
 	if err := h.cfg.Store.Clients().Update(r.Context(), client); err != nil {
@@ -993,12 +992,11 @@ func (h *AdminHandler) RegenerateClientSecret(w http.ResponseWriter, r *http.Req
 		h.fail(w, r, http.StatusBadRequest, "Public clients do not have a secret")
 		return
 	}
-	secret, err := randomSecret(32)
+	secret, err := newClientSecret(client)
 	if err != nil {
 		h.fail(w, r, http.StatusInternalServerError, "Failed to generate client secret")
 		return
 	}
-	client.Secret = secret
 	if err := h.cfg.Store.Clients().Update(r.Context(), client); err != nil {
 		h.logger.Error("failed to update client secret", "error", err)
 		h.fail(w, r, http.StatusInternalServerError, "Failed to update client")
@@ -1088,6 +1086,21 @@ func (h *AdminHandler) RotateKey(w http.ResponseWriter, r *http.Request) {
 	}
 	h.logger.Info("admin rotated signing key", "admin", currentAdmin(r).Email, "kid", key.Kid)
 	h.redirect(w, r, "/admin/keys", "New signing key "+key.Kid+" is active")
+}
+
+// newClientSecret generates a client secret, stores its hash on client and
+// returns the plaintext to show once.
+func newClientSecret(client *domain.Client) (string, error) {
+	secret, err := randomSecret(32)
+	if err != nil {
+		return "", err
+	}
+	hash, err := oidc.HashClientSecret(secret)
+	if err != nil {
+		return "", err
+	}
+	client.Secret = hash
+	return secret, nil
 }
 
 // Helpers

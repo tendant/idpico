@@ -12,6 +12,7 @@ import (
 
 	"github.com/tendant/simple-idp/internal/domain"
 	idperrors "github.com/tendant/simple-idp/internal/errors"
+	"github.com/tendant/simple-idp/internal/oidc"
 )
 
 // adminClient returns a cookie-jar client signed in as the admin user.
@@ -274,9 +275,13 @@ func TestAdmin_Clients(t *testing.T) {
 		if err != nil {
 			t.Fatalf("client not created: %v", err)
 		}
-		if client.Secret != secret || len(client.RedirectURIs) != 2 || client.Public || len(client.Scopes) == 0 || len(client.GrantTypes) == 0 {
+		if ok, _ := oidc.VerifyClientSecret(client.Secret, secret); !ok || !oidc.IsHashedClientSecret(client.Secret) {
+			t.Errorf("stored secret should be a hash of the displayed secret: %q", client.Secret)
+		}
+		if len(client.RedirectURIs) != 2 || client.Public || len(client.Scopes) == 0 || len(client.GrantTypes) == 0 {
 			t.Errorf("client not created as expected: %+v", client)
 		}
+		storedHash := client.Secret
 
 		// The secret works at the token endpoint (wrong secret is rejected)
 		get(t, admin, base+"/admin/clients/my-app")
@@ -290,8 +295,8 @@ func TestAdmin_Clients(t *testing.T) {
 			"scopes": {"openid"}, "grant_types": {"authorization_code"},
 		})
 		client, _ = env.store.Clients().GetByID(ctx, "my-app")
-		if client.Name != "My App v2" || !client.SkipConsent || client.RedirectURIs[0] != "http://localhost:6000/cb" || client.Secret != secret {
-			t.Errorf("update not applied: %+v", client)
+		if client.Name != "My App v2" || !client.SkipConsent || client.RedirectURIs[0] != "http://localhost:6000/cb" || client.Secret != storedHash {
+			t.Errorf("update not applied (or secret changed): %+v", client)
 		}
 
 		// Regenerate secret
@@ -304,8 +309,11 @@ func TestAdmin_Clients(t *testing.T) {
 			t.Fatalf("regenerate should show a new secret, got %d", resp.StatusCode)
 		}
 		client, _ = env.store.Clients().GetByID(ctx, "my-app")
-		if client.Secret != m[1] {
-			t.Error("new secret should be stored")
+		if ok, _ := oidc.VerifyClientSecret(client.Secret, m[1]); !ok || client.Secret == storedHash {
+			t.Error("new secret hash should be stored")
+		}
+		if ok, _ := oidc.VerifyClientSecret(client.Secret, secret); ok {
+			t.Error("old secret must no longer verify")
 		}
 
 		// Public client has no secret
