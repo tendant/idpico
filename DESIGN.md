@@ -370,9 +370,9 @@ Two strategies:
 - ✅ SQLite storage backend (default) with embedded goose migrations
 - ✅ Store conformance test suite shared by all backends
 - ✅ Background maintenance: expired-row purge, signing key rotation with grace period
+- ✅ Consent UI with remembered grants, `prompt=none|login|consent`
 - PostgreSQL storage backend (reuses the SQLite schema/migration layout)
 - Password reset + email verification
-- Consent UI (optional)
 - Rate limiting improvements
 
 ### v1.0

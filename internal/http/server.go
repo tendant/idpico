@@ -23,6 +23,7 @@ type Server struct {
 	keyService            *crypto.KeyService
 	authService           *auth.Service
 	authorizeService      *oidc.AuthorizeService
+	consentService        *oidc.ConsentService
 	tokenService          *oidc.TokenService
 	userInfoService       *oidc.UserInfoService
 	issuerURL             string
@@ -69,6 +70,13 @@ func WithOIDCServices(authorizeService *oidc.AuthorizeService, tokenService *oid
 		s.authorizeService = authorizeService
 		s.tokenService = tokenService
 		s.userInfoService = userInfoService
+	}
+}
+
+// WithConsentService enables the consent screen for clients that do not skip it.
+func WithConsentService(consentService *oidc.ConsentService) Option {
+	return func(s *Server) {
+		s.consentService = consentService
 	}
 }
 
@@ -178,9 +186,11 @@ func NewServer(addr string, opts ...Option) *Server {
 		r.Get("/jwks", jwks.JWKS)
 	}
 
+	templates := LoadTemplates(s.logger)
+
 	// Login endpoints
 	if s.authService != nil {
-		login := NewLoginHandler(s.authService, s.logger)
+		login := NewLoginHandler(s.authService, templates, s.logger)
 		r.Get("/login", login.LoginPage)
 
 		// Apply rate limiting to login POST to prevent brute-force attacks
@@ -197,8 +207,9 @@ func NewServer(addr string, opts ...Option) *Server {
 
 	// OIDC endpoints
 	if s.authorizeService != nil && s.tokenService != nil && s.userInfoService != nil && s.authService != nil {
-		oidcHandler := NewOIDCHandler(s.authService, s.authorizeService, s.tokenService, s.userInfoService, s.logger)
+		oidcHandler := NewOIDCHandler(s.authService, s.authorizeService, s.consentService, s.tokenService, s.userInfoService, templates, s.logger)
 		r.Get("/authorize", oidcHandler.Authorize)
+		r.Post("/consent", oidcHandler.Consent)
 
 		// Apply rate limiting to token endpoint to prevent brute-force attacks
 		if s.loginRateLimit > 0 {

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
@@ -127,11 +128,12 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		t.Fatalf("Failed to create test client: %v", err)
 	}
 
-	// Create public client for PKCE tests
+	// Create public client for PKCE tests (first-party: no consent screen)
 	publicClient := &domain.Client{
 		ID:           "public-client",
 		Name:         "Public Client",
 		Public:       true,
+		SkipConsent:  true,
 		RedirectURIs: []string{"http://localhost:3000/callback"},
 		Scopes:       []string{"openid", "profile", "email"},
 	}
@@ -151,6 +153,7 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 
 	// Create OIDC services
 	authorizeService := oidc.NewAuthorizeService(store.Clients(), store.AuthCodes(), 10*time.Minute)
+	consentService := oidc.NewConsentService(store.Consents())
 	tokenService := oidc.NewTokenService(
 		store.Clients(),
 		store.AuthCodes(),
@@ -170,6 +173,7 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		WithKeyService(keyService),
 		WithAuthService(authService),
 		WithOIDCServices(authorizeService, tokenService, userInfoService),
+		WithConsentService(consentService),
 	)
 
 	// Start test server
@@ -501,10 +505,22 @@ func TestIntegration_FullOIDCFlow_ConfidentialClient(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to get authorize: %v", err)
 		}
+		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 
+		// First visit: the consent screen is shown for a third-party client
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("Expected consent page (200), got status %d", resp.StatusCode)
+		}
+		if !strings.Contains(string(body), "Authorize Test Client") || !strings.Contains(string(body), "openid") {
+			t.Errorf("Consent page should name the client and scopes")
+		}
+
+		// Step 3b: Allow
+		resp = submitConsent(t, client, env.server.URL, mustParseURL(authURL).RawQuery, "allow")
+		resp.Body.Close()
 		if resp.StatusCode != http.StatusFound {
-			t.Fatalf("Expected redirect with auth code, got status %d", resp.StatusCode)
+			t.Fatalf("Expected redirect with auth code after consent, got status %d", resp.StatusCode)
 		}
 
 		// Step 4: Extract authorization code from redirect
@@ -514,7 +530,7 @@ func TestIntegration_FullOIDCFlow_ConfidentialClient(t *testing.T) {
 		state := redirectURL.Query().Get("state")
 
 		if authCode == "" {
-			t.Fatal("Authorization code should not be empty")
+			t.Fatalf("Authorization code should not be empty (location: %s)", location)
 		}
 		if state != "test-state-123" {
 			t.Errorf("State mismatch: expected 'test-state-123', got '%s'", state)
@@ -742,11 +758,16 @@ func TestIntegration_TokenEndpoint_InvalidClientSecret(t *testing.T) {
 		}.Encode()
 
 		resp, _ = client.Get(authURL)
+		resp.Body.Close()
+		resp = submitConsent(t, client, env.server.URL, mustParseURL(authURL).RawQuery, "allow")
 		location := resp.Header.Get("Location")
 		resp.Body.Close()
 
 		redirectURL, _ := url.Parse(location)
 		authCode := redirectURL.Query().Get("code")
+		if authCode == "" {
+			t.Fatalf("expected auth code after consent, got %s", location)
+		}
 
 		// Try to exchange with wrong secret
 		tokenForm := url.Values{}
@@ -860,7 +881,231 @@ func TestIntegration_AuthorizeErrors(t *testing.T) {
 	})
 }
 
+// csrfCookie returns the current CSRF token from the client's cookie jar.
+func csrfCookie(client *http.Client, base string) string {
+	for _, cookie := range client.Jar.Cookies(mustParseURL(base)) {
+		if cookie.Name == "idp_csrf" {
+			return cookie.Value
+		}
+	}
+	return ""
+}
+
+// loginAs signs the cookie-jar client in as the test user.
+func loginAs(t *testing.T, client *http.Client, base, email, password string) {
+	t.Helper()
+	resp, err := client.Get(base + "/login")
+	if err != nil {
+		t.Fatalf("Failed to get login page: %v", err)
+	}
+	resp.Body.Close()
+
+	form := url.Values{}
+	form.Set("email", email)
+	form.Set("password", password)
+	form.Set("csrf_token", csrfCookie(client, base))
+	resp, err = client.PostForm(base+"/login", form)
+	if err != nil {
+		t.Fatalf("Failed to login: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("Expected login redirect, got %d", resp.StatusCode)
+	}
+}
+
+// submitConsent posts the consent form for the given authorize query.
+func submitConsent(t *testing.T, client *http.Client, base, authorizeQuery, action string) *http.Response {
+	t.Helper()
+	form := url.Values{}
+	form.Set("csrf_token", csrfCookie(client, base))
+	form.Set("authorize_query", authorizeQuery)
+	form.Set("action", action)
+	resp, err := client.PostForm(base+"/consent", form)
+	if err != nil {
+		t.Fatalf("Failed to post consent: %v", err)
+	}
+	return resp
+}
+
 func mustParseURL(rawURL string) *url.URL {
 	u, _ := url.Parse(rawURL)
 	return u
+}
+
+func TestIntegration_Consent(t *testing.T) {
+	forEachDriver(t, func(t *testing.T, driver string) {
+		env := setupTestEnv(t, driver)
+		defer env.cleanup()
+
+		base := env.server.URL
+		params := url.Values{
+			"client_id":     {"test-client"},
+			"redirect_uri":  {"http://localhost:3000/callback"},
+			"response_type": {"code"},
+			"scope":         {"openid email"},
+			"state":         {"s1"},
+		}
+		authURL := base + "/authorize?" + params.Encode()
+
+		t.Run("prompt=none unauthenticated -> login_required", func(t *testing.T) {
+			client := newClientWithCookies()
+			p := url.Values{}
+			for k, v := range params {
+				p[k] = v
+			}
+			p.Set("prompt", "none")
+			resp, _ := client.Get(base + "/authorize?" + p.Encode())
+			resp.Body.Close()
+			loc, _ := url.Parse(resp.Header.Get("Location"))
+			if resp.StatusCode != http.StatusFound || loc.Query().Get("error") != "login_required" {
+				t.Errorf("expected login_required redirect, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
+			}
+		})
+
+		client := newClientWithCookies()
+		loginAs(t, client, base, "test@example.com", "password123")
+
+		t.Run("prompt=none without consent -> consent_required", func(t *testing.T) {
+			p := url.Values{}
+			for k, v := range params {
+				p[k] = v
+			}
+			p.Set("prompt", "none")
+			resp, _ := client.Get(base + "/authorize?" + p.Encode())
+			resp.Body.Close()
+			loc, _ := url.Parse(resp.Header.Get("Location"))
+			if resp.StatusCode != http.StatusFound || loc.Query().Get("error") != "consent_required" {
+				t.Errorf("expected consent_required redirect, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
+			}
+			if loc.Query().Get("state") != "s1" {
+				t.Error("state should be echoed on error")
+			}
+		})
+
+		t.Run("deny -> access_denied", func(t *testing.T) {
+			resp, _ := client.Get(authURL)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("expected consent page, got %d", resp.StatusCode)
+			}
+			resp = submitConsent(t, client, base, params.Encode(), "deny")
+			resp.Body.Close()
+			loc, _ := url.Parse(resp.Header.Get("Location"))
+			if resp.StatusCode != http.StatusFound || loc.Query().Get("error") != "access_denied" {
+				t.Errorf("expected access_denied redirect, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
+			}
+			if loc.Query().Get("state") != "s1" {
+				t.Error("state should be echoed on deny")
+			}
+		})
+
+		t.Run("consent without CSRF token is rejected", func(t *testing.T) {
+			form := url.Values{}
+			form.Set("authorize_query", params.Encode())
+			form.Set("action", "allow")
+			resp, _ := client.PostForm(base+"/consent", form)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Errorf("expected 400 without CSRF token, got %d", resp.StatusCode)
+			}
+		})
+
+		t.Run("allow is remembered", func(t *testing.T) {
+			resp, _ := client.Get(authURL)
+			resp.Body.Close()
+			resp = submitConsent(t, client, base, params.Encode(), "allow")
+			resp.Body.Close()
+			loc, _ := url.Parse(resp.Header.Get("Location"))
+			if resp.StatusCode != http.StatusFound || loc.Query().Get("code") == "" {
+				t.Fatalf("expected code after allow, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
+			}
+
+			// Second authorization for the same scopes goes straight through
+			resp, _ = client.Get(authURL)
+			resp.Body.Close()
+			loc, _ = url.Parse(resp.Header.Get("Location"))
+			if resp.StatusCode != http.StatusFound || loc.Query().Get("code") == "" {
+				t.Errorf("expected direct code issuance after remembered consent, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
+			}
+
+			// A wider scope asks again
+			p := url.Values{}
+			for k, v := range params {
+				p[k] = v
+			}
+			p.Set("scope", "openid email profile")
+			resp, _ = client.Get(base + "/authorize?" + p.Encode())
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("expected consent page for new scope, got %d", resp.StatusCode)
+			}
+
+			// prompt=consent forces the page even when already granted
+			p = url.Values{}
+			for k, v := range params {
+				p[k] = v
+			}
+			p.Set("prompt", "consent")
+			resp, _ = client.Get(base + "/authorize?" + p.Encode())
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("expected consent page for prompt=consent, got %d", resp.StatusCode)
+			}
+		})
+
+		t.Run("tampered authorize_query cannot widen redirect_uri", func(t *testing.T) {
+			p := url.Values{}
+			for k, v := range params {
+				p[k] = v
+			}
+			p.Set("redirect_uri", "http://evil.example.com/cb")
+			resp := submitConsent(t, client, base, p.Encode(), "allow")
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Errorf("expected 400 for invalid redirect_uri in consent, got %d", resp.StatusCode)
+			}
+		})
+
+		t.Run("first-party client skips consent", func(t *testing.T) {
+			p := url.Values{
+				"client_id":             {"public-client"},
+				"redirect_uri":          {"http://localhost:3000/callback"},
+				"response_type":         {"code"},
+				"scope":                 {"openid"},
+				"code_challenge":        {"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"},
+				"code_challenge_method": {"S256"},
+			}
+			resp, _ := client.Get(base + "/authorize?" + p.Encode())
+			resp.Body.Close()
+			loc, _ := url.Parse(resp.Header.Get("Location"))
+			if resp.StatusCode != http.StatusFound || loc.Query().Get("code") == "" {
+				t.Errorf("first-party client should get a code directly, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
+			}
+		})
+
+		t.Run("prompt=login re-authenticates", func(t *testing.T) {
+			p := url.Values{}
+			for k, v := range params {
+				p[k] = v
+			}
+			p.Set("prompt", "login")
+			resp, _ := client.Get(base + "/authorize?" + p.Encode())
+			resp.Body.Close()
+			loc := resp.Header.Get("Location")
+			if resp.StatusCode != http.StatusFound || !strings.HasPrefix(loc, "/login") {
+				t.Fatalf("expected redirect to login, got %d %s", resp.StatusCode, loc)
+			}
+			ret, _ := url.Parse(mustParseURL(loc).Query().Get("return_url"))
+			if ret.Query().Get("prompt") != "" {
+				t.Errorf("prompt=login should be stripped from return_url, got %q", ret.Query().Get("prompt"))
+			}
+			// The session was dropped
+			resp, _ = client.Get(authURL)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusFound || !strings.HasPrefix(resp.Header.Get("Location"), "/login") {
+				t.Errorf("session should be gone after prompt=login, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
+			}
+		})
+	})
 }

@@ -137,6 +137,13 @@ func main() {
 		idphttp.WithLoginRateLimit(cfg.LoginRateLimit),
 	}
 
+	// Consent screen (per-client skip_consent still applies)
+	if cfg.RequireConsent {
+		serverOpts = append(serverOpts, idphttp.WithConsentService(oidc.NewConsentService(store.Consents())))
+	} else {
+		logger.Warn("consent screen disabled (IDP_REQUIRE_CONSENT=false)")
+	}
+
 	// Configure security headers
 	if cfg.SecurityHeadersEnabled {
 		securityConfig := idphttp.DefaultSecurityHeadersConfig()

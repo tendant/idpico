@@ -40,6 +40,9 @@ type Config struct {
 	RefreshTokenTTL time.Duration `env:"IDP_REFRESH_TOKEN_TTL" env-default:"168h"` // 7 days
 	AuthCodeTTL     time.Duration `env:"IDP_AUTH_CODE_TTL" env-default:"10m"`
 
+	// Consent
+	RequireConsent bool `env:"IDP_REQUIRE_CONSENT" env-default:"true"` // Show the consent screen for clients without skip_consent
+
 	// Key rotation
 	SigningKeyRotationDays int           `env:"IDP_SIGNING_KEY_ROTATION_DAYS" env-default:"30"` // 0 = disabled
 	SigningKeyGracePeriod  time.Duration `env:"IDP_SIGNING_KEY_GRACE_PERIOD" env-default:"24h"` // rotated keys stay valid for verification this long

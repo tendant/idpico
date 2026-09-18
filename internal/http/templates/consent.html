@@ -1,0 +1,21 @@
+{{define "title"}}Authorize {{.ClientName}}{{end}}
+{{define "content"}}
+<h1>Authorize {{.ClientName}}</h1>
+<p><strong>{{.ClientName}}</strong> <span class="muted">({{.ClientID}})</span> would like to access your account
+<strong>{{.UserEmail}}</strong>.</p>
+<p class="muted">This application will be able to:</p>
+<ul class="scopes">
+    {{range .Scopes}}
+    <li>{{.Description}}<code>{{.Name}}</code></li>
+    {{end}}
+</ul>
+<form method="POST" action="/consent">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="authorize_query" value="{{.AuthorizeQuery}}">
+    <div class="actions">
+        <button type="submit" name="action" value="deny" class="secondary">Deny</button>
+        <button type="submit" name="action" value="allow" autofocus>Allow</button>
+    </div>
+</form>
+<div class="links"><a href="/logout">Not you? Sign out</a></div>
+{{end}}

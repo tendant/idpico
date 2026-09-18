@@ -26,6 +26,22 @@ type AuthorizeRequest struct {
 	Nonce               string
 	CodeChallenge       string
 	CodeChallengeMethod string
+	Prompt              []string // OIDC prompt values: none, login, consent, select_account
+}
+
+// HasPrompt reports whether the request carries the given prompt value.
+func (r *AuthorizeRequest) HasPrompt(value string) bool {
+	for _, p := range r.Prompt {
+		if p == value {
+			return true
+		}
+	}
+	return false
+}
+
+// Scopes returns the requested scopes as a list.
+func (r *AuthorizeRequest) Scopes() []string {
+	return strings.Fields(r.Scope)
 }
 
 // AuthorizeService handles authorization requests.
@@ -46,15 +62,26 @@ func NewAuthorizeService(clients store.ClientRepository, authCodes store.AuthCod
 
 // ParseAuthorizeRequest parses and validates an authorization request.
 func (s *AuthorizeService) ParseAuthorizeRequest(r *http.Request) (*AuthorizeRequest, error) {
+	return s.ParseAuthorizeQuery(r.URL.Query())
+}
+
+// ParseAuthorizeQuery parses and validates authorization request parameters.
+func (s *AuthorizeService) ParseAuthorizeQuery(q url.Values) (*AuthorizeRequest, error) {
 	req := &AuthorizeRequest{
-		ClientID:            r.URL.Query().Get("client_id"),
-		RedirectURI:         r.URL.Query().Get("redirect_uri"),
-		ResponseType:        r.URL.Query().Get("response_type"),
-		Scope:               r.URL.Query().Get("scope"),
-		State:               r.URL.Query().Get("state"),
-		Nonce:               r.URL.Query().Get("nonce"),
-		CodeChallenge:       r.URL.Query().Get("code_challenge"),
-		CodeChallengeMethod: r.URL.Query().Get("code_challenge_method"),
+		ClientID:            q.Get("client_id"),
+		RedirectURI:         q.Get("redirect_uri"),
+		ResponseType:        q.Get("response_type"),
+		Scope:               q.Get("scope"),
+		State:               q.Get("state"),
+		Nonce:               q.Get("nonce"),
+		CodeChallenge:       q.Get("code_challenge"),
+		CodeChallengeMethod: q.Get("code_challenge_method"),
+		Prompt:              strings.Fields(q.Get("prompt")),
+	}
+
+	// prompt=none is exclusive per OIDC Core 3.1.2.1
+	if req.HasPrompt("none") && len(req.Prompt) > 1 {
+		return nil, idperrors.InvalidInput("prompt=none cannot be combined with other prompt values")
 	}
 
 	// Validate required parameters

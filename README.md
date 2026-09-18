@@ -65,6 +65,9 @@ IDP_ACCESS_TOKEN_TTL=15m
 IDP_REFRESH_TOKEN_TTL=168h   # 7 days
 IDP_AUTH_CODE_TTL=10m
 
+# Consent
+IDP_REQUIRE_CONSENT=true           # consent screen for third-party clients
+
 # Key rotation & maintenance
 IDP_SIGNING_KEY_ROTATION_DAYS=30   # 0 = disabled
 IDP_SIGNING_KEY_GRACE_PERIOD=24h   # rotated keys remain valid for verification
@@ -114,12 +117,13 @@ You can also use a `.env` file (copy from `.env.example`).
 | `POST /revoke` | Token revocation endpoint (RFC 7009) |
 | `POST /introspect` | Token introspection endpoint (RFC 7662) |
 
-### Authentication
+### Authentication & Consent
 | Endpoint | Description |
 |----------|-------------|
 | `GET /login` | Login page |
 | `POST /login` | Process login |
 | `GET /logout` | Logout |
+| `POST /consent` | Records the user's allow/deny decision from the consent screen |
 
 ### Operations
 | Endpoint | Description |
@@ -320,6 +324,19 @@ Parameters:
 - `id_token_hint`: Optional. The ID token previously issued.
 - `post_logout_redirect_uri`: Optional. URL to redirect after logout (must be a relative path).
 - `state`: Optional. Opaque value passed through to the redirect.
+
+### Consent Screen
+
+The first time a user authorizes a client, `/authorize` shows a consent page listing the
+requested scopes. Allowing is remembered per user and client; a later request for a wider
+scope prompts again, and `prompt=consent` always prompts. Standard OIDC `prompt` handling:
+
+- `prompt=none` — never interact; returns `login_required` or `consent_required` to the client
+- `prompt=login` — drop the current session and re-authenticate
+- `prompt=consent` — re-show the consent page even if already granted
+
+Clients marked `skip_consent` (first-party apps) never prompt. Set `IDP_REQUIRE_CONSENT=false`
+to disable the screen globally.
 
 ### Signing Key Rotation & Maintenance
 

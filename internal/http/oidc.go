@@ -2,12 +2,13 @@ package http
 
 import (
 	"encoding/json"
-	"html"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/tendant/simple-idp/internal/auth"
+	"github.com/tendant/simple-idp/internal/domain"
 	idperrors "github.com/tendant/simple-idp/internal/errors"
 	"github.com/tendant/simple-idp/internal/oidc"
 )
@@ -16,24 +17,31 @@ import (
 type OIDCHandler struct {
 	authService      *auth.Service
 	authorizeService *oidc.AuthorizeService
+	consentService   *oidc.ConsentService
 	tokenService     *oidc.TokenService
 	userInfoService  *oidc.UserInfoService
+	templates        *Templates
 	logger           *slog.Logger
 }
 
-// NewOIDCHandler creates a new OIDCHandler.
+// NewOIDCHandler creates a new OIDCHandler. consentService may be nil, in
+// which case authorization never prompts for consent.
 func NewOIDCHandler(
 	authService *auth.Service,
 	authorizeService *oidc.AuthorizeService,
+	consentService *oidc.ConsentService,
 	tokenService *oidc.TokenService,
 	userInfoService *oidc.UserInfoService,
+	templates *Templates,
 	logger *slog.Logger,
 ) *OIDCHandler {
 	return &OIDCHandler{
 		authService:      authService,
 		authorizeService: authorizeService,
+		consentService:   consentService,
 		tokenService:     tokenService,
 		userInfoService:  userInfoService,
+		templates:        templates,
 		logger:           logger,
 	}
 }
@@ -50,7 +58,7 @@ func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate client and redirect URI
-	_, err = h.authorizeService.ValidateClient(ctx, authReq)
+	client, err := h.authorizeService.ValidateClient(ctx, authReq)
 	if err != nil {
 		// If redirect URI is invalid, we can't redirect - show error page
 		if idperrors.IsCode(err, idperrors.CodeInvalidInput) {
@@ -72,17 +80,105 @@ func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user is authenticated
+	// Check if user is authenticated (prompt=login forces re-authentication)
 	user, err := h.authService.GetCurrentUser(ctx, r)
-	if err != nil {
-		// Not authenticated - redirect to login with return URL
-		loginURL := "/login?return_url=" + url.QueryEscape(r.URL.String())
+	if err != nil || authReq.HasPrompt("login") {
+		if authReq.HasPrompt("none") {
+			h.redirectError(w, r, authReq, "login_required", "user is not authenticated")
+			return
+		}
+		if authReq.HasPrompt("login") {
+			// Drop the session and strip prompt=login so the post-login
+			// redirect does not loop back here.
+			_ = h.authService.Logout(ctx, w, r)
+		}
+		loginURL := "/login?return_url=" + url.QueryEscape(withoutPrompt(r.URL, "login"))
 		http.Redirect(w, r, loginURL, http.StatusFound)
 		return
 	}
 
-	// User is authenticated - create authorization code
-	authCode, err := h.authorizeService.CreateAuthCode(ctx, authReq, user.ID)
+	// Check consent
+	if h.consentService != nil {
+		granted, err := h.consentService.IsGranted(ctx, user.ID, client, authReq.Scopes())
+		if err != nil {
+			h.logger.Error("failed to check consent", "error", err)
+			h.redirectError(w, r, authReq, "server_error", "failed to check consent")
+			return
+		}
+		if !granted || authReq.HasPrompt("consent") {
+			if authReq.HasPrompt("none") {
+				h.redirectError(w, r, authReq, "consent_required", "user consent is required")
+				return
+			}
+			h.renderConsent(w, r, authReq, client, user.Email)
+			return
+		}
+	}
+
+	h.issueCode(w, r, authReq, user.ID)
+}
+
+// Consent handles POST /consent - the user allowed or denied the client.
+func (h *OIDCHandler) Consent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if err := r.ParseForm(); err != nil {
+		h.renderAuthError(w, r, "", "invalid form data", "", "")
+		return
+	}
+	if err := h.authService.CSRF().ValidateToken(r); err != nil {
+		h.renderAuthError(w, r, "", "invalid or expired form, please try again", "", "")
+		return
+	}
+
+	// Re-parse and re-validate the original authorization request so that
+	// the hidden field cannot smuggle in anything the client is not allowed.
+	query, err := url.ParseQuery(r.FormValue("authorize_query"))
+	if err != nil {
+		h.renderAuthError(w, r, "", "invalid authorization request", "", "")
+		return
+	}
+	authReq, err := h.authorizeService.ParseAuthorizeQuery(query)
+	if err != nil {
+		h.renderAuthError(w, r, "", err.Error(), "", "")
+		return
+	}
+	client, err := h.authorizeService.ValidateClient(ctx, authReq)
+	if err != nil {
+		h.renderAuthError(w, r, "", err.Error(), "", "")
+		return
+	}
+
+	user, err := h.authService.GetCurrentUser(ctx, r)
+	if err != nil {
+		loginURL := "/login?return_url=" + url.QueryEscape("/authorize?"+query.Encode())
+		http.Redirect(w, r, loginURL, http.StatusFound)
+		return
+	}
+
+	if r.FormValue("action") != "allow" {
+		h.logger.Info("consent denied", "client_id", client.ID, "user_id", user.ID)
+		h.redirectError(w, r, authReq, "access_denied", "user denied the request")
+		return
+	}
+
+	if h.consentService != nil {
+		if err := h.consentService.Grant(ctx, user.ID, client.ID, authReq.Scopes()); err != nil {
+			h.logger.Error("failed to record consent", "error", err)
+			h.redirectError(w, r, authReq, "server_error", "failed to record consent")
+			return
+		}
+	}
+	h.logger.Info("consent granted", "client_id", client.ID, "user_id", user.ID, "scope", authReq.Scope)
+
+	h.issueCode(w, r, authReq, user.ID)
+}
+
+// issueCode creates an authorization code and redirects back to the client.
+func (h *OIDCHandler) issueCode(w http.ResponseWriter, r *http.Request, authReq *oidc.AuthorizeRequest, userID string) {
+	ctx := r.Context()
+
+	authCode, err := h.authorizeService.CreateAuthCode(ctx, authReq, userID)
 	if err != nil {
 		h.logger.Error("failed to create auth code", "error", err)
 		redirectURL := h.authorizeService.BuildErrorResponse(
@@ -104,10 +200,74 @@ func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("authorization code issued",
 		"client_id", authReq.ClientID,
-		"user_id", user.ID,
+		"user_id", userID,
 	)
 
 	http.Redirect(w, r, redirectURL, http.StatusFound)
+}
+
+// redirectError sends an OAuth error back to the client's redirect URI.
+func (h *OIDCHandler) redirectError(w http.ResponseWriter, r *http.Request, authReq *oidc.AuthorizeRequest, code, desc string) {
+	http.Redirect(w, r, h.authorizeService.BuildErrorResponse(authReq.RedirectURI, code, desc, authReq.State), http.StatusFound)
+}
+
+type consentScope struct {
+	Name        string
+	Description string
+}
+
+type consentPageData struct {
+	CSRFToken      string
+	AuthorizeQuery string
+	ClientID       string
+	ClientName     string
+	UserEmail      string
+	Scopes         []consentScope
+}
+
+func (h *OIDCHandler) renderConsent(w http.ResponseWriter, r *http.Request, authReq *oidc.AuthorizeRequest, client *domain.Client, userEmail string) {
+	csrfToken, err := h.authService.CSRF().GenerateToken(w)
+	if err != nil {
+		h.logger.Error("failed to generate CSRF token", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	scopes := make([]consentScope, 0, len(authReq.Scopes()))
+	for _, s := range authReq.Scopes() {
+		scopes = append(scopes, consentScope{Name: s, Description: oidc.ScopeDescription(s)})
+	}
+
+	name := client.Name
+	if name == "" {
+		name = client.ID
+	}
+
+	h.templates.Render(w, http.StatusOK, "consent", consentPageData{
+		CSRFToken:      csrfToken,
+		AuthorizeQuery: r.URL.RawQuery,
+		ClientID:       client.ID,
+		ClientName:     name,
+		UserEmail:      userEmail,
+		Scopes:         scopes,
+	})
+}
+
+// withoutPrompt returns u's path and query with the given prompt value removed.
+func withoutPrompt(u *url.URL, value string) string {
+	q := u.Query()
+	var kept []string
+	for _, p := range strings.Fields(q.Get("prompt")) {
+		if p != value {
+			kept = append(kept, p)
+		}
+	}
+	if len(kept) == 0 {
+		q.Del("prompt")
+	} else {
+		q.Set("prompt", strings.Join(kept, " "))
+	}
+	return u.Path + "?" + q.Encode()
 }
 
 // Token handles POST /token - the OAuth 2.0 token endpoint.
@@ -205,17 +365,11 @@ func (h *OIDCHandler) renderAuthError(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 
-	// Otherwise show error page (escape HTML to prevent XSS)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusBadRequest)
-	w.Write([]byte(`<!DOCTYPE html>
-<html>
-<head><title>Authorization Error</title></head>
-<body>
-<h1>Authorization Error</h1>
-<p>` + html.EscapeString(errorDesc) + `</p>
-</body>
-</html>`))
+	// Otherwise show error page (template escapes the description)
+	h.templates.Render(w, http.StatusBadRequest, "error", errorPageData{
+		Title:   "Authorization Error",
+		Message: errorDesc,
+	})
 }
 
 func (h *OIDCHandler) writeTokenError(w http.ResponseWriter, errorCode, errorDesc string, status int) {
