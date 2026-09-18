@@ -9,9 +9,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/tendant/simple-idp/internal/audit"
-	"github.com/tendant/simple-idp/internal/crypto"
-	"github.com/tendant/simple-idp/internal/store"
+	"github.com/tendant/idpico/internal/audit"
+	"github.com/tendant/idpico/internal/crypto"
+	"github.com/tendant/idpico/internal/store"
 )
 
 // Runner executes the maintenance tasks.

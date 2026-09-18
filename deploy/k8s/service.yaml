@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: simple-idp
+  name: idpico
 spec:
   selector:
-    app: simple-idp
+    app: idpico
   ports:
     - name: http
       port: 80

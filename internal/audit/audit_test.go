@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/tendant/simple-idp/internal/domain"
-	"github.com/tendant/simple-idp/internal/store/sqlite"
+	"github.com/tendant/idpico/internal/domain"
+	"github.com/tendant/idpico/internal/store/sqlite"
 )
 
 func TestRecorder(t *testing.T) {

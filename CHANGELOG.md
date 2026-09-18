@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to simple-idp. The format follows [Keep a Changelog](https://keepachangelog.com/).
+All notable changes to idpico. The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
@@ -9,6 +9,13 @@ All notable changes to simple-idp. The format follows [Keep a Changelog](https:/
 This release turns the file-backed prototype into a complete development IdP: SQLite
 storage, consent, self-service account flows, groups, an admin console, a built-in test
 client, and an audit trail.
+
+### Renamed: simple-idp is now IDPico
+
+- Go module `github.com/tendant/idpico`; binaries `idpico` and `idpicoctl` (was `idp`, `idpctl`)
+- **Environment variables are `IDPICO_*`** — the old `IDP_*` names are no longer read
+- Cookies `idpico_session` / `idpico_csrf`, database file `idpico.db`, metrics prefix `idpico_`,
+  Kubernetes namespace and resource names `idpico`
 
 ### Behaviour changes to be aware of
 
@@ -58,6 +65,6 @@ client, and an audit trail.
 - Initial file-backed IdP: Authorization Code + PKCE, RS256 JWTs, refresh token rotation,
   revocation, introspection, RP-initiated logout, rate limiting, lockout, CORS, metrics.
 
-[Unreleased]: https://github.com/tendant/simple-idp/compare/v0.0.2...HEAD
-[0.0.2]: https://github.com/tendant/simple-idp/compare/v0.0.1...v0.0.2
-[0.0.1]: https://github.com/tendant/simple-idp/releases/tag/v0.0.1
+[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.2...HEAD
+[0.0.2]: https://github.com/tendant/idpico/compare/v0.0.1...v0.0.2
+[0.0.1]: https://github.com/tendant/idpico/releases/tag/v0.0.1

@@ -9,12 +9,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
-	"github.com/tendant/simple-idp/internal/audit"
-	"github.com/tendant/simple-idp/internal/auth"
-	"github.com/tendant/simple-idp/internal/crypto"
-	"github.com/tendant/simple-idp/internal/metrics"
-	"github.com/tendant/simple-idp/internal/oidc"
-	"github.com/tendant/simple-idp/internal/store"
+	"github.com/tendant/idpico/internal/audit"
+	"github.com/tendant/idpico/internal/auth"
+	"github.com/tendant/idpico/internal/crypto"
+	"github.com/tendant/idpico/internal/metrics"
+	"github.com/tendant/idpico/internal/oidc"
+	"github.com/tendant/idpico/internal/store"
 )
 
 // Server represents the HTTP server.
@@ -311,7 +311,7 @@ func NewServer(addr string, opts ...Option) *Server {
 			}
 		}
 		landing := messagePageData{
-			Title:     "Simple IdP",
+			Title:     "IDPico",
 			Message:   "This is an OpenID Connect identity provider for local development.",
 			BackURL:   "/login",
 			BackLabel: "Sign in",

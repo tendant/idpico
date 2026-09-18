@@ -1,4 +1,4 @@
-module github.com/tendant/simple-idp
+module github.com/tendant/idpico
 
 go 1.24.0
 

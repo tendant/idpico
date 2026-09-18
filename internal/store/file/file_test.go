@@ -5,9 +5,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/tendant/simple-idp/internal/domain"
-	"github.com/tendant/simple-idp/internal/store"
-	"github.com/tendant/simple-idp/internal/store/storetest"
+	"github.com/tendant/idpico/internal/domain"
+	"github.com/tendant/idpico/internal/store"
+	"github.com/tendant/idpico/internal/store/storetest"
 )
 
 func setupTestStore(t *testing.T) (*Store, func()) {

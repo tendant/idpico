@@ -12,7 +12,7 @@ import (
 
 const (
 	// CSRFCookieName is the name of the CSRF cookie.
-	CSRFCookieName = "idp_csrf"
+	CSRFCookieName = "idpico_csrf"
 	// CSRFTokenLength is the length of the CSRF token in bytes.
 	CSRFTokenLength = 32
 	// CSRFFormField is the form field name for CSRF token.

@@ -38,8 +38,8 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: linux
         run: |
-          go build -o /dev/null ./cmd/idp
-          go build -o /dev/null ./cmd/idpctl
+          go build -o /dev/null ./cmd/idpico
+          go build -o /dev/null ./cmd/idpicoctl
 
       - name: Container image builds (not pushed)
-        run: docker build -t simple-idp:ci .
+        run: docker build -t idpico:ci .

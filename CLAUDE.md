@@ -2,14 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Naming
+
+Write **IDPico** in prose and headings, `idpico` for anything machine-facing (module path, binaries, env vars, cookies, `idpico.db`, k8s names, metrics prefix `idpico_`). Never `IdPico`. The project was called simple-idp before v0.0.2; there is no compatibility shim for the old `IDP_*` variables.
+
 ## Project Status
 
-**simple-idp** is a lightweight Identity Provider (IdP) for **local testing and development**. Phase 1 (File Storage) and the SQLite backend are complete. The IdP is fully functional with:
+**IDPico** (module `github.com/tendant/idpico`, binaries `idpico` / `idpicoctl`, env prefix `IDPICO_`) is a tiny, self-contained Identity Provider for **local testing and development**. Phase 1 (File Storage) and the SQLite backend are complete. The IdP is fully functional with:
 
 - Complete OIDC Authorization Code + PKCE flow
 - JWT ID tokens and access tokens (RS256)
 - Refresh token rotation
-- SQLite storage by default (`IDP_STORE_DRIVER=sqlite`), JSON file storage as an alternative (`file`)
+- SQLite storage by default (`IDPICO_STORE_DRIVER=sqlite`), JSON file storage as an alternative (`file`)
 - Bootstrap users and clients via environment variables
 
 See DESIGN.md for the complete architectural specification.
@@ -27,7 +31,7 @@ The **simple-idm** project (`../simple-idm`) serves as a reference for coding pa
 - **Testing**: TestContainers for integration tests
 - **JWT/JWKS**: See `pkg/tokengenerator/` and `pkg/jwks/` for token generation and key handling patterns
 
-**Note**: simple-idp remains independent of simple-idm at runtime and build-time, but follows the same architectural patterns.
+**Note**: IDPico remains independent of simple-idm at runtime and build-time, but follows the same architectural patterns.
 
 ## Implementation Strategy
 
@@ -52,7 +56,7 @@ Implementation proceeds in phases to enable faster iteration:
 ## Build Commands
 
 ```bash
-make build              # Build ./idp and ./idpctl
+make build              # Build ./idpico and ./idpicoctl
 make run                # Build and run the server
 make run-dev            # Run with debug logging
 make seed               # Dev users/groups/clients in ./data
@@ -75,8 +79,8 @@ CI (`.github/workflows/ci.yml`) runs `make ci`'s steps plus a throwaway `docker 
 
 ### Directory Structure
 ```
-cmd/idp/main.go           # Server entry point
-cmd/idpctl/               # CLI for users, groups, clients, keys (same store)
+cmd/idpico/main.go           # Server entry point
+cmd/idpicoctl/               # CLI for users, groups, clients, keys (same store)
 cmd/seed/                 # Dev seed data
 internal/
   config/                 # Configuration loading/validation
@@ -92,7 +96,7 @@ internal/
     migrations/           #   Embedded goose migrations per dialect
     storetest/            #   Conformance suite shared by all backends
   domain/                 # Core types (User, Client, Token, etc.)
-data/                     # idp.db (SQLite) or JSON files, auto-created
+data/                     # idpico.db (SQLite) or JSON files, auto-created
 ```
 
 All production code goes under `internal/` to prevent accidental coupling.
@@ -103,7 +107,7 @@ All production code goes under `internal/` to prevent accidental coupling.
 - **Database**: SQLite (default) or JSON files today; Postgres planned. Tables: users, clients, sessions, auth_codes, tokens, signing_keys
 - **Migrations**: goose, embedded via `embed.FS` and applied at startup. Keep SQL portable; dialect-specific DDL lives in its own directory. **Shipped migrations are frozen** (`00001_init.sql` as of v0.0.2): every schema change is a new `0000N_<name>.sql`, never an edit of an existing file
 - **Dependency versions**: `go.mod` targets Go 1.24 (matches the Dockerfile). Newer goose/modernc releases require Go 1.25+; check a dependency's `go` directive before bumping
-- **Config**: Environment variables with `IDP_` prefix (e.g., `IDP_ISSUER_URL`, `IDP_STORE_DRIVER`, `IDP_COOKIE_SECRET`)
+- **Config**: Environment variables with `IDPICO_` prefix (e.g., `IDPICO_ISSUER_URL`, `IDPICO_STORE_DRIVER`, `IDPICO_COOKIE_SECRET`)
 
 ### OIDC Flow
 1. App redirects to `/authorize` with PKCE challenge
@@ -115,9 +119,9 @@ All production code goes under `internal/` to prevent accidental coupling.
 ### Public Endpoints
 - OIDC: `/.well-known/openid-configuration`, `/authorize`, `/token`, `/userinfo`, `/.well-known/jwks.json`
 - Auth UI: `/login`, `/logout`, `/consent`, `/forgot-password`, `/reset-password`, `/verify-email`
-- Admin UI: `/admin` (users, groups, clients, signing keys; requires `User.Admin`, granted via `IDP_ADMIN_EMAILS`)
-- Playground: `/playground` is a built-in relying party (client `playground`) that drives the IdP's own endpoints in-process via the router; disable with `IDP_PLAYGROUND_ENABLED=false`
-- Groups: `groups` scope releases memberships as the `groups` claim (`IDP_GROUPS_CLAIM` renames it). No separate role model — a role is a group.
+- Admin UI: `/admin` (users, groups, clients, signing keys; requires `User.Admin`, granted via `IDPICO_ADMIN_EMAILS`)
+- Playground: `/playground` is a built-in relying party (client `playground`) that drives the IdP's own endpoints in-process via the router; disable with `IDPICO_PLAYGROUND_ENABLED=false`
+- Groups: `groups` scope releases memberships as the `groups` claim (`IDPICO_GROUPS_CLAIM` renames it). No separate role model — a role is a group.
 - Ops: `/healthz`, `/readyz`, `/metrics`
 
 ## UI Conventions
@@ -132,5 +136,5 @@ All production code goes under `internal/` to prevent accidental coupling.
 - HttpOnly/Secure/SameSite cookies with session ID rotation on login
 - CSRF protection on login forms
 - Exact redirect URI matching (no wildcards)
-- Token signing key rotation with grace period for old keys (`internal/maintenance`, driven by `IDP_SIGNING_KEY_ROTATION_DAYS` / `IDP_SIGNING_KEY_GRACE_PERIOD`)
+- Token signing key rotation with grace period for old keys (`internal/maintenance`, driven by `IDPICO_SIGNING_KEY_ROTATION_DAYS` / `IDPICO_SIGNING_KEY_GRACE_PERIOD`)
 - Rate limiting on login attempts

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/tendant/simple-idp/internal/crypto"
+	"github.com/tendant/idpico/internal/crypto"
 )
 
 // JWKSHandler handles JWKS endpoints.

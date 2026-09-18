@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/tendant/simple-idp/internal/crypto"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
+	"github.com/tendant/idpico/internal/crypto"
+	idperrors "github.com/tendant/idpico/internal/errors"
 )
 
 // KeyRepository implements crypto.KeyRepository using file storage.

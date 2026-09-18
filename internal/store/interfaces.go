@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/tendant/simple-idp/internal/domain"
+	"github.com/tendant/idpico/internal/domain"
 )
 
 // UserRepository defines operations for user persistence.

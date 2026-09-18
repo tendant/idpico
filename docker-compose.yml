@@ -3,21 +3,21 @@
 services:
   idp:
     build: .
-    image: simple-idp:local
+    image: idpico:local
     ports:
       - "8080:8080"
     environment:
-      IDP_ISSUER_URL: http://localhost:8080
-      IDP_COOKIE_SECRET: change-me-to-a-long-random-string
-      IDP_LOG_FORMAT: text
+      IDPICO_ISSUER_URL: http://localhost:8080
+      IDPICO_COOKIE_SECRET: change-me-to-a-long-random-string
+      IDPICO_LOG_FORMAT: text
       # Dev accounts, groups and admin access
-      IDP_BOOTSTRAP_USERS: "admin@example.com:password123:Admin,alice@example.com:password123:Alice"
-      IDP_BOOTSTRAP_GROUPS: "admins:admin@example.com,devs:admin@example.com alice@example.com"
-      IDP_ADMIN_EMAILS: admin@example.com
-      # Your application's client (a secret is shown once by the admin UI / idpctl for others)
-      IDP_CLIENT_ID: my-app
-      IDP_CLIENT_SECRET: my-app-secret
-      IDP_CLIENT_REDIRECT_URI: http://localhost:3000/callback
+      IDPICO_BOOTSTRAP_USERS: "admin@example.com:password123:Admin,alice@example.com:password123:Alice"
+      IDPICO_BOOTSTRAP_GROUPS: "admins:admin@example.com,devs:admin@example.com alice@example.com"
+      IDPICO_ADMIN_EMAILS: admin@example.com
+      # Your application's client (a secret is shown once by the admin UI / idpicoctl for others)
+      IDPICO_CLIENT_ID: my-app
+      IDPICO_CLIENT_SECRET: my-app-secret
+      IDPICO_CLIENT_REDIRECT_URI: http://localhost:3000/callback
     volumes:
       - idp-data:/app/data
     healthcheck:

@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: simple-idp
+  name: idpico
   labels:
-    app: simple-idp
+    app: idpico
 spec:
   replicas: 1
   strategy:
     type: Recreate   # the SQLite volume cannot be shared between two pods
   selector:
     matchLabels:
-      app: simple-idp
+      app: idpico
   template:
     metadata:
       labels:
-        app: simple-idp
+        app: idpico
     spec:
       securityContext:
         runAsNonRoot: true
@@ -22,45 +22,45 @@ spec:
         runAsGroup: 10001
         fsGroup: 10001      # so the volume is writable by that user
       containers:
-        - name: simple-idp
-          image: simple-idp:latest   # build with `make docker-build` and push to your own registry
+        - name: idpico
+          image: idpico:latest   # build with `make docker-build` and push to your own registry
           ports:
             - containerPort: 8080
               name: http
           env:
-            - name: IDP_HOST
+            - name: IDPICO_HOST
               value: "0.0.0.0"
-            - name: IDP_PORT
+            - name: IDPICO_PORT
               value: "8080"
             # Must match the external URL exactly (scheme, host, no trailing slash)
-            - name: IDP_ISSUER_URL
+            - name: IDPICO_ISSUER_URL
               value: "https://idp.example.com"
-            - name: IDP_DATA_DIR
+            - name: IDPICO_DATA_DIR
               value: "/app/data"
-            - name: IDP_COOKIE_SECURE
+            - name: IDPICO_COOKIE_SECURE
               value: "true"
-            - name: IDP_LOG_FORMAT
+            - name: IDPICO_LOG_FORMAT
               value: "json"
-            - name: IDP_COOKIE_SECRET
+            - name: IDPICO_COOKIE_SECRET
               valueFrom:
-                secretKeyRef: { name: simple-idp-secrets, key: cookie-secret }
-            - name: IDP_BOOTSTRAP_USERS
+                secretKeyRef: { name: idpico-secrets, key: cookie-secret }
+            - name: IDPICO_BOOTSTRAP_USERS
               valueFrom:
-                secretKeyRef: { name: simple-idp-secrets, key: bootstrap-users }
-            - name: IDP_ADMIN_EMAILS
+                secretKeyRef: { name: idpico-secrets, key: bootstrap-users }
+            - name: IDPICO_ADMIN_EMAILS
               value: "admin@example.com"
-            - name: IDP_BOOTSTRAP_GROUPS
+            - name: IDPICO_BOOTSTRAP_GROUPS
               value: "cluster-admins:admin@example.com"
-            # First OIDC client (e.g. Headlamp); add more via the admin UI or idpctl
-            - name: IDP_CLIENT_ID
+            # First OIDC client (e.g. Headlamp); add more via the admin UI or idpicoctl
+            - name: IDPICO_CLIENT_ID
               value: "headlamp"
-            - name: IDP_CLIENT_SECRET
+            - name: IDPICO_CLIENT_SECRET
               valueFrom:
-                secretKeyRef: { name: simple-idp-secrets, key: client-secret }
-            - name: IDP_CLIENT_REDIRECT_URI
+                secretKeyRef: { name: idpico-secrets, key: client-secret }
+            - name: IDPICO_CLIENT_REDIRECT_URI
               value: "https://k8s.example.com/oidc-callback"
             # Shared deployment: turn the built-in test client off
-            - name: IDP_PLAYGROUND_ENABLED
+            - name: IDPICO_PLAYGROUND_ENABLED
               value: "false"
           volumeMounts:
             - name: data
@@ -79,4 +79,4 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: simple-idp-data
+            claimName: idpico-data

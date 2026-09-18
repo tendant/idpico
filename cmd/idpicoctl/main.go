@@ -1,4 +1,4 @@
-// Command idpctl manages users, groups, clients and signing keys directly in
+// Command idpicoctl manages users, groups, clients and signing keys directly in
 // the store, for scripts and Makefiles that should not go through the admin
 // UI. It opens the same database the server uses; stop the server first when
 // using the JSON file driver.
@@ -11,18 +11,18 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tendant/simple-idp/internal/crypto"
-	"github.com/tendant/simple-idp/internal/store"
-	"github.com/tendant/simple-idp/internal/store/file"
-	"github.com/tendant/simple-idp/internal/store/sqlite"
+	"github.com/tendant/idpico/internal/crypto"
+	"github.com/tendant/idpico/internal/store"
+	"github.com/tendant/idpico/internal/store/file"
+	"github.com/tendant/idpico/internal/store/sqlite"
 )
 
-const usage = `Usage: idpctl [global flags] <resource> <command> [args]
+const usage = `Usage: idpicoctl [global flags] <resource> <command> [args]
 
 Global flags:
   -driver    sqlite (default) or file
   -data-dir  data directory (default ./data)
-  -dsn       SQLite database path (default <data-dir>/idp.db)
+  -dsn       SQLite database path (default <data-dir>/idpico.db)
 
 Resources and commands:
   user    list
@@ -44,13 +44,13 @@ Resources and commands:
           rotate [-grace DURATION]
 
 Examples:
-  idpctl user add alice@example.com -name Alice -password s3cret-pass -admin
-  idpctl group add admins && idpctl group add-member admins alice@example.com
-  idpctl client add my-app -redirect http://localhost:3000/callback
+  idpicoctl user add alice@example.com -name Alice -password s3cret-pass -admin
+  idpicoctl group add admins && idpicoctl group add-member admins alice@example.com
+  idpicoctl client add my-app -redirect http://localhost:3000/callback
 `
 
 func main() {
-	global := flag.NewFlagSet("idpctl", flag.ContinueOnError)
+	global := flag.NewFlagSet("idpicoctl", flag.ContinueOnError)
 	global.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	driver := global.String("driver", "sqlite", "store driver: sqlite or file")
 	dataDir := global.String("data-dir", "./data", "data directory")
@@ -78,7 +78,7 @@ func openStore(ctx context.Context, driver, dataDir, dsn string) (store.Store, *
 	switch driver {
 	case "sqlite":
 		if dsn == "" {
-			dsn = filepath.Join(dataDir, "idp.db")
+			dsn = filepath.Join(dataDir, "idpico.db")
 		}
 		s, err := sqlite.NewStore(ctx, dsn)
 		if err != nil {

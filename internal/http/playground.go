@@ -16,18 +16,18 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/tendant/simple-idp/internal/auth"
-	"github.com/tendant/simple-idp/internal/domain"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
-	"github.com/tendant/simple-idp/internal/oidc"
-	"github.com/tendant/simple-idp/internal/store"
+	"github.com/tendant/idpico/internal/auth"
+	"github.com/tendant/idpico/internal/domain"
+	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/oidc"
+	"github.com/tendant/idpico/internal/store"
 )
 
 // PlaygroundClientID is the built-in relying party the playground signs in as.
 const PlaygroundClientID = "playground"
 
 const (
-	playgroundCookie     = "idp_playground"
+	playgroundCookie     = "idpico_playground"
 	playgroundPendingTTL = 10 * time.Minute
 	playgroundSessionTTL = 24 * time.Hour
 )

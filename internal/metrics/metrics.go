@@ -15,7 +15,7 @@ var (
 	// HTTP request metrics
 	httpRequestsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "idp_http_requests_total",
+			Name: "idpico_http_requests_total",
 			Help: "Total number of HTTP requests",
 		},
 		[]string{"method", "path", "status"},
@@ -23,7 +23,7 @@ var (
 
 	httpRequestDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "idp_http_request_duration_seconds",
+			Name:    "idpico_http_request_duration_seconds",
 			Help:    "HTTP request duration in seconds",
 			Buckets: prometheus.DefBuckets,
 		},
@@ -33,7 +33,7 @@ var (
 	// Authentication metrics
 	loginAttemptsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "idp_login_attempts_total",
+			Name: "idpico_login_attempts_total",
 			Help: "Total number of login attempts",
 		},
 		[]string{"status"}, // "success", "failure", "locked"
@@ -41,7 +41,7 @@ var (
 
 	activeSessionsGauge = promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "idp_active_sessions",
+			Name: "idpico_active_sessions",
 			Help: "Number of active sessions",
 		},
 	)
@@ -49,7 +49,7 @@ var (
 	// Token metrics
 	tokensIssuedTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "idp_tokens_issued_total",
+			Name: "idpico_tokens_issued_total",
 			Help: "Total number of tokens issued",
 		},
 		[]string{"type", "grant_type"}, // type: "access", "refresh", "id"
@@ -57,7 +57,7 @@ var (
 
 	tokenIntrospectionsTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "idp_token_introspections_total",
+			Name: "idpico_token_introspections_total",
 			Help: "Total number of token introspection requests",
 		},
 		[]string{"active"}, // "true" or "false"
@@ -65,7 +65,7 @@ var (
 
 	tokenRevocationsTotal = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "idp_token_revocations_total",
+			Name: "idpico_token_revocations_total",
 			Help: "Total number of token revocation requests",
 		},
 	)
@@ -73,7 +73,7 @@ var (
 	// Authorization code metrics
 	authCodesIssuedTotal = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "idp_auth_codes_issued_total",
+			Name: "idpico_auth_codes_issued_total",
 			Help: "Total number of authorization codes issued",
 		},
 	)
@@ -81,7 +81,7 @@ var (
 	// Rate limiting metrics
 	rateLimitExceededTotal = promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "idp_rate_limit_exceeded_total",
+			Name: "idpico_rate_limit_exceeded_total",
 			Help: "Total number of rate limit exceeded events",
 		},
 		[]string{"endpoint"},
@@ -90,7 +90,7 @@ var (
 	// Account lockout metrics
 	accountLockoutsTotal = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "idp_account_lockouts_total",
+			Name: "idpico_account_lockouts_total",
 			Help: "Total number of account lockouts",
 		},
 	)

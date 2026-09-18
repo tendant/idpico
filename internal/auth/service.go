@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/tendant/simple-idp/internal/audit"
-	"github.com/tendant/simple-idp/internal/domain"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
-	"github.com/tendant/simple-idp/internal/store"
+	"github.com/tendant/idpico/internal/audit"
+	"github.com/tendant/idpico/internal/domain"
+	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/store"
 )
 
 // Service provides authentication functionality.

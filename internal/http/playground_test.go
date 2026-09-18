@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tendant/simple-idp/internal/crypto"
-	"github.com/tendant/simple-idp/internal/oidc"
+	"github.com/tendant/idpico/internal/crypto"
+	"github.com/tendant/idpico/internal/oidc"
 )
 
 // playgroundEnv builds a server whose issuer URL is the test listener, so the

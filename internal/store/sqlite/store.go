@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/pressly/goose/v3"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
-	"github.com/tendant/simple-idp/internal/store"
-	"github.com/tendant/simple-idp/internal/store/migrations"
+	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/store"
+	"github.com/tendant/idpico/internal/store/migrations"
 	sqlite "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )

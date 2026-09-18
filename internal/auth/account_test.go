@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tendant/simple-idp/internal/domain"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
-	"github.com/tendant/simple-idp/internal/mail"
-	"github.com/tendant/simple-idp/internal/store/sqlite"
+	"github.com/tendant/idpico/internal/domain"
+	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/mail"
+	"github.com/tendant/idpico/internal/store/sqlite"
 )
 
 func newAccountService(t *testing.T) (*AccountService, *sqlite.Store, *mail.MemoryMailer) {

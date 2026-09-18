@@ -7,16 +7,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tendant/simple-idp/internal/crypto"
-	"github.com/tendant/simple-idp/internal/domain"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
-	"github.com/tendant/simple-idp/internal/store"
-	"github.com/tendant/simple-idp/internal/store/storetest"
+	"github.com/tendant/idpico/internal/crypto"
+	"github.com/tendant/idpico/internal/domain"
+	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/store"
+	"github.com/tendant/idpico/internal/store/storetest"
 )
 
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
-	s, err := NewStore(context.Background(), filepath.Join(t.TempDir(), "idp.db"))
+	s, err := NewStore(context.Background(), filepath.Join(t.TempDir(), "idpico.db"))
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestConformance_InMemory(t *testing.T) {
 
 func TestPersistenceAcrossRestarts(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "idp.db")
+	path := filepath.Join(t.TempDir(), "idpico.db")
 
 	s1, err := NewStore(ctx, path)
 	if err != nil {
@@ -153,7 +153,7 @@ func TestSigningKey_OnlyOneActive(t *testing.T) {
 
 func TestKeyRepository_KeyServiceLifecycle(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "idp.db")
+	path := filepath.Join(t.TempDir(), "idpico.db")
 
 	s1, err := NewStore(ctx, path)
 	if err != nil {
@@ -251,7 +251,7 @@ func TestDSN(t *testing.T) {
 	if got := dsn(":memory:"); !strings.Contains(got, "busy_timeout") || strings.Contains(got, "journal_mode") {
 		t.Errorf("memory DSN should skip WAL, got %s", got)
 	}
-	if got := dsn("data/idp.db"); !strings.Contains(got, "_pragma=journal_mode(WAL)") {
+	if got := dsn("data/idpico.db"); !strings.Contains(got, "_pragma=journal_mode(WAL)") {
 		t.Errorf("file DSN should enable WAL, got %s", got)
 	}
 }

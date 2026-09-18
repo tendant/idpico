@@ -11,18 +11,18 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/tendant/simple-idp/internal/auth"
-	"github.com/tendant/simple-idp/internal/domain"
-	"github.com/tendant/simple-idp/internal/oidc"
-	"github.com/tendant/simple-idp/internal/store"
-	"github.com/tendant/simple-idp/internal/store/file"
-	"github.com/tendant/simple-idp/internal/store/sqlite"
+	"github.com/tendant/idpico/internal/auth"
+	"github.com/tendant/idpico/internal/domain"
+	"github.com/tendant/idpico/internal/oidc"
+	"github.com/tendant/idpico/internal/store"
+	"github.com/tendant/idpico/internal/store/file"
+	"github.com/tendant/idpico/internal/store/sqlite"
 )
 
 func main() {
 	driver := flag.String("driver", "sqlite", "Store driver: sqlite or file")
 	dataDir := flag.String("data-dir", "./data", "Data directory")
-	dsn := flag.String("dsn", "", "SQLite database path (default: <data-dir>/idp.db)")
+	dsn := flag.String("dsn", "", "SQLite database path (default: <data-dir>/idpico.db)")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -36,7 +36,7 @@ func main() {
 	case "sqlite":
 		path := *dsn
 		if path == "" {
-			path = filepath.Join(*dataDir, "idp.db")
+			path = filepath.Join(*dataDir, "idpico.db")
 		}
 		store, err = sqlite.NewStore(ctx, path)
 	case "file":
@@ -137,7 +137,7 @@ func main() {
 
 	fmt.Println("\nSeed data created successfully!")
 	fmt.Println("\nTest with:")
-	fmt.Println("  1. Start server: IDP_COOKIE_SECRET=your-secret-here go run ./cmd/idp")
+	fmt.Println("  1. Start server: IDPICO_COOKIE_SECRET=your-secret-here go run ./cmd/idpico")
 	fmt.Println("  2. Open browser: http://localhost:8080/authorize?client_id=test-client&redirect_uri=http://localhost:3000/callback&response_type=code&scope=openid%20profile%20email&state=test123")
 	fmt.Println("  3. Login with: test@example.com / password123 (admin, groups: admins devs)")
 	fmt.Println("                 alice@example.com / password123 (groups: devs)")

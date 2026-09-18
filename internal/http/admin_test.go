@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tendant/simple-idp/internal/domain"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
-	"github.com/tendant/simple-idp/internal/oidc"
+	"github.com/tendant/idpico/internal/domain"
+	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/oidc"
 )
 
 // adminClient returns a cookie-jar client signed in as the admin user.

@@ -1,4 +1,4 @@
-// Package main is the entry point for the simple-idp Identity Provider.
+// Package main is the entry point for the idpico Identity Provider.
 package main
 
 import (
@@ -14,18 +14,18 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
-	"github.com/tendant/simple-idp/internal/audit"
-	"github.com/tendant/simple-idp/internal/auth"
-	"github.com/tendant/simple-idp/internal/config"
-	"github.com/tendant/simple-idp/internal/crypto"
-	"github.com/tendant/simple-idp/internal/domain"
-	idphttp "github.com/tendant/simple-idp/internal/http"
-	"github.com/tendant/simple-idp/internal/mail"
-	"github.com/tendant/simple-idp/internal/maintenance"
-	"github.com/tendant/simple-idp/internal/oidc"
-	"github.com/tendant/simple-idp/internal/store"
-	"github.com/tendant/simple-idp/internal/store/file"
-	"github.com/tendant/simple-idp/internal/store/sqlite"
+	"github.com/tendant/idpico/internal/audit"
+	"github.com/tendant/idpico/internal/auth"
+	"github.com/tendant/idpico/internal/config"
+	"github.com/tendant/idpico/internal/crypto"
+	"github.com/tendant/idpico/internal/domain"
+	idphttp "github.com/tendant/idpico/internal/http"
+	"github.com/tendant/idpico/internal/mail"
+	"github.com/tendant/idpico/internal/maintenance"
+	"github.com/tendant/idpico/internal/oidc"
+	"github.com/tendant/idpico/internal/store"
+	"github.com/tendant/idpico/internal/store/file"
+	"github.com/tendant/idpico/internal/store/sqlite"
 )
 
 func main() {
@@ -55,7 +55,7 @@ func main() {
 
 	// Warn if using auto-generated cookie secret
 	if cfg.CookieSecretGenerated {
-		logger.Warn("using auto-generated cookie secret - sessions will not persist across restarts. Set IDP_COOKIE_SECRET for production.")
+		logger.Warn("using auto-generated cookie secret - sessions will not persist across restarts. Set IDPICO_COOKIE_SECRET for production.")
 	}
 
 	// Initialize persistence
@@ -187,7 +187,7 @@ func main() {
 	if cfg.RequireConsent {
 		serverOpts = append(serverOpts, idphttp.WithConsentService(oidc.NewConsentService(store.Consents())))
 	} else {
-		logger.Warn("consent screen disabled (IDP_REQUIRE_CONSENT=false)")
+		logger.Warn("consent screen disabled (IDPICO_REQUIRE_CONSENT=false)")
 	}
 
 	// Configure security headers
@@ -267,7 +267,7 @@ func main() {
 	logger.Info("server stopped")
 }
 
-// openStore opens the persistence backend selected by IDP_STORE_DRIVER and
+// openStore opens the persistence backend selected by IDPICO_STORE_DRIVER and
 // returns it together with the matching signing-key repository.
 func openStore(ctx context.Context, cfg *config.Config, logger *slog.Logger) (store.Store, crypto.KeyRepository, error) {
 	switch cfg.StoreDriver {
@@ -293,7 +293,7 @@ func openStore(ctx context.Context, cfg *config.Config, logger *slog.Logger) (st
 	}
 }
 
-// bootstrapGroups creates the groups and memberships from IDP_BOOTSTRAP_GROUPS,
+// bootstrapGroups creates the groups and memberships from IDPICO_BOOTSTRAP_GROUPS,
 // skipping anything that already exists.
 func bootstrapGroups(ctx context.Context, cfg *config.Config, store store.Store, logger *slog.Logger) {
 	for _, bg := range cfg.ParseBootstrapGroups() {
@@ -319,12 +319,12 @@ func bootstrapGroups(ctx context.Context, cfg *config.Config, store store.Store,
 	}
 }
 
-// grantAdmins flags the users listed in IDP_ADMIN_EMAILS as administrators.
+// grantAdmins flags the users listed in IDPICO_ADMIN_EMAILS as administrators.
 func grantAdmins(ctx context.Context, cfg *config.Config, store store.Store, logger *slog.Logger) {
 	for _, email := range cfg.ParseAdminEmails() {
 		user, err := store.Users().GetByEmail(ctx, email)
 		if err != nil {
-			logger.Warn("admin email not found; create the user first (IDP_BOOTSTRAP_USERS or the admin UI)", "email", email)
+			logger.Warn("admin email not found; create the user first (IDPICO_BOOTSTRAP_USERS or the admin UI)", "email", email)
 			continue
 		}
 		if user.Admin {
@@ -339,7 +339,7 @@ func grantAdmins(ctx context.Context, cfg *config.Config, store store.Store, log
 	}
 }
 
-// newMailer builds the outbound mailer selected by IDP_MAIL_DRIVER.
+// newMailer builds the outbound mailer selected by IDPICO_MAIL_DRIVER.
 func newMailer(cfg *config.Config, logger *slog.Logger) (mail.Mailer, error) {
 	switch cfg.MailDriver {
 	case config.MailDriverSMTP:

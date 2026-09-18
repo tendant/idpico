@@ -6,8 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/tendant/simple-idp/internal/domain"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
+	"github.com/tendant/idpico/internal/domain"
+	idperrors "github.com/tendant/idpico/internal/errors"
 )
 
 type tokenRepository struct {

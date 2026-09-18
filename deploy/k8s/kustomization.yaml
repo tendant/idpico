@@ -1,8 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: simple-idp
+namespace: idpico
 # Point the image at your registry:
-#   kustomize edit set image simple-idp=registry.example.com/simple-idp:0.0.2
+#   kustomize edit set image idpico=registry.example.com/idpico:0.0.2
 resources:
   - namespace.yaml
   - pvc.yaml
@@ -10,7 +10,7 @@ resources:
   - service.yaml
   - ingress.yaml
 # Create the secret out of band (never commit it):
-#   kubectl -n simple-idp create secret generic simple-idp-secrets \
+#   kubectl -n idpico create secret generic idpico-secrets \
 #     --from-literal=cookie-secret="$(openssl rand -base64 32)" \
 #     --from-literal=client-secret="$(openssl rand -base64 32)" \
 #     --from-literal=bootstrap-users="admin@example.com:change-me:Admin"

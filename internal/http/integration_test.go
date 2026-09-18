@@ -17,16 +17,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tendant/simple-idp/internal/audit"
-	"github.com/tendant/simple-idp/internal/auth"
-	"github.com/tendant/simple-idp/internal/crypto"
-	"github.com/tendant/simple-idp/internal/domain"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
-	"github.com/tendant/simple-idp/internal/mail"
-	"github.com/tendant/simple-idp/internal/oidc"
-	"github.com/tendant/simple-idp/internal/store"
-	"github.com/tendant/simple-idp/internal/store/file"
-	"github.com/tendant/simple-idp/internal/store/sqlite"
+	"github.com/tendant/idpico/internal/audit"
+	"github.com/tendant/idpico/internal/auth"
+	"github.com/tendant/idpico/internal/crypto"
+	"github.com/tendant/idpico/internal/domain"
+	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/mail"
+	"github.com/tendant/idpico/internal/oidc"
+	"github.com/tendant/idpico/internal/store"
+	"github.com/tendant/idpico/internal/store/file"
+	"github.com/tendant/idpico/internal/store/sqlite"
 )
 
 // testEnv holds all the components needed for integration tests
@@ -58,7 +58,7 @@ func openTestStore(t *testing.T, driver, dataDir string) (store.Store, crypto.Ke
 	t.Helper()
 	switch driver {
 	case "sqlite":
-		s, err := sqlite.NewStore(context.Background(), filepath.Join(dataDir, "idp.db"))
+		s, err := sqlite.NewStore(context.Background(), filepath.Join(dataDir, "idpico.db"))
 		if err != nil {
 			t.Fatalf("Failed to create sqlite store: %v", err)
 		}
@@ -393,7 +393,7 @@ func TestIntegration_LoginWithInvalidCredentials(t *testing.T) {
 		// Get CSRF token from cookie
 		csrfToken := ""
 		for _, cookie := range client.Jar.Cookies(mustParseURL(env.server.URL)) {
-			if cookie.Name == "idp_csrf" {
+			if cookie.Name == "idpico_csrf" {
 				csrfToken = cookie.Value
 				break
 			}
@@ -431,7 +431,7 @@ func TestIntegration_LoginAndLogout(t *testing.T) {
 		// Get CSRF token from cookie
 		csrfToken := ""
 		for _, cookie := range client.Jar.Cookies(mustParseURL(env.server.URL)) {
-			if cookie.Name == "idp_csrf" {
+			if cookie.Name == "idpico_csrf" {
 				csrfToken = cookie.Value
 				break
 			}
@@ -456,7 +456,7 @@ func TestIntegration_LoginAndLogout(t *testing.T) {
 		// Verify session cookie is set
 		hasSessionCookie := false
 		for _, cookie := range client.Jar.Cookies(mustParseURL(env.server.URL)) {
-			if cookie.Name == "idp_session" {
+			if cookie.Name == "idpico_session" {
 				hasSessionCookie = true
 				break
 			}
@@ -525,7 +525,7 @@ func TestIntegration_FullOIDCFlow_ConfidentialClient(t *testing.T) {
 
 		csrfToken := ""
 		for _, cookie := range client.Jar.Cookies(mustParseURL(env.server.URL)) {
-			if cookie.Name == "idp_csrf" {
+			if cookie.Name == "idpico_csrf" {
 				csrfToken = cookie.Value
 				break
 			}
@@ -661,7 +661,7 @@ func TestIntegration_FullOIDCFlow_PublicClientWithPKCE(t *testing.T) {
 
 		csrfToken := ""
 		for _, cookie := range client.Jar.Cookies(mustParseURL(env.server.URL)) {
-			if cookie.Name == "idp_csrf" {
+			if cookie.Name == "idpico_csrf" {
 				csrfToken = cookie.Value
 				break
 			}
@@ -787,7 +787,7 @@ func TestIntegration_TokenEndpoint_InvalidClientSecret(t *testing.T) {
 
 		csrfToken := ""
 		for _, cookie := range client.Jar.Cookies(mustParseURL(env.server.URL)) {
-			if cookie.Name == "idp_csrf" {
+			if cookie.Name == "idpico_csrf" {
 				csrfToken = cookie.Value
 				break
 			}
@@ -935,7 +935,7 @@ func TestIntegration_AuthorizeErrors(t *testing.T) {
 // csrfCookie returns the current CSRF token from the client's cookie jar.
 func csrfCookie(client *http.Client, base string) string {
 	for _, cookie := range client.Jar.Cookies(mustParseURL(base)) {
-		if cookie.Name == "idp_csrf" {
+		if cookie.Name == "idpico_csrf" {
 			return cookie.Value
 		}
 	}

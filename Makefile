@@ -1,22 +1,22 @@
 .PHONY: build run test clean fmt vet lint help seed docker-build docker-run compose-up ci
 
 # Binary name
-BINARY := idp
+BINARY := idpico
 
 # Default target
 all: help
 
 ## Build
-build: ## Build the server and idpctl binaries
-	go build -o $(BINARY) ./cmd/idp
-	go build -o idpctl ./cmd/idpctl
+build: ## Build the server and idpicoctl binaries
+	go build -o $(BINARY) ./cmd/idpico
+	go build -o idpicoctl ./cmd/idpicoctl
 
 ## Run
 run: build ## Build and run the server
 	./$(BINARY)
 
 run-dev: build ## Run with debug logging
-	IDP_LOG_LEVEL=debug IDP_LOG_FORMAT=text ./$(BINARY)
+	IDPICO_LOG_LEVEL=debug IDPICO_LOG_FORMAT=text ./$(BINARY)
 
 seed: ## Create test users (test@example.com admin, alice@example.com; password123), groups and clients
 	go run ./cmd/seed
@@ -30,14 +30,14 @@ test-cover: ## Run tests with coverage
 	go tool cover -html=coverage.out -o coverage.html
 
 ## Container
-IMAGE ?= simple-idp
+IMAGE ?= idpico
 TAG   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 docker-build: ## Build the container image
 	docker build -t $(IMAGE):$(TAG) -t $(IMAGE):latest .
 
 docker-run: docker-build ## Run the image locally on :8080
-	docker run --rm -p 8080:8080 -e IDP_BOOTSTRAP_USERS="admin@example.com:password123:Admin" -e IDP_ADMIN_EMAILS=admin@example.com $(IMAGE):$(TAG)
+	docker run --rm -p 8080:8080 -e IDPICO_BOOTSTRAP_USERS="admin@example.com:password123:Admin" -e IDPICO_ADMIN_EMAILS=admin@example.com $(IMAGE):$(TAG)
 
 compose-up: ## Start via docker compose
 	docker compose up --build
@@ -55,19 +55,19 @@ ci: ## What CI runs: gofmt check, vet, race tests, static build
 	@test -z "$$(gofmt -l .)" || (echo "gofmt needed:"; gofmt -l .; exit 1)
 	go vet ./...
 	go test -race -count=1 ./...
-	CGO_ENABLED=0 GOOS=linux go build -o /dev/null ./cmd/idp
-	CGO_ENABLED=0 GOOS=linux go build -o /dev/null ./cmd/idpctl
+	CGO_ENABLED=0 GOOS=linux go build -o /dev/null ./cmd/idpico
+	CGO_ENABLED=0 GOOS=linux go build -o /dev/null ./cmd/idpicoctl
 
 ## Clean
 clean: ## Clean build artifacts
-	rm -f $(BINARY) idpctl coverage.out coverage.html
+	rm -f $(BINARY) idpicoctl coverage.out coverage.html
 
 ## Example: full OIDC flow test
 test-flow: build ## Test the full OIDC authorization code flow
 	@echo "Starting server in background..."
-	@IDP_CLIENT_ID=test-app IDP_CLIENT_SECRET=test-secret \
-		IDP_CLIENT_REDIRECT_URI="http://localhost:3000/callback" \
-		IDP_BOOTSTRAP_USERS="test@example.com:password123:Test User" \
+	@IDPICO_CLIENT_ID=test-app IDPICO_CLIENT_SECRET=test-secret \
+		IDPICO_CLIENT_REDIRECT_URI="http://localhost:3000/callback" \
+		IDPICO_BOOTSTRAP_USERS="test@example.com:password123:Test User" \
 		./$(BINARY) &
 	@sleep 1
 	@echo "\n=== Testing OIDC Discovery ==="

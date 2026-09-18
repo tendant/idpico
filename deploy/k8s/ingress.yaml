@@ -3,14 +3,14 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: simple-idp
+  name: idpico
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt
 spec:
   ingressClassName: traefik
   tls:
     - hosts: [idp.example.com]
-      secretName: simple-idp-tls
+      secretName: idpico-tls
   rules:
     - host: idp.example.com
       http:
@@ -19,6 +19,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: simple-idp
+                name: idpico
                 port:
                   name: http

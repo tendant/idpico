@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/tendant/simple-idp/internal/auth"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
+	"github.com/tendant/idpico/internal/auth"
+	idperrors "github.com/tendant/idpico/internal/errors"
 )
 
 // LoginHandler handles login endpoints.

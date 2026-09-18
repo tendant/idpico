@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/tendant/simple-idp/internal/crypto"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
+	"github.com/tendant/idpico/internal/crypto"
+	idperrors "github.com/tendant/idpico/internal/errors"
 )
 
 // KeyRepository implements crypto.KeyRepository over the signing_keys table.

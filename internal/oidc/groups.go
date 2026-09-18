@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/tendant/simple-idp/internal/crypto"
-	"github.com/tendant/simple-idp/internal/domain"
-	"github.com/tendant/simple-idp/internal/store"
+	"github.com/tendant/idpico/internal/crypto"
+	"github.com/tendant/idpico/internal/domain"
+	"github.com/tendant/idpico/internal/store"
 )
 
 // ScopeGroups is the scope that releases group memberships to a client.

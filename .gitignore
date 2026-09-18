@@ -7,8 +7,8 @@
 *.dll
 *.so
 *.dylib
-/idp
-/idpctl
+/idpico
+/idpicoctl
 
 # Data directory (file-based storage)
 /data/

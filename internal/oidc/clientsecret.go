@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/tendant/simple-idp/internal/auth"
-	"github.com/tendant/simple-idp/internal/domain"
-	"github.com/tendant/simple-idp/internal/store"
+	"github.com/tendant/idpico/internal/auth"
+	"github.com/tendant/idpico/internal/domain"
+	"github.com/tendant/idpico/internal/store"
 )
 
 // Client secrets are stored as Argon2id hashes (the same scheme as user

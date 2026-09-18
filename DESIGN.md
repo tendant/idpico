@@ -1,4 +1,4 @@
-# simple-idp — Design Document
+# IDPico — Design Document
 
 **Status:** Implemented (v0.3 in progress — SQLite storage is the default, JSON file storage retained)
 **Owner:** Wei Labs / tendant  
@@ -6,14 +6,14 @@
 
 ## 1. Purpose
 
-`simple-idp` is a standalone Identity Provider (IdP) that offers:
+`idpico` is a standalone Identity Provider (IdP) that offers:
 
 - First-party user authentication (local users)
 - OAuth 2.0 + OpenID Connect (OIDC) provider endpoints
 - Token issuance + verification primitives (JWKS, key rotation)
 - Minimal, dependable operational footprint (Go + Postgres, optional Redis later)
 
-`simple-idp` is explicitly **not dependent** on `simple-idm` at runtime or build time.
+`idpico` is explicitly **not dependent** on `simple-idm` at runtime or build time.
 
 ## 2. Goals
 
@@ -68,7 +68,7 @@
 #### Login + OIDC Authorization Code + PKCE
 1. App redirects user to:
    - `GET /authorize?client_id=...&redirect_uri=...&response_type=code&scope=openid...&code_challenge=...`
-2. `simple-idp` checks session:
+2. `idpico` checks session:
    - If not logged in → redirect to `/login`
 3. After login, IdP creates `auth_code` record and redirects back:
    - `302 Location: {redirect_uri}?code=...&state=...`
@@ -83,8 +83,8 @@
 Recommended layout:
 
 ```
-simple-idp/
-  cmd/idp/
+idpico/
+  cmd/idpico/
     main.go
   internal/
     config/          # config loading, validation
@@ -260,17 +260,17 @@ Config sources:
 - optional YAML file for local dev
 
 Key config:
-- `IDP_ISSUER_URL` (e.g., https://auth.example.com)
-- `IDP_HTTP_ADDR` (e.g., :8080)
-- `IDP_PUBLIC_BASE_URL` (if behind proxy)
-- `IDP_DB_DSN`
-- `IDP_COOKIE_SECRET` (32+ bytes)
-- `IDP_SESSION_TTL`
-- `IDP_ID_TOKEN_TTL`
-- `IDP_ACCESS_TOKEN_TTL`
-- `IDP_REFRESH_TOKEN_TTL`
-- `IDP_ALLOWED_ORIGINS` (CORS, if needed)
-- `IDP_TRUSTED_PROXIES`
+- `IDPICO_ISSUER_URL` (e.g., https://auth.example.com)
+- `IDPICO_HTTP_ADDR` (e.g., :8080)
+- `IDPICO_PUBLIC_BASE_URL` (if behind proxy)
+- `IDPICO_DB_DSN`
+- `IDPICO_COOKIE_SECRET` (32+ bytes)
+- `IDPICO_SESSION_TTL`
+- `IDPICO_ID_TOKEN_TTL`
+- `IDPICO_ACCESS_TOKEN_TTL`
+- `IDPICO_REFRESH_TOKEN_TTL`
+- `IDPICO_ALLOWED_ORIGINS` (CORS, if needed)
+- `IDPICO_TRUSTED_PROXIES`
 
 Client bootstrap options:
 - v1: static clients in config
@@ -295,7 +295,7 @@ Client bootstrap options:
 ## 11. Deployment
 
 ### Docker/Kubernetes
-- Stateless `simple-idp` pods
+- Stateless `idpico` pods
 - Postgres (CloudNativePG or managed)
 - Ingress terminates TLS; forward `X-Forwarded-*` headers.
 
@@ -309,7 +309,7 @@ Client bootstrap options:
 
 ## 12. Integrating with applications (e.g., simple-idm)
 
-Apps should treat `simple-idp` as the identity source.
+Apps should treat `idpico` as the identity source.
 
 **Identity key:** `(issuer, sub)`
 
@@ -325,13 +325,13 @@ Apps typically:
 Two strategies:
 
 ### Strategy A: Fresh start
-- Stand up `simple-idp` with new DB
+- Stand up `idpico` with new DB
 - Apps re-login; new `sub` values are generated
 - Simplest operationally
 
 ### Strategy B: Preserve user identities
 - Export `users` and `password_hashes` from `simple-idm`
-- Import into `simple-idp` `users` + `user_credentials`
+- Import into `idpico` `users` + `user_credentials`
 - Ensure `sub` = existing stable user ID (recommended)
 - Keep email verification flags
 

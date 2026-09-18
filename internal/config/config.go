@@ -15,109 +15,109 @@ import (
 // Config holds all configuration for the IdP.
 type Config struct {
 	// Server settings
-	Host string `env:"IDP_HOST" env-default:"0.0.0.0"`
-	Port int    `env:"IDP_PORT" env-default:"8080"`
+	Host string `env:"IDPICO_HOST" env-default:"0.0.0.0"`
+	Port int    `env:"IDPICO_PORT" env-default:"8080"`
 
 	// Issuer URL (required for OIDC)
-	IssuerURL string `env:"IDP_ISSUER_URL" env-default:"http://localhost:8080"`
+	IssuerURL string `env:"IDPICO_ISSUER_URL" env-default:"http://localhost:8080"`
 
 	// Storage settings
 	// StoreDriver selects the persistence backend: "sqlite" (default) or "file" (JSON files).
-	StoreDriver string `env:"IDP_STORE_DRIVER" env-default:"sqlite"`
-	// DataDir holds the SQLite database (idp.db) or the JSON files for the file driver.
-	DataDir string `env:"IDP_DATA_DIR" env-default:"./data"`
-	// StoreDSN overrides the SQLite database location. Defaults to <DataDir>/idp.db.
-	StoreDSN string `env:"IDP_STORE_DSN" env-default:""`
+	StoreDriver string `env:"IDPICO_STORE_DRIVER" env-default:"sqlite"`
+	// DataDir holds the SQLite database (idpico.db) or the JSON files for the file driver.
+	DataDir string `env:"IDPICO_DATA_DIR" env-default:"./data"`
+	// StoreDSN overrides the SQLite database location. Defaults to <DataDir>/idpico.db.
+	StoreDSN string `env:"IDPICO_STORE_DSN" env-default:""`
 
 	// Session settings
-	SessionDuration time.Duration `env:"IDP_SESSION_DURATION" env-default:"24h"`
-	CookieSecret    string        `env:"IDP_COOKIE_SECRET"`
-	CookieSecure    bool          `env:"IDP_COOKIE_SECURE" env-default:"false"`
-	CookieDomain    string        `env:"IDP_COOKIE_DOMAIN" env-default:""`
+	SessionDuration time.Duration `env:"IDPICO_SESSION_DURATION" env-default:"24h"`
+	CookieSecret    string        `env:"IDPICO_COOKIE_SECRET"`
+	CookieSecure    bool          `env:"IDPICO_COOKIE_SECURE" env-default:"false"`
+	CookieDomain    string        `env:"IDPICO_COOKIE_DOMAIN" env-default:""`
 
 	// Token settings
-	AccessTokenTTL  time.Duration `env:"IDP_ACCESS_TOKEN_TTL" env-default:"15m"`
-	RefreshTokenTTL time.Duration `env:"IDP_REFRESH_TOKEN_TTL" env-default:"168h"` // 7 days
-	AuthCodeTTL     time.Duration `env:"IDP_AUTH_CODE_TTL" env-default:"10m"`
+	AccessTokenTTL  time.Duration `env:"IDPICO_ACCESS_TOKEN_TTL" env-default:"15m"`
+	RefreshTokenTTL time.Duration `env:"IDPICO_REFRESH_TOKEN_TTL" env-default:"168h"` // 7 days
+	AuthCodeTTL     time.Duration `env:"IDPICO_AUTH_CODE_TTL" env-default:"10m"`
 
 	// Account self-service (password reset, email verification)
-	PasswordResetTTL      time.Duration `env:"IDP_PASSWORD_RESET_TTL" env-default:"1h"`
-	PasswordResetInterval time.Duration `env:"IDP_PASSWORD_RESET_INTERVAL" env-default:"2m"` // min gap between reset emails to one address (0 = off)
-	EmailVerifyTTL        time.Duration `env:"IDP_EMAIL_VERIFY_TTL" env-default:"24h"`
+	PasswordResetTTL      time.Duration `env:"IDPICO_PASSWORD_RESET_TTL" env-default:"1h"`
+	PasswordResetInterval time.Duration `env:"IDPICO_PASSWORD_RESET_INTERVAL" env-default:"2m"` // min gap between reset emails to one address (0 = off)
+	EmailVerifyTTL        time.Duration `env:"IDPICO_EMAIL_VERIFY_TTL" env-default:"24h"`
 
 	// Outbound mail: "log" prints messages to the server log, "smtp" sends them
-	MailDriver      string `env:"IDP_MAIL_DRIVER" env-default:"log"`
-	SMTPHost        string `env:"IDP_SMTP_HOST" env-default:""`
-	SMTPPort        int    `env:"IDP_SMTP_PORT" env-default:"587"`
-	SMTPUsername    string `env:"IDP_SMTP_USERNAME" env-default:""`
-	SMTPPassword    string `env:"IDP_SMTP_PASSWORD" env-default:""`
-	SMTPFrom        string `env:"IDP_SMTP_FROM" env-default:""`
-	SMTPImplicitTLS bool   `env:"IDP_SMTP_IMPLICIT_TLS" env-default:"false"` // TLS from the first byte (port 465)
+	MailDriver      string `env:"IDPICO_MAIL_DRIVER" env-default:"log"`
+	SMTPHost        string `env:"IDPICO_SMTP_HOST" env-default:""`
+	SMTPPort        int    `env:"IDPICO_SMTP_PORT" env-default:"587"`
+	SMTPUsername    string `env:"IDPICO_SMTP_USERNAME" env-default:""`
+	SMTPPassword    string `env:"IDPICO_SMTP_PASSWORD" env-default:""`
+	SMTPFrom        string `env:"IDPICO_SMTP_FROM" env-default:""`
+	SMTPImplicitTLS bool   `env:"IDPICO_SMTP_IMPLICIT_TLS" env-default:"false"` // TLS from the first byte (port 465)
 
 	// Built-in OIDC relying party at /playground for trying the flow
-	PlaygroundEnabled bool `env:"IDP_PLAYGROUND_ENABLED" env-default:"true"`
+	PlaygroundEnabled bool `env:"IDPICO_PLAYGROUND_ENABLED" env-default:"true"`
 
 	// Consent
-	RequireConsent bool `env:"IDP_REQUIRE_CONSENT" env-default:"true"` // Show the consent screen for clients without skip_consent
+	RequireConsent bool `env:"IDPICO_REQUIRE_CONSENT" env-default:"true"` // Show the consent screen for clients without skip_consent
 
 	// Key rotation
-	SigningKeyRotationDays int           `env:"IDP_SIGNING_KEY_ROTATION_DAYS" env-default:"30"` // 0 = disabled
-	SigningKeyGracePeriod  time.Duration `env:"IDP_SIGNING_KEY_GRACE_PERIOD" env-default:"24h"` // rotated keys stay valid for verification this long
+	SigningKeyRotationDays int           `env:"IDPICO_SIGNING_KEY_ROTATION_DAYS" env-default:"30"` // 0 = disabled
+	SigningKeyGracePeriod  time.Duration `env:"IDPICO_SIGNING_KEY_GRACE_PERIOD" env-default:"24h"` // rotated keys stay valid for verification this long
 
 	// Maintenance (expired session/code/token purge + key rotation)
-	MaintenanceInterval time.Duration `env:"IDP_MAINTENANCE_INTERVAL" env-default:"10m"` // 0 = disabled
+	MaintenanceInterval time.Duration `env:"IDPICO_MAINTENANCE_INTERVAL" env-default:"10m"` // 0 = disabled
 
 	// Audit log retention (0 = keep forever)
-	AuditRetention time.Duration `env:"IDP_AUDIT_RETENTION" env-default:"2160h"` // 90 days
+	AuditRetention time.Duration `env:"IDPICO_AUDIT_RETENTION" env-default:"2160h"` // 90 days
 
 	// Rate limiting
-	LoginRateLimit int `env:"IDP_LOGIN_RATE_LIMIT" env-default:"5"` // attempts per minute
+	LoginRateLimit int `env:"IDPICO_LOGIN_RATE_LIMIT" env-default:"5"` // attempts per minute
 
 	// Account lockout
-	LockoutMaxAttempts int           `env:"IDP_LOCKOUT_MAX_ATTEMPTS" env-default:"5"` // 0 = disabled
-	LockoutDuration    time.Duration `env:"IDP_LOCKOUT_DURATION" env-default:"15m"`
+	LockoutMaxAttempts int           `env:"IDPICO_LOCKOUT_MAX_ATTEMPTS" env-default:"5"` // 0 = disabled
+	LockoutDuration    time.Duration `env:"IDPICO_LOCKOUT_DURATION" env-default:"15m"`
 
 	// Logging
-	LogLevel  string `env:"IDP_LOG_LEVEL" env-default:"info"`
-	LogFormat string `env:"IDP_LOG_FORMAT" env-default:"json"` // json or text
+	LogLevel  string `env:"IDPICO_LOG_LEVEL" env-default:"info"`
+	LogFormat string `env:"IDPICO_LOG_FORMAT" env-default:"json"` // json or text
 
 	// CORS settings
-	CORSAllowedOrigins   string `env:"IDP_CORS_ALLOWED_ORIGINS" env-default:""` // Comma-separated origins, empty = disabled
-	CORSAllowCredentials bool   `env:"IDP_CORS_ALLOW_CREDENTIALS" env-default:"true"`
+	CORSAllowedOrigins   string `env:"IDPICO_CORS_ALLOWED_ORIGINS" env-default:""` // Comma-separated origins, empty = disabled
+	CORSAllowCredentials bool   `env:"IDPICO_CORS_ALLOW_CREDENTIALS" env-default:"true"`
 
 	// Security headers
-	SecurityHeadersEnabled bool   `env:"IDP_SECURITY_HEADERS_ENABLED" env-default:"true"`
-	ContentSecurityPolicy  string `env:"IDP_CONTENT_SECURITY_POLICY" env-default:"default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'"`
-	HSTSMaxAge             int    `env:"IDP_HSTS_MAX_AGE" env-default:"0"` // 0 = disabled, recommended: 31536000 (1 year)
+	SecurityHeadersEnabled bool   `env:"IDPICO_SECURITY_HEADERS_ENABLED" env-default:"true"`
+	ContentSecurityPolicy  string `env:"IDPICO_CONTENT_SECURITY_POLICY" env-default:"default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'"`
+	HSTSMaxAge             int    `env:"IDPICO_HSTS_MAX_AGE" env-default:"0"` // 0 = disabled, recommended: 31536000 (1 year)
 
 	// Metrics
-	MetricsEnabled bool `env:"IDP_METRICS_ENABLED" env-default:"true"`
+	MetricsEnabled bool `env:"IDPICO_METRICS_ENABLED" env-default:"true"`
 
 	// Groups
-	GroupsClaim string `env:"IDP_GROUPS_CLAIM" env-default:"groups"` // Claim name memberships are emitted under
+	GroupsClaim string `env:"IDPICO_GROUPS_CLAIM" env-default:"groups"` // Claim name memberships are emitted under
 	// BootstrapGroups creates groups and memberships on startup.
 	// Format: "group:email1 email2,group2:email3" (members space-separated, groups comma-separated)
-	BootstrapGroups string `env:"IDP_BOOTSTRAP_GROUPS" env-default:""`
+	BootstrapGroups string `env:"IDPICO_BOOTSTRAP_GROUPS" env-default:""`
 
 	// AdminEmails lists users (comma-separated) granted access to the admin UI
 	// on startup. Admins can promote further users from the UI.
-	AdminEmails string `env:"IDP_ADMIN_EMAILS" env-default:""`
+	AdminEmails string `env:"IDPICO_ADMIN_EMAILS" env-default:""`
 
 	// Bootstrap data (created on startup if not exists)
 	// Format: "email:password:name,email2:password2:name2"
-	BootstrapUsers string `env:"IDP_BOOTSTRAP_USERS"`
+	BootstrapUsers string `env:"IDPICO_BOOTSTRAP_USERS"`
 
-	// Simple single-client configuration (takes precedence if IDP_CLIENT_ID is set)
-	ClientID          string `env:"IDP_CLIENT_ID"`
-	ClientSecret      string `env:"IDP_CLIENT_SECRET"`       // Empty for public clients
-	ClientRedirectURI string `env:"IDP_CLIENT_REDIRECT_URI"` // Space-separated for multiple URIs
+	// Simple single-client configuration (takes precedence if IDPICO_CLIENT_ID is set)
+	ClientID          string `env:"IDPICO_CLIENT_ID"`
+	ClientSecret      string `env:"IDPICO_CLIENT_SECRET"`       // Empty for public clients
+	ClientRedirectURI string `env:"IDPICO_CLIENT_REDIRECT_URI"` // Space-separated for multiple URIs
 
 	// Complex multi-client configuration
 	// Format: "client_id|client_secret|redirect_uri" (use | as delimiter to avoid URL conflicts)
 	// Multiple redirect URIs separated by space: "client_id|secret|http://uri1 http://uri2"
 	// Multiple clients separated by comma: "client1|secret1|uri1,client2|secret2|uri2"
 	// Empty secret for public clients: "public-app||http://localhost:3000/callback"
-	BootstrapClients string `env:"IDP_BOOTSTRAP_CLIENTS"`
+	BootstrapClients string `env:"IDPICO_BOOTSTRAP_CLIENTS"`
 
 	// Internal flags (not from env)
 	CookieSecretGenerated bool `env:"-"` // True if secret was auto-generated
@@ -162,7 +162,7 @@ func (c *Config) validateStore() error {
 	case StoreDriverSQLite, StoreDriverFile:
 		return nil
 	default:
-		return fmt.Errorf("invalid IDP_STORE_DRIVER %q (expected %q or %q)", c.StoreDriver, StoreDriverSQLite, StoreDriverFile)
+		return fmt.Errorf("invalid IDPICO_STORE_DRIVER %q (expected %q or %q)", c.StoreDriver, StoreDriverSQLite, StoreDriverFile)
 	}
 }
 
@@ -179,11 +179,11 @@ func (c *Config) validateMail() error {
 		return nil
 	case MailDriverSMTP:
 		if c.SMTPHost == "" || c.SMTPFrom == "" {
-			return fmt.Errorf("IDP_SMTP_HOST and IDP_SMTP_FROM are required when IDP_MAIL_DRIVER=smtp")
+			return fmt.Errorf("IDPICO_SMTP_HOST and IDPICO_SMTP_FROM are required when IDPICO_MAIL_DRIVER=smtp")
 		}
 		return nil
 	default:
-		return fmt.Errorf("invalid IDP_MAIL_DRIVER %q (expected %q or %q)", c.MailDriver, MailDriverLog, MailDriverSMTP)
+		return fmt.Errorf("invalid IDPICO_MAIL_DRIVER %q (expected %q or %q)", c.MailDriver, MailDriverLog, MailDriverSMTP)
 	}
 }
 
@@ -196,13 +196,13 @@ func (c *Config) SigningKeyMaxAge() time.Duration {
 	return time.Duration(c.SigningKeyRotationDays) * 24 * time.Hour
 }
 
-// SQLitePath returns the SQLite database path: IDP_STORE_DSN if set,
-// otherwise <IDP_DATA_DIR>/idp.db.
+// SQLitePath returns the SQLite database path: IDPICO_STORE_DSN if set,
+// otherwise <IDPICO_DATA_DIR>/idpico.db.
 func (c *Config) SQLitePath() string {
 	if c.StoreDSN != "" {
 		return c.StoreDSN
 	}
-	return filepath.Join(c.DataDir, "idp.db")
+	return filepath.Join(c.DataDir, "idpico.db")
 }
 
 // Addr returns the server address in host:port format.
@@ -234,7 +234,7 @@ type BootstrapClient struct {
 	Public       bool
 }
 
-// ParseBootstrapUsers parses the IDP_BOOTSTRAP_USERS environment variable.
+// ParseBootstrapUsers parses the IDPICO_BOOTSTRAP_USERS environment variable.
 // Format: "email:password:name,email2:password2:name2"
 func (c *Config) ParseBootstrapUsers() []BootstrapUser {
 	if c.BootstrapUsers == "" {
@@ -270,7 +270,7 @@ type BootstrapGroup struct {
 	Members []string // emails
 }
 
-// ParseBootstrapGroups parses IDP_BOOTSTRAP_GROUPS.
+// ParseBootstrapGroups parses IDPICO_BOOTSTRAP_GROUPS.
 // Format: "admins:alice@x.com bob@x.com,devs:carol@x.com"
 func (c *Config) ParseBootstrapGroups() []BootstrapGroup {
 	var groups []BootstrapGroup
@@ -285,7 +285,7 @@ func (c *Config) ParseBootstrapGroups() []BootstrapGroup {
 	return groups
 }
 
-// ParseAdminEmails parses the comma-separated IDP_ADMIN_EMAILS list.
+// ParseAdminEmails parses the comma-separated IDPICO_ADMIN_EMAILS list.
 func (c *Config) ParseAdminEmails() []string {
 	return splitList(c.AdminEmails)
 }
@@ -320,13 +320,13 @@ func (c *Config) ParseCORSAllowedOrigins() []string {
 }
 
 // ParseBootstrapClients parses client configuration from environment variables.
-// Simple single-client: IDP_CLIENT_ID, IDP_CLIENT_SECRET, IDP_CLIENT_REDIRECT_URI
-// Complex multi-client: IDP_BOOTSTRAP_CLIENTS with format "client_id|client_secret|redirect_uri"
+// Simple single-client: IDPICO_CLIENT_ID, IDPICO_CLIENT_SECRET, IDPICO_CLIENT_REDIRECT_URI
+// Complex multi-client: IDPICO_BOOTSTRAP_CLIENTS with format "client_id|client_secret|redirect_uri"
 // Multiple redirect URIs separated by space: "client_id|secret|http://uri1 http://uri2"
 func (c *Config) ParseBootstrapClients() []BootstrapClient {
 	var clients []BootstrapClient
 
-	// Simple single-client configuration (IDP_CLIENT_ID takes precedence)
+	// Simple single-client configuration (IDPICO_CLIENT_ID takes precedence)
 	if c.ClientID != "" && c.ClientRedirectURI != "" {
 		client := BootstrapClient{
 			ID:           c.ClientID,

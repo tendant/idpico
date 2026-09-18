@@ -1,9 +1,9 @@
-# Holds idp.db (SQLite). One replica only: SQLite is single-writer and the
+# Holds idpico.db (SQLite). One replica only: SQLite is single-writer and the
 # volume is ReadWriteOnce.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: simple-idp-data
+  name: idpico-data
 spec:
   accessModes: ["ReadWriteOnce"]
   resources:

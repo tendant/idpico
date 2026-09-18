@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/tendant/simple-idp/internal/domain"
-	"github.com/tendant/simple-idp/internal/store"
+	"github.com/tendant/idpico/internal/domain"
+	"github.com/tendant/idpico/internal/store"
 )
 
 // Action names. Kept as dotted "<object>.<verb>" strings so the admin UI can

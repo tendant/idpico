@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/tendant/simple-idp/internal/domain"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
-	"github.com/tendant/simple-idp/internal/store"
+	"github.com/tendant/idpico/internal/domain"
+	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/store"
 )
 
 // ConsentService decides whether a user must be shown the consent screen for

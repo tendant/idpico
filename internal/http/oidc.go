@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tendant/simple-idp/internal/audit"
-	"github.com/tendant/simple-idp/internal/auth"
-	"github.com/tendant/simple-idp/internal/domain"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
-	"github.com/tendant/simple-idp/internal/oidc"
+	"github.com/tendant/idpico/internal/audit"
+	"github.com/tendant/idpico/internal/auth"
+	"github.com/tendant/idpico/internal/domain"
+	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/oidc"
 )
 
 // OIDCHandler handles OIDC endpoints.

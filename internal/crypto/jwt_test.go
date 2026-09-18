@@ -215,7 +215,7 @@ func TestTokenContainsKeyID(t *testing.T) {
 
 func TestClaims_ExtraFlattenedTopLevel(t *testing.T) {
 	kp, _ := GenerateKeyPair(2048)
-	gen := NewTokenGenerator(kp, "http://idp", "http://idp")
+	gen := NewTokenGenerator(kp, "http://idpico", "http://idpico")
 
 	claims := &Claims{Email: "a@example.com", Groups: []string{"admins", "devs"}}
 	claims.SetExtra("nonce", "n-123")

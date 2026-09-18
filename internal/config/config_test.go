@@ -8,7 +8,7 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
-	// Clear any existing IDP_ env vars
+	// Clear any existing IDPICO_ env vars
 	clearIDPEnvVars()
 
 	cfg, err := Load()
@@ -32,8 +32,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.StoreDriver != StoreDriverSQLite {
 		t.Errorf("Expected default store driver 'sqlite', got '%s'", cfg.StoreDriver)
 	}
-	if cfg.SQLitePath() != filepath.Join("./data", "idp.db") {
-		t.Errorf("Expected default sqlite path 'data/idp.db', got '%s'", cfg.SQLitePath())
+	if cfg.SQLitePath() != filepath.Join("./data", "idpico.db") {
+		t.Errorf("Expected default sqlite path 'data/idpico.db', got '%s'", cfg.SQLitePath())
 	}
 	if cfg.LogLevel != "info" {
 		t.Errorf("Expected default log level 'info', got '%s'", cfg.LogLevel)
@@ -53,14 +53,14 @@ func TestLoadFromEnv(t *testing.T) {
 	clearIDPEnvVars()
 
 	// Set custom values
-	os.Setenv("IDP_HOST", "127.0.0.1")
-	os.Setenv("IDP_PORT", "9090")
-	os.Setenv("IDP_ISSUER_URL", "https://idp.example.com")
-	os.Setenv("IDP_DATA_DIR", "/var/idp/data")
-	os.Setenv("IDP_COOKIE_SECRET", "my-secret-key")
-	os.Setenv("IDP_COOKIE_SECURE", "true")
-	os.Setenv("IDP_LOG_LEVEL", "debug")
-	os.Setenv("IDP_LOGIN_RATE_LIMIT", "10")
+	os.Setenv("IDPICO_HOST", "127.0.0.1")
+	os.Setenv("IDPICO_PORT", "9090")
+	os.Setenv("IDPICO_ISSUER_URL", "https://idp.example.com")
+	os.Setenv("IDPICO_DATA_DIR", "/var/idpico/data")
+	os.Setenv("IDPICO_COOKIE_SECRET", "my-secret-key")
+	os.Setenv("IDPICO_COOKIE_SECURE", "true")
+	os.Setenv("IDPICO_LOG_LEVEL", "debug")
+	os.Setenv("IDPICO_LOGIN_RATE_LIMIT", "10")
 	defer clearIDPEnvVars()
 
 	cfg, err := Load()
@@ -77,8 +77,8 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.IssuerURL != "https://idp.example.com" {
 		t.Errorf("Expected issuer URL 'https://idp.example.com', got '%s'", cfg.IssuerURL)
 	}
-	if cfg.DataDir != "/var/idp/data" {
-		t.Errorf("Expected data dir '/var/idp/data', got '%s'", cfg.DataDir)
+	if cfg.DataDir != "/var/idpico/data" {
+		t.Errorf("Expected data dir '/var/idpico/data', got '%s'", cfg.DataDir)
 	}
 	if cfg.CookieSecret != "my-secret-key" {
 		t.Errorf("Expected cookie secret 'my-secret-key', got '%s'", cfg.CookieSecret)
@@ -450,8 +450,8 @@ func TestTokenTTLDefaults(t *testing.T) {
 func TestLockoutConfig(t *testing.T) {
 	clearIDPEnvVars()
 
-	os.Setenv("IDP_LOCKOUT_MAX_ATTEMPTS", "3")
-	os.Setenv("IDP_LOCKOUT_DURATION", "30m")
+	os.Setenv("IDPICO_LOCKOUT_MAX_ATTEMPTS", "3")
+	os.Setenv("IDPICO_LOCKOUT_DURATION", "30m")
 	defer clearIDPEnvVars()
 
 	cfg, err := Load()
@@ -467,17 +467,17 @@ func TestLockoutConfig(t *testing.T) {
 	}
 }
 
-// Helper function to clear all IDP_ environment variables
+// Helper function to clear all IDPICO_ environment variables
 func clearIDPEnvVars() {
 	vars := []string{
-		"IDP_HOST", "IDP_PORT", "IDP_ISSUER_URL", "IDP_DATA_DIR",
-		"IDP_SESSION_DURATION", "IDP_COOKIE_SECRET", "IDP_COOKIE_SECURE", "IDP_COOKIE_DOMAIN",
-		"IDP_ACCESS_TOKEN_TTL", "IDP_REFRESH_TOKEN_TTL", "IDP_AUTH_CODE_TTL",
-		"IDP_SIGNING_KEY_ROTATION_DAYS", "IDP_LOGIN_RATE_LIMIT",
-		"IDP_LOCKOUT_MAX_ATTEMPTS", "IDP_LOCKOUT_DURATION",
-		"IDP_LOG_LEVEL", "IDP_LOG_FORMAT",
-		"IDP_BOOTSTRAP_USERS", "IDP_BOOTSTRAP_CLIENTS",
-		"IDP_CLIENT_ID", "IDP_CLIENT_SECRET", "IDP_CLIENT_REDIRECT_URI",
+		"IDPICO_HOST", "IDPICO_PORT", "IDPICO_ISSUER_URL", "IDPICO_DATA_DIR",
+		"IDPICO_SESSION_DURATION", "IDPICO_COOKIE_SECRET", "IDPICO_COOKIE_SECURE", "IDPICO_COOKIE_DOMAIN",
+		"IDPICO_ACCESS_TOKEN_TTL", "IDPICO_REFRESH_TOKEN_TTL", "IDPICO_AUTH_CODE_TTL",
+		"IDPICO_SIGNING_KEY_ROTATION_DAYS", "IDPICO_LOGIN_RATE_LIMIT",
+		"IDPICO_LOCKOUT_MAX_ATTEMPTS", "IDPICO_LOCKOUT_DURATION",
+		"IDPICO_LOG_LEVEL", "IDPICO_LOG_FORMAT",
+		"IDPICO_BOOTSTRAP_USERS", "IDPICO_BOOTSTRAP_CLIENTS",
+		"IDPICO_CLIENT_ID", "IDPICO_CLIENT_SECRET", "IDPICO_CLIENT_REDIRECT_URI",
 	}
 	for _, v := range vars {
 		os.Unsetenv(v)
@@ -488,8 +488,8 @@ func TestStoreDriver(t *testing.T) {
 	clearIDPEnvVars()
 
 	t.Run("file driver", func(t *testing.T) {
-		os.Setenv("IDP_STORE_DRIVER", "File")
-		defer os.Unsetenv("IDP_STORE_DRIVER")
+		os.Setenv("IDPICO_STORE_DRIVER", "File")
+		defer os.Unsetenv("IDPICO_STORE_DRIVER")
 
 		cfg, err := Load()
 		if err != nil {
@@ -501,21 +501,21 @@ func TestStoreDriver(t *testing.T) {
 	})
 
 	t.Run("custom dsn", func(t *testing.T) {
-		os.Setenv("IDP_STORE_DSN", "/tmp/custom.db")
-		defer os.Unsetenv("IDP_STORE_DSN")
+		os.Setenv("IDPICO_STORE_DSN", "/tmp/custom.db")
+		defer os.Unsetenv("IDPICO_STORE_DSN")
 
 		cfg, err := Load()
 		if err != nil {
 			t.Fatalf("Load failed: %v", err)
 		}
 		if cfg.SQLitePath() != "/tmp/custom.db" {
-			t.Errorf("Expected IDP_STORE_DSN to override sqlite path, got '%s'", cfg.SQLitePath())
+			t.Errorf("Expected IDPICO_STORE_DSN to override sqlite path, got '%s'", cfg.SQLitePath())
 		}
 	})
 
 	t.Run("invalid driver", func(t *testing.T) {
-		os.Setenv("IDP_STORE_DRIVER", "postgres")
-		defer os.Unsetenv("IDP_STORE_DRIVER")
+		os.Setenv("IDPICO_STORE_DRIVER", "postgres")
+		defer os.Unsetenv("IDPICO_STORE_DRIVER")
 
 		if _, err := Load(); err == nil {
 			t.Error("Expected error for unsupported store driver")
@@ -540,8 +540,8 @@ func TestMaintenanceDefaults(t *testing.T) {
 		t.Errorf("Expected default grace period 24h, got %v", cfg.SigningKeyGracePeriod)
 	}
 
-	os.Setenv("IDP_SIGNING_KEY_ROTATION_DAYS", "0")
-	defer os.Unsetenv("IDP_SIGNING_KEY_ROTATION_DAYS")
+	os.Setenv("IDPICO_SIGNING_KEY_ROTATION_DAYS", "0")
+	defer os.Unsetenv("IDPICO_SIGNING_KEY_ROTATION_DAYS")
 	cfg, _ = Load()
 	if cfg.SigningKeyMaxAge() != 0 {
 		t.Errorf("Expected rotation disabled with 0 days, got %v", cfg.SigningKeyMaxAge())
@@ -562,16 +562,16 @@ func TestMailConfig(t *testing.T) {
 		t.Errorf("Unexpected default TTLs: reset=%v verify=%v", cfg.PasswordResetTTL, cfg.EmailVerifyTTL)
 	}
 
-	os.Setenv("IDP_MAIL_DRIVER", "smtp")
-	defer os.Unsetenv("IDP_MAIL_DRIVER")
+	os.Setenv("IDPICO_MAIL_DRIVER", "smtp")
+	defer os.Unsetenv("IDPICO_MAIL_DRIVER")
 	if _, err := Load(); err == nil {
 		t.Error("smtp driver without host/from should fail validation")
 	}
 
-	os.Setenv("IDP_SMTP_HOST", "smtp.example.com")
-	os.Setenv("IDP_SMTP_FROM", "idp@example.com")
-	defer os.Unsetenv("IDP_SMTP_HOST")
-	defer os.Unsetenv("IDP_SMTP_FROM")
+	os.Setenv("IDPICO_SMTP_HOST", "smtp.example.com")
+	os.Setenv("IDPICO_SMTP_FROM", "idp@example.com")
+	defer os.Unsetenv("IDPICO_SMTP_HOST")
+	defer os.Unsetenv("IDPICO_SMTP_FROM")
 	cfg, err = Load()
 	if err != nil {
 		t.Fatalf("smtp config should load: %v", err)

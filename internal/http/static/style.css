@@ -1,4 +1,4 @@
-/* Simple IdP — shared stylesheet. Tokens first, then components.
+/* IDPico — shared stylesheet. Tokens first, then components.
    Colors live only in :root so dark mode is a single override. */
 
 :root {

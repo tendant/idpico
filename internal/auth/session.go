@@ -8,14 +8,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/tendant/simple-idp/internal/domain"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
-	"github.com/tendant/simple-idp/internal/store"
+	"github.com/tendant/idpico/internal/domain"
+	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/store"
 )
 
 const (
 	// SessionCookieName is the name of the session cookie.
-	SessionCookieName = "idp_session"
+	SessionCookieName = "idpico_session"
 	// SessionTokenLength is the length of the session token in bytes.
 	SessionTokenLength = 32
 )

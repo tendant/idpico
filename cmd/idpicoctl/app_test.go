@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tendant/simple-idp/internal/auth"
-	"github.com/tendant/simple-idp/internal/crypto"
-	"github.com/tendant/simple-idp/internal/oidc"
-	"github.com/tendant/simple-idp/internal/store/sqlite"
+	"github.com/tendant/idpico/internal/auth"
+	"github.com/tendant/idpico/internal/crypto"
+	"github.com/tendant/idpico/internal/oidc"
+	"github.com/tendant/idpico/internal/store/sqlite"
 )
 
 func newTestApp(t *testing.T) (*app, *sqlite.Store, *bytes.Buffer) {

@@ -1,6 +1,6 @@
-# Setting Up OIDC Authentication for k3s with simple-idp and Headlamp
+# Setting Up OIDC Authentication for k3s with IDPico and Headlamp
 
-This guide walks through configuring OIDC authentication for a k3s Kubernetes cluster using simple-idp as the identity provider and Headlamp as the dashboard UI.
+This guide walks through configuring OIDC authentication for a k3s Kubernetes cluster using IDPico as the identity provider and Headlamp as the dashboard UI.
 
 ## Architecture
 
@@ -13,14 +13,14 @@ This guide walks through configuring OIDC authentication for a k3s Kubernetes cl
                            │ OIDC Auth         │ Validate
                            ▼                   │ Token
                     ┌─────────────┐            │
-                    │ simple-idp  │◀───────────┘
+                    │ idpico  │◀───────────┘
                     │  (OIDC IdP) │  Fetch JWKS
                     └─────────────┘
 ```
 
 | Component | Role | Example URL |
 |-----------|------|-------------|
-| simple-idp | OIDC Identity Provider | `https://idp.example.com` |
+| idpico | OIDC Identity Provider | `https://idp.example.com` |
 | Headlamp | Kubernetes Dashboard (OIDC Relying Party) | `https://k8s.example.com` |
 | k3s API | Kubernetes API Server | `https://k8s-api.example.com:6443` |
 
@@ -32,7 +32,7 @@ This guide walks through configuring OIDC authentication for a k3s Kubernetes cl
 - kubectl access to the cluster
 - Domain names for IdP and Headlamp
 
-## Part 1: Deploy simple-idp
+## Part 1: Deploy IDPico
 
 ### 1.1 Build the Container Image
 
@@ -43,21 +43,21 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /idp ./cmd/idp
+RUN CGO_ENABLED=0 GOOS=linux go build -o /idpico ./cmd/idpico
 
 FROM alpine:3.19
 RUN apk --no-cache add ca-certificates
 WORKDIR /app
-COPY --from=builder /idp .
+COPY --from=builder /idpico .
 RUN mkdir -p /app/data
 EXPOSE 8080
-CMD ["./idp"]
+CMD ["./idpico"]
 ```
 
 Build and push:
 ```bash
-docker build -t your-registry/simple-idp:latest .
-docker push your-registry/simple-idp:latest
+docker build -t your-registry/idpico:latest .
+docker push your-registry/idpico:latest
 ```
 
 ### 1.2 Create Kubernetes Manifests
@@ -67,17 +67,17 @@ docker push your-registry/simple-idp:latest
 > same thing step by step.
 
 ```yaml
-# simple-idp.yaml
+# idpico.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: simple-idp
+  name: idpico
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: simple-idp-secrets
-  namespace: simple-idp
+  name: idpico-secrets
+  namespace: idpico
 type: Opaque
 stringData:
   # OIDC client secret - must match Headlamp's config
@@ -88,60 +88,60 @@ stringData:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: simple-idp
-  namespace: simple-idp
+  name: idpico
+  namespace: idpico
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: simple-idp
+      app: idpico
   template:
     metadata:
       labels:
-        app: simple-idp
+        app: idpico
     spec:
       containers:
-      - name: simple-idp
-        image: your-registry/simple-idp:latest
+      - name: idpico
+        image: your-registry/idpico:latest
         ports:
         - containerPort: 8080
         env:
-        - name: IDP_HOST
+        - name: IDPICO_HOST
           value: "0.0.0.0"
-        - name: IDP_PORT
+        - name: IDPICO_PORT
           value: "8080"
         # CRITICAL: Must match the external URL exactly
-        - name: IDP_ISSUER_URL
+        - name: IDPICO_ISSUER_URL
           value: "https://idp.example.com"
-        - name: IDP_DATA_DIR
-          value: "/app/data"   # SQLite database (idp.db) lives here; back it with a PVC
-        - name: IDP_COOKIE_SECURE
+        - name: IDPICO_DATA_DIR
+          value: "/app/data"   # SQLite database (idpico.db) lives here; back it with a PVC
+        - name: IDPICO_COOKIE_SECURE
           value: "true"
-        - name: IDP_LOG_LEVEL
+        - name: IDPICO_LOG_LEVEL
           value: "info"
-        - name: IDP_LOG_FORMAT
+        - name: IDPICO_LOG_FORMAT
           value: "json"
         # OIDC client configuration
-        - name: IDP_CLIENT_ID
+        - name: IDPICO_CLIENT_ID
           value: "headlamp"
-        - name: IDP_CLIENT_SECRET
+        - name: IDPICO_CLIENT_SECRET
           valueFrom:
             secretKeyRef:
-              name: simple-idp-secrets
+              name: idpico-secrets
               key: client-secret
-        - name: IDP_CLIENT_REDIRECT_URI
+        - name: IDPICO_CLIENT_REDIRECT_URI
           value: "https://k8s.example.com/oidc-callback"
         # Bootstrap users
-        - name: IDP_BOOTSTRAP_USERS
+        - name: IDPICO_BOOTSTRAP_USERS
           valueFrom:
             secretKeyRef:
-              name: simple-idp-secrets
+              name: idpico-secrets
               key: bootstrap-users
         # Groups released in the "groups" claim; k3s maps them to RBAC Group subjects
-        - name: IDP_BOOTSTRAP_GROUPS
+        - name: IDPICO_BOOTSTRAP_GROUPS
           value: "cluster-admins:admin@example.com,viewers:viewer@example.com"
         # Who may open the admin UI at /admin
-        - name: IDP_ADMIN_EMAILS
+        - name: IDPICO_ADMIN_EMAILS
           value: "admin@example.com"
         volumeMounts:
         - name: data
@@ -162,13 +162,13 @@ spec:
       # IMPORTANT: Use PVC to persist signing keys
       - name: data
         persistentVolumeClaim:
-          claimName: simple-idp-data
+          claimName: idpico-data
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: simple-idp-data
-  namespace: simple-idp
+  name: idpico-data
+  namespace: idpico
 spec:
   accessModes:
   - ReadWriteOnce
@@ -179,11 +179,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: simple-idp
-  namespace: simple-idp
+  name: idpico
+  namespace: idpico
 spec:
   selector:
-    app: simple-idp
+    app: idpico
   ports:
   - port: 80
     targetPort: 8080
@@ -191,9 +191,9 @@ spec:
 
 > **CRITICAL: Use PersistentVolumeClaim, not emptyDir**
 >
-> simple-idp generates RSA signing keys on startup. If you use `emptyDir`, the keys are lost when the pod restarts, causing all existing tokens to become invalid. Users will see "failed to verify signature" errors and need to re-login. A PVC ensures keys persist across restarts.
+> idpico generates RSA signing keys on startup. If you use `emptyDir`, the keys are lost when the pod restarts, causing all existing tokens to become invalid. Users will see "failed to verify signature" errors and need to re-login. A PVC ensures keys persist across restarts.
 
-### 1.3 Expose simple-idp with TLS
+### 1.3 Expose IDPico with TLS
 
 Using Gateway API:
 
@@ -216,8 +216,8 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: simple-idp
-  namespace: simple-idp
+  name: idpico
+  namespace: idpico
 spec:
   parentRefs:
   - name: main-gateway
@@ -230,7 +230,7 @@ spec:
         type: PathPrefix
         value: /
     backendRefs:
-    - name: simple-idp
+    - name: idpico
       port: 80
 ```
 
@@ -251,14 +251,14 @@ Add a listener to your Gateway:
       from: All
 ```
 
-### 1.4 Verify simple-idp
+### 1.4 Verify idpico
 
 ```bash
 # Check pod is running
-kubectl get pods -n simple-idp
+kubectl get pods -n idpico
 
 # Check logs
-kubectl logs -n simple-idp deploy/simple-idp
+kubectl logs -n idpico deploy/idpico
 
 # Test OIDC discovery endpoint
 curl https://idp.example.com/.well-known/openid-configuration
@@ -278,7 +278,7 @@ Expected discovery response includes:
 
 ## Part 2: Configure k3s API Server for OIDC
 
-The Kubernetes API server must be configured to validate OIDC tokens from simple-idp.
+The Kubernetes API server must be configured to validate OIDC tokens from idpico.
 
 ### 2.1 For Existing Clusters (Manual Configuration)
 
@@ -409,7 +409,7 @@ kubectl create secret generic headlamp-oidc-secret \
     clientSecret: "your-secure-client-secret-here"'
 ```
 
-> **The client secret must match between simple-idp and Headlamp exactly.**
+> **The client secret must match between idpico and Headlamp exactly.**
 
 ### 3.2 Expose Headlamp
 
@@ -439,8 +439,8 @@ spec:
 ## Part 4: Configure RBAC for OIDC Users
 
 OIDC users are identified by their email (`oidc-username-claim`) and, when Headlamp requests
-the `groups` scope, by their simple-idp groups (`oidc-groups-claim`). Binding roles to groups
-is the maintainable option: add or remove people in the simple-idp admin UI (`/admin/groups`)
+the `groups` scope, by their idpico groups (`oidc-groups-claim`). Binding roles to groups
+is the maintainable option: add or remove people in the idpico admin UI (`/admin/groups`)
 and RBAC follows without touching the cluster.
 
 ```yaml
@@ -451,7 +451,7 @@ metadata:
   name: oidc-cluster-admins
 subjects:
 - kind: Group
-  name: cluster-admins        # simple-idp group name, as emitted in the groups claim
+  name: cluster-admins        # idpico group name, as emitted in the groups claim
   apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
@@ -508,10 +508,10 @@ roleRef:
 
 ### Adding New Users
 
-Open `https://idp.example.com/admin` as an `IDP_ADMIN_EMAILS` user, create the user (leave the
+Open `https://idp.example.com/admin` as an `IDPICO_ADMIN_EMAILS` user, create the user (leave the
 password blank to email them an invite), and tick the groups they belong to. No restart needed.
-Alternatively update `IDP_BOOTSTRAP_USERS` / `IDP_BOOTSTRAP_GROUPS` and
-`kubectl rollout restart deployment simple-idp -n simple-idp`.
+Alternatively update `IDPICO_BOOTSTRAP_USERS` / `IDPICO_BOOTSTRAP_GROUPS` and
+`kubectl rollout restart deployment idpico -n idpico`.
 
 ## Part 5: Logout
 
@@ -534,9 +534,9 @@ https://idp.example.com/logout?post_logout_redirect_uri=https://k8s.example.com
 
 The ID token's `aud` claim doesn't match what k3s expects.
 
-**Cause:** simple-idp wasn't setting the audience correctly.
+**Cause:** idpico wasn't setting the audience correctly.
 
-**Solution:** Ensure simple-idp version includes the fix that sets `aud` to the client_id. Check the token:
+**Solution:** Ensure idpico version includes the fix that sets `aud` to the client_id. Check the token:
 ```bash
 # Decode a JWT token (from browser dev tools)
 echo "eyJ..." | cut -d. -f2 | base64 -d | jq .
@@ -567,7 +567,7 @@ echo "eyJ..." | cut -d. -f2 | base64 -d | jq .
 failed to verify id token signature
 ```
 
-**Cause:** k3s cached old JWKS after simple-idp restarted with new signing keys.
+**Cause:** k3s cached old JWKS after idpico restarted with new signing keys.
 
 **Solution:**
 1. If using emptyDir, switch to PVC (permanent fix)
@@ -579,12 +579,12 @@ failed to verify id token signature
 
 ### Invalid client credentials
 
-**Cause:** Client secret mismatch between Headlamp and simple-idp.
+**Cause:** Client secret mismatch between Headlamp and idpico.
 
 **Solution:** Ensure both secrets have exactly the same value:
 ```bash
-# Check simple-idp secret
-kubectl get secret simple-idp-secrets -n simple-idp -o jsonpath='{.data.client-secret}' | base64 -d
+# Check idpico secret
+kubectl get secret idpico-secrets -n idpico -o jsonpath='{.data.client-secret}' | base64 -d
 
 # Check Headlamp secret
 kubectl get secret headlamp-oidc-secret -n flux-system -o jsonpath='{.data.oidc-values}' | base64 -d
@@ -638,7 +638,7 @@ sudo systemctl restart k3s
 
 ## Verification Checklist
 
-- [ ] simple-idp pod is running: `kubectl get pods -n simple-idp`
+- [ ] idpico pod is running: `kubectl get pods -n idpico`
 - [ ] OIDC discovery works: `curl https://idp.example.com/.well-known/openid-configuration`
 - [ ] JWKS endpoint works: `curl https://idp.example.com/.well-known/jwks.json`
 - [ ] k3s has OIDC args: `ps aux | grep kube-apiserver | grep oidc`
@@ -652,8 +652,8 @@ sudo systemctl restart k3s
 1. **Use HTTPS everywhere** - IdP, Headlamp, and k3s API should all use TLS
 2. **Secure client secrets** - Use Sealed Secrets or external secret management
 3. **Limit admin users** - Use `view` role for most users, `cluster-admin` only when necessary
-4. **Persist signing keys** - Use PVC for simple-idp data directory
-5. **Monitor logs** - Watch for authentication failures in k3s and simple-idp logs
+4. **Persist signing keys** - Use a PVC for the IDPico data directory
+5. **Monitor logs** - Watch for authentication failures in k3s and idpico logs
 
 ## Quick Reference
 

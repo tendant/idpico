@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tendant/simple-idp/internal/crypto"
-	"github.com/tendant/simple-idp/internal/domain"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
-	"github.com/tendant/simple-idp/internal/store/sqlite"
+	"github.com/tendant/idpico/internal/crypto"
+	"github.com/tendant/idpico/internal/domain"
+	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/store/sqlite"
 )
 
 func newStore(t *testing.T) *sqlite.Store {
@@ -161,7 +161,7 @@ func TestTokensSignedWithNewKeyAfterRotation(t *testing.T) {
 	keys := crypto.NewKeyService(s.Keys())
 
 	first, _ := keys.EnsureActiveKey(ctx)
-	gen := crypto.NewTokenGeneratorWithKeyService(first, keys, "http://idp", "http://idp")
+	gen := crypto.NewTokenGeneratorWithKeyService(first, keys, "http://idpico", "http://idpico")
 
 	before, _, err := gen.GenerateAccessToken("sub", time.Minute, "openid", "client")
 	if err != nil {

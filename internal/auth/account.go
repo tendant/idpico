@@ -14,11 +14,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/tendant/simple-idp/internal/audit"
-	"github.com/tendant/simple-idp/internal/domain"
-	idperrors "github.com/tendant/simple-idp/internal/errors"
-	"github.com/tendant/simple-idp/internal/mail"
-	"github.com/tendant/simple-idp/internal/store"
+	"github.com/tendant/idpico/internal/audit"
+	"github.com/tendant/idpico/internal/domain"
+	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/mail"
+	"github.com/tendant/idpico/internal/store"
 )
 
 // MinPasswordLength is enforced wherever a password is set through the IdP.
