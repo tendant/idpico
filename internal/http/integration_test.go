@@ -153,7 +153,7 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		Public:       true,
 		SkipConsent:  true,
 		RedirectURIs: []string{"http://localhost:3000/callback"},
-		Scopes:       []string{"openid", "profile", "email", "groups"},
+		Scopes:       []string{"openid", "profile", "email", "groups", "offline_access"},
 	}
 	store.Clients().Create(ctx, publicClient)
 

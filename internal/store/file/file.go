@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -421,6 +422,23 @@ func (r *sessionRepository) DeleteExpired(ctx context.Context) error {
 	return r.save(data)
 }
 
+func (r *sessionRepository) ListByUserID(ctx context.Context, userID string) ([]*domain.Session, error) {
+	data, err := r.load()
+	if err != nil {
+		return nil, idperrors.Internal("failed to load sessions", err)
+	}
+
+	now := time.Now()
+	out := []*domain.Session{}
+	for _, s := range data.Sessions {
+		if s.UserID == userID && s.ExpiresAt.After(now) {
+			out = append(out, s)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}
+
 // AuthCode Repository
 
 type authCodeRepository struct {
@@ -632,6 +650,23 @@ func (r *tokenRepository) DeleteExpired(ctx context.Context) error {
 	data.Tokens = filtered
 
 	return r.save(data)
+}
+
+func (r *tokenRepository) ListByUserID(ctx context.Context, userID string) ([]*domain.Token, error) {
+	data, err := r.load()
+	if err != nil {
+		return nil, idperrors.Internal("failed to load tokens", err)
+	}
+
+	now := time.Now()
+	out := []*domain.Token{}
+	for _, t := range data.Tokens {
+		if t.UserID == userID && t.ExpiresAt.After(now) {
+			out = append(out, t)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
 }
 
 // SigningKey Repository

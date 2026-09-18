@@ -62,6 +62,16 @@ func (m *mockTokenRepository) RevokeByClientID(ctx context.Context, clientID str
 	return nil
 }
 
+func (m *mockTokenRepository) ListByUserID(ctx context.Context, userID string) ([]*domain.Token, error) {
+	var out []*domain.Token
+	for _, t := range m.tokens {
+		if t.UserID == userID {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
 func (m *mockTokenRepository) DeleteExpired(ctx context.Context) error {
 	return nil
 }

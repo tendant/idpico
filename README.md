@@ -207,7 +207,8 @@ or from the Users page once you have one admin. `make seed` makes `test@example.
 
 - **Users**: create (with a password, or leave it blank to send an invite link), edit email /
   name / active / verified / admin, set a password (signs the user out everywhere), send reset
-  or verification emails, revoke sessions and refresh tokens, revoke consents, delete.
+  or verification emails, see and revoke individual sessions and refresh tokens (or all at
+  once), revoke consents, delete.
   You cannot delete or disable your own account or drop your own admin flag.
 - **Groups**: create groups, add members by email, or tick group checkboxes on a user's page.
 - **Clients**: create confidential or public (PKCE) clients; the secret is generated and shown

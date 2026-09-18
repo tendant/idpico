@@ -33,12 +33,14 @@ func Run(t *testing.T, newStore Factory) {
 		{"SessionRepository_CRUD", SessionRepository_CRUD},
 		{"SessionRepository_DeleteByUserID", SessionRepository_DeleteByUserID},
 		{"SessionRepository_DeleteExpired", SessionRepository_DeleteExpired},
+		{"SessionRepository_ListByUserID", SessionRepository_ListByUserID},
 		{"AuthCodeRepository_CRUD", AuthCodeRepository_CRUD},
 		{"AuthCodeRepository_DeleteExpired", AuthCodeRepository_DeleteExpired},
 		{"TokenRepository_CRUD", TokenRepository_CRUD},
 		{"TokenRepository_RevokeByUserID", TokenRepository_RevokeByUserID},
 		{"TokenRepository_RevokeByClientID", TokenRepository_RevokeByClientID},
 		{"TokenRepository_DeleteExpired", TokenRepository_DeleteExpired},
+		{"TokenRepository_ListByUserID", TokenRepository_ListByUserID},
 		{"SigningKeyRepository_CRUD", SigningKeyRepository_CRUD},
 		{"SigningKeyRepository_DuplicateID", SigningKeyRepository_DuplicateID},
 		{"SigningKeyRepository_NoActiveKey", SigningKeyRepository_NoActiveKey},
@@ -1094,6 +1096,75 @@ func names(groups []*domain.Group) []string {
 	out := make([]string, len(groups))
 	for i, g := range groups {
 		out[i] = g.Name
+	}
+	return out
+}
+
+func SessionRepository_ListByUserID(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	seedUsers(t, store, "u1", "u2")
+	ctx := context.Background()
+	repo := store.Sessions()
+
+	repo.Create(ctx, &domain.Session{ID: "old", UserID: "u1", ExpiresAt: time.Now().Add(time.Hour), IPAddress: "1.1.1.1"})
+	time.Sleep(2 * time.Millisecond)
+	repo.Create(ctx, &domain.Session{ID: "new", UserID: "u1", ExpiresAt: time.Now().Add(time.Hour)})
+	repo.Create(ctx, &domain.Session{ID: "expired", UserID: "u1", ExpiresAt: time.Now().Add(-time.Hour)})
+	repo.Create(ctx, &domain.Session{ID: "other", UserID: "u2", ExpiresAt: time.Now().Add(time.Hour)})
+
+	list, err := repo.ListByUserID(ctx, "u1")
+	if err != nil {
+		t.Fatalf("ListByUserID failed: %v", err)
+	}
+	if len(list) != 2 || list[0].ID != "new" || list[1].ID != "old" {
+		t.Errorf("expected [new old] (unexpired, newest first), got %v", sessionIDs(list))
+	}
+	if list[1].IPAddress != "1.1.1.1" {
+		t.Error("session fields should round-trip")
+	}
+	if list, _ := repo.ListByUserID(ctx, "nobody"); len(list) != 0 {
+		t.Error("unknown user should have no sessions")
+	}
+}
+
+func TokenRepository_ListByUserID(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	seedUsers(t, store, "u1", "u2")
+	seedClients(t, store, "c1")
+	ctx := context.Background()
+	repo := store.Tokens()
+
+	repo.Create(ctx, &domain.Token{ID: "old", UserID: "u1", ClientID: "c1", Scope: "openid", ExpiresAt: time.Now().Add(time.Hour)})
+	time.Sleep(2 * time.Millisecond)
+	repo.Create(ctx, &domain.Token{ID: "new", UserID: "u1", ClientID: "c1", ExpiresAt: time.Now().Add(time.Hour)})
+	repo.Create(ctx, &domain.Token{ID: "expired", UserID: "u1", ClientID: "c1", ExpiresAt: time.Now().Add(-time.Hour)})
+	repo.Create(ctx, &domain.Token{ID: "other", UserID: "u2", ClientID: "c1", ExpiresAt: time.Now().Add(time.Hour)})
+	repo.Revoke(ctx, "old")
+
+	list, err := repo.ListByUserID(ctx, "u1")
+	if err != nil {
+		t.Fatalf("ListByUserID failed: %v", err)
+	}
+	if len(list) != 2 || list[0].ID != "new" || list[1].ID != "old" {
+		t.Errorf("expected [new old] (unexpired incl. revoked, newest first), got %v", tokenIDs(list))
+	}
+	if !list[1].Revoked || list[1].Scope != "openid" {
+		t.Error("token fields should round-trip")
+	}
+}
+
+func sessionIDs(list []*domain.Session) []string {
+	out := make([]string, len(list))
+	for i, s := range list {
+		out[i] = s.ID
+	}
+	return out
+}
+
+func tokenIDs(list []*domain.Token) []string {
+	out := make([]string, len(list))
+	for i, s := range list {
+		out[i] = s.ID
 	}
 	return out
 }

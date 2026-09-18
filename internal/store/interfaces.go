@@ -33,6 +33,8 @@ type SessionRepository interface {
 	Delete(ctx context.Context, id string) error
 	DeleteByUserID(ctx context.Context, userID string) error
 	DeleteExpired(ctx context.Context) error
+	// ListByUserID returns the user's unexpired sessions, newest first.
+	ListByUserID(ctx context.Context, userID string) ([]*domain.Session, error)
 }
 
 // AuthCodeRepository defines operations for authorization code persistence.
@@ -52,6 +54,8 @@ type TokenRepository interface {
 	RevokeByUserID(ctx context.Context, userID string) error
 	RevokeByClientID(ctx context.Context, clientID string) error
 	DeleteExpired(ctx context.Context) error
+	// ListByUserID returns the user's unexpired tokens (revoked included), newest first.
+	ListByUserID(ctx context.Context, userID string) ([]*domain.Token, error)
 }
 
 // SigningKeyRepository defines operations for signing key persistence.
@@ -64,7 +68,7 @@ type SigningKeyRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// Store aggregates all repositories.
+// ConsentRepository defines operations for remembered consent grants.
 type ConsentRepository interface {
 	// Upsert creates the consent or replaces the existing one for the same user and client.
 	Upsert(ctx context.Context, consent *domain.Consent) error
@@ -74,6 +78,7 @@ type ConsentRepository interface {
 	DeleteByUserID(ctx context.Context, userID string) error
 }
 
+// VerificationTokenRepository defines operations for emailed single-use tokens.
 type VerificationTokenRepository interface {
 	Create(ctx context.Context, token *domain.VerificationToken) error
 	GetByHash(ctx context.Context, hash string) (*domain.VerificationToken, error)
@@ -83,6 +88,7 @@ type VerificationTokenRepository interface {
 	DeleteExpired(ctx context.Context) error
 }
 
+// GroupRepository defines operations for groups and memberships.
 type GroupRepository interface {
 	Create(ctx context.Context, group *domain.Group) error
 	GetByID(ctx context.Context, id string) (*domain.Group, error)
@@ -102,6 +108,7 @@ type GroupRepository interface {
 	RemoveUser(ctx context.Context, userID string) error
 }
 
+// Store aggregates all repositories.
 type Store interface {
 	Users() UserRepository
 	Clients() ClientRepository

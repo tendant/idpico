@@ -67,6 +67,8 @@ func (h *AdminHandler) Routes(r chi.Router) {
 	r.Post("/users/{id}/send-reset", h.SendUserReset)
 	r.Post("/users/{id}/send-verification", h.SendUserVerification)
 	r.Post("/users/{id}/revoke-sessions", h.RevokeUserSessions)
+	r.Post("/users/{id}/sessions/{sessionID}/revoke", h.RevokeUserSession)
+	r.Post("/users/{id}/tokens/{tokenID}/revoke", h.RevokeUserToken)
 	r.Post("/users/{id}/consents/{clientID}/revoke", h.RevokeUserConsent)
 	r.Post("/users/{id}/delete", h.DeleteUser)
 
@@ -229,6 +231,8 @@ type userFormData struct {
 	User              *domain.User
 	Consents          []*domain.Consent
 	AllGroups         []groupMembership
+	Sessions          []*domain.Session
+	Tokens            []*domain.Token
 	MinPasswordLength int
 }
 
@@ -360,8 +364,64 @@ func (h *AdminHandler) EditUser(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	consents, _ := h.cfg.Store.Consents().ListByUserID(r.Context(), user.ID)
-	h.renderUserForm(w, r, http.StatusOK, userFormData{User: user, Consents: consents, AllGroups: h.groupMemberships(r.Context(), user.ID)})
+	ctx := r.Context()
+	consents, _ := h.cfg.Store.Consents().ListByUserID(ctx, user.ID)
+	sessions, _ := h.cfg.Store.Sessions().ListByUserID(ctx, user.ID)
+	tokens, _ := h.cfg.Store.Tokens().ListByUserID(ctx, user.ID)
+	h.renderUserForm(w, r, http.StatusOK, userFormData{
+		User:      user,
+		Consents:  consents,
+		AllGroups: h.groupMemberships(ctx, user.ID),
+		Sessions:  sessions,
+		Tokens:    tokens,
+	})
+}
+
+// RevokeUserSession signs the user out of a single session.
+func (h *AdminHandler) RevokeUserSession(w http.ResponseWriter, r *http.Request) {
+	if !h.checkCSRF(w, r) {
+		return
+	}
+	user, ok := h.loadUser(w, r)
+	if !ok {
+		return
+	}
+	sessionID := chi.URLParam(r, "sessionID")
+	// Only touch sessions that belong to this user.
+	if sess, err := h.cfg.Store.Sessions().GetByID(r.Context(), sessionID); err != nil || sess.UserID != user.ID {
+		h.redirect(w, r, "/admin/users/"+user.ID, "Session not found")
+		return
+	}
+	if err := h.cfg.Store.Sessions().Delete(r.Context(), sessionID); err != nil && !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		h.logger.Error("failed to revoke session", "error", err)
+		h.redirect(w, r, "/admin/users/"+user.ID, "Failed to revoke session")
+		return
+	}
+	h.logger.Info("admin revoked session", "admin", currentAdmin(r).Email, "user_id", user.ID, "session_id", sessionID)
+	h.redirect(w, r, "/admin/users/"+user.ID, "Session revoked")
+}
+
+// RevokeUserToken revokes a single refresh token.
+func (h *AdminHandler) RevokeUserToken(w http.ResponseWriter, r *http.Request) {
+	if !h.checkCSRF(w, r) {
+		return
+	}
+	user, ok := h.loadUser(w, r)
+	if !ok {
+		return
+	}
+	tokenID := chi.URLParam(r, "tokenID")
+	if tok, err := h.cfg.Store.Tokens().GetByID(r.Context(), tokenID); err != nil || tok.UserID != user.ID {
+		h.redirect(w, r, "/admin/users/"+user.ID, "Token not found")
+		return
+	}
+	if err := h.cfg.Store.Tokens().Revoke(r.Context(), tokenID); err != nil {
+		h.logger.Error("failed to revoke token", "error", err)
+		h.redirect(w, r, "/admin/users/"+user.ID, "Failed to revoke token")
+		return
+	}
+	h.logger.Info("admin revoked token", "admin", currentAdmin(r).Email, "user_id", user.ID, "token_id", tokenID)
+	h.redirect(w, r, "/admin/users/"+user.ID, "Token revoked")
 }
 
 // groupMemberships lists every group flagged with the user's membership.

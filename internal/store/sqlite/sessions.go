@@ -76,3 +76,26 @@ func (r *sessionRepository) DeleteExpired(ctx context.Context) error {
 	}
 	return nil
 }
+
+func (r *sessionRepository) ListByUserID(ctx context.Context, userID string) ([]*domain.Session, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+sessionColumns+` FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC`,
+		userID, utc(time.Now()))
+	if err != nil {
+		return nil, idperrors.Internal("failed to list sessions", err)
+	}
+	defer rows.Close()
+
+	sessions := []*domain.Session{}
+	for rows.Next() {
+		var s domain.Session
+		if err := rows.Scan(&s.ID, &s.UserID, &s.CreatedAt, &s.ExpiresAt, &s.UserAgent, &s.IPAddress); err != nil {
+			return nil, idperrors.Internal("failed to scan session", err)
+		}
+		sessions = append(sessions, &s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, idperrors.Internal("failed to list sessions", err)
+	}
+	return sessions, nil
+}

@@ -83,3 +83,26 @@ func (r *tokenRepository) DeleteExpired(ctx context.Context) error {
 	}
 	return nil
 }
+
+func (r *tokenRepository) ListByUserID(ctx context.Context, userID string) ([]*domain.Token, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+tokenColumns+` FROM tokens WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC`,
+		userID, utc(time.Now()))
+	if err != nil {
+		return nil, idperrors.Internal("failed to list tokens", err)
+	}
+	defer rows.Close()
+
+	tokens := []*domain.Token{}
+	for rows.Next() {
+		var t domain.Token
+		if err := rows.Scan(&t.ID, &t.UserID, &t.ClientID, &t.Scope, &t.CreatedAt, &t.ExpiresAt, &t.Revoked); err != nil {
+			return nil, idperrors.Internal("failed to scan token", err)
+		}
+		tokens = append(tokens, &t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, idperrors.Internal("failed to list tokens", err)
+	}
+	return tokens, nil
+}

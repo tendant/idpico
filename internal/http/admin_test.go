@@ -454,3 +454,59 @@ func groupNames(groups []*domain.Group) []string {
 	}
 	return out
 }
+
+func TestAdmin_UserSessionsAndTokens(t *testing.T) {
+	forEachDriver(t, func(t *testing.T, driver string) {
+		env := setupTestEnv(t, driver)
+		defer env.cleanup()
+		base := env.server.URL
+		ctx := context.Background()
+		admin := adminClient(t, env)
+
+		// Two browser sessions for the test user, one refresh token
+		s1 := newClientWithCookies()
+		loginAs(t, s1, base, "test@example.com", "password123")
+		s2 := newClientWithCookies()
+		loginAs(t, s2, base, "test@example.com", "password123")
+		tokens := pkceAuthorize(t, s1, base, "openid offline_access")
+		if tokens.RefreshToken == "" {
+			t.Fatal("expected a refresh token")
+		}
+
+		page := "/admin/users/" + env.testUser.ID
+		_, body := get(t, admin, base+page)
+		sessions, _ := env.store.Sessions().ListByUserID(ctx, env.testUser.ID)
+		if len(sessions) != 2 {
+			t.Fatalf("expected 2 sessions, got %d", len(sessions))
+		}
+		if !strings.Contains(body, "/sessions/"+sessions[0].ID+"/revoke") || !strings.Contains(body, "/tokens/"+tokens.RefreshToken+"/revoke") {
+			t.Error("user page should list sessions and tokens with revoke actions")
+		}
+
+		// Revoke one session: that browser is signed out, the other still works
+		postAndFollow(t, admin, base, page+"/sessions/"+sessions[1].ID+"/revoke", nil)
+		if left, _ := env.store.Sessions().ListByUserID(ctx, env.testUser.ID); len(left) != 1 {
+			t.Errorf("expected 1 session after revoke, got %d", len(left))
+		}
+
+		// Revoke the refresh token: it no longer refreshes
+		get(t, admin, base+page)
+		postAndFollow(t, admin, base, page+"/tokens/"+tokens.RefreshToken+"/revoke", nil)
+		resp, _ := http.PostForm(base+"/token", url.Values{"grant_type": {"refresh_token"}, "refresh_token": {tokens.RefreshToken}, "client_id": {"public-client"}})
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("revoked refresh token should be rejected, got %d", resp.StatusCode)
+		}
+
+		// A session belonging to another user cannot be revoked through this user's page
+		other, _ := env.store.Sessions().ListByUserID(ctx, "admin-user-id")
+		get(t, admin, base+page)
+		loc := postAndFollow(t, admin, base, page+"/sessions/"+other[0].ID+"/revoke", nil)
+		if !strings.Contains(loc, "not+found") {
+			t.Errorf("cross-user session revoke should be refused, got %s", loc)
+		}
+		if _, err := env.store.Sessions().GetByID(ctx, other[0].ID); err != nil {
+			t.Error("admin's own session must be untouched")
+		}
+	})
+}
