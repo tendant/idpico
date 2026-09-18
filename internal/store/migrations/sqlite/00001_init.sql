@@ -4,9 +4,11 @@ CREATE TABLE users (
     email         TEXT NOT NULL,
     password_hash TEXT NOT NULL DEFAULT '',
     display_name  TEXT NOT NULL DEFAULT '',
-    active        BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at    TIMESTAMP NOT NULL,
-    updated_at    TIMESTAMP NOT NULL
+    active         BOOLEAN NOT NULL DEFAULT TRUE,
+    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    admin          BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at     TIMESTAMP NOT NULL,
+    updated_at     TIMESTAMP NOT NULL
 );
 -- Emails are unique case-insensitively; lookups use LOWER(email) to hit this index.
 CREATE UNIQUE INDEX users_email_idx ON users (LOWER(email));
@@ -19,6 +21,7 @@ CREATE TABLE clients (
     grant_types   TEXT NOT NULL DEFAULT '[]', -- JSON array
     scopes        TEXT NOT NULL DEFAULT '[]', -- JSON array
     public        BOOLEAN NOT NULL DEFAULT FALSE,
+    skip_consent  BOOLEAN NOT NULL DEFAULT FALSE,
     created_at    TIMESTAMP NOT NULL,
     updated_at    TIMESTAMP NOT NULL
 );
@@ -64,6 +67,26 @@ CREATE INDEX tokens_user_id_idx    ON tokens (user_id);
 CREATE INDEX tokens_client_id_idx  ON tokens (client_id);
 CREATE INDEX tokens_expires_at_idx ON tokens (expires_at);
 
+CREATE TABLE consents (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+    client_id  TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    scopes     TEXT NOT NULL DEFAULT '[]', -- JSON array
+    granted_at TIMESTAMP NOT NULL,
+    UNIQUE (user_id, client_id)
+);
+
+CREATE TABLE verification_tokens (
+    token_hash TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    purpose    TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    used       BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE INDEX verification_tokens_user_id_idx    ON verification_tokens (user_id, purpose);
+CREATE INDEX verification_tokens_expires_at_idx ON verification_tokens (expires_at);
+
 -- Serves both store.SigningKeyRepository (domain.SigningKey) and
 -- crypto.KeyRepository (crypto.KeyPair); keys are stored PEM-encoded.
 CREATE TABLE signing_keys (
@@ -80,6 +103,8 @@ CREATE UNIQUE INDEX signing_keys_active_idx ON signing_keys (active) WHERE activ
 
 -- +goose Down
 DROP TABLE signing_keys;
+DROP TABLE verification_tokens;
+DROP TABLE consents;
 DROP TABLE tokens;
 DROP TABLE auth_codes;
 DROP TABLE sessions;

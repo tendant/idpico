@@ -428,7 +428,7 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 	// Build claims for ID token
 	idTokenClaims := &crypto.Claims{
 		Email:         user.Email,
-		EmailVerified: true, // Assume verified for now
+		EmailVerified: user.EmailVerified,
 		Name:          user.DisplayName,
 		ClientID:      client.ID,
 	}

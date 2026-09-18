@@ -7,13 +7,15 @@ import (
 
 // User represents an identity in the system.
 type User struct {
-	ID           string    `json:"id"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"password_hash,omitempty"`
-	DisplayName  string    `json:"display_name,omitempty"`
-	Active       bool      `json:"active"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID            string    `json:"id"`
+	Email         string    `json:"email"`
+	PasswordHash  string    `json:"password_hash,omitempty"`
+	DisplayName   string    `json:"display_name,omitempty"`
+	Active        bool      `json:"active"`
+	EmailVerified bool      `json:"email_verified"`
+	Admin         bool      `json:"admin"` // May sign in to the admin UI
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // Client represents an OAuth 2.0 / OIDC client application.
@@ -22,11 +24,60 @@ type Client struct {
 	Secret       string    `json:"secret,omitempty"` // Empty for public clients
 	Name         string    `json:"name"`
 	RedirectURIs []string  `json:"redirect_uris"`
-	GrantTypes   []string  `json:"grant_types"` // e.g., authorization_code, refresh_token
-	Scopes       []string  `json:"scopes"`      // Allowed scopes
-	Public       bool      `json:"public"`      // True for public clients (PKCE required)
+	GrantTypes   []string  `json:"grant_types"`  // e.g., authorization_code, refresh_token
+	Scopes       []string  `json:"scopes"`       // Allowed scopes
+	Public       bool      `json:"public"`       // True for public clients (PKCE required)
+	SkipConsent  bool      `json:"skip_consent"` // First-party client: never show the consent screen
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// Consent records that a user allowed a client to act with a set of scopes.
+type Consent struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"user_id"`
+	ClientID  string    `json:"client_id"`
+	Scopes    []string  `json:"scopes"`
+	GrantedAt time.Time `json:"granted_at"`
+}
+
+// Covers reports whether every requested scope has been granted.
+func (c *Consent) Covers(scopes []string) bool {
+	granted := make(map[string]struct{}, len(c.Scopes))
+	for _, s := range c.Scopes {
+		granted[s] = struct{}{}
+	}
+	for _, s := range scopes {
+		if _, ok := granted[s]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// Verification token purposes.
+const (
+	PurposePasswordReset = "password_reset"
+	PurposeEmailVerify   = "email_verify"
+)
+
+// VerificationToken is a single-use, time-limited token emailed to a user
+// for password reset or email verification. Only its hash is stored.
+type VerificationToken struct {
+	TokenHash string    `json:"token_hash"`
+	UserID    string    `json:"user_id"`
+	Purpose   string    `json:"purpose"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Used      bool      `json:"used"`
+}
+
+func (t *VerificationToken) IsExpired() bool {
+	return time.Now().After(t.ExpiresAt)
+}
+
+func (t *VerificationToken) IsValid() bool {
+	return !t.IsExpired() && !t.Used
 }
 
 // Session represents an authenticated user session.

@@ -65,6 +65,24 @@ type SigningKeyRepository interface {
 }
 
 // Store aggregates all repositories.
+type ConsentRepository interface {
+	// Upsert creates the consent or replaces the existing one for the same user and client.
+	Upsert(ctx context.Context, consent *domain.Consent) error
+	Get(ctx context.Context, userID, clientID string) (*domain.Consent, error)
+	ListByUserID(ctx context.Context, userID string) ([]*domain.Consent, error)
+	Delete(ctx context.Context, userID, clientID string) error
+	DeleteByUserID(ctx context.Context, userID string) error
+}
+
+type VerificationTokenRepository interface {
+	Create(ctx context.Context, token *domain.VerificationToken) error
+	GetByHash(ctx context.Context, hash string) (*domain.VerificationToken, error)
+	MarkUsed(ctx context.Context, hash string) error
+	// DeleteByUserID removes a user's tokens for one purpose (empty purpose = all).
+	DeleteByUserID(ctx context.Context, userID, purpose string) error
+	DeleteExpired(ctx context.Context) error
+}
+
 type Store interface {
 	Users() UserRepository
 	Clients() ClientRepository
@@ -72,5 +90,7 @@ type Store interface {
 	AuthCodes() AuthCodeRepository
 	Tokens() TokenRepository
 	SigningKeys() SigningKeyRepository
+	Consents() ConsentRepository
+	VerificationTokens() VerificationTokenRepository
 	Close() error
 }

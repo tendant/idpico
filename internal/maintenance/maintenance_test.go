@@ -41,6 +41,8 @@ func TestRunOnce_PurgesExpiredRows(t *testing.T) {
 	s.AuthCodes().Create(ctx, &domain.AuthCode{Code: "a-new", UserID: "u", ClientID: "c", ExpiresAt: future})
 	s.Tokens().Create(ctx, &domain.Token{ID: "t-old", UserID: "u", ClientID: "c", ExpiresAt: past})
 	s.Tokens().Create(ctx, &domain.Token{ID: "t-new", UserID: "u", ClientID: "c", ExpiresAt: future})
+	s.VerificationTokens().Create(ctx, &domain.VerificationToken{TokenHash: "v-old", UserID: "u", Purpose: domain.PurposeEmailVerify, ExpiresAt: past})
+	s.VerificationTokens().Create(ctx, &domain.VerificationToken{TokenHash: "v-new", UserID: "u", Purpose: domain.PurposeEmailVerify, ExpiresAt: future})
 
 	if err := NewRunner(s, nil, quiet()).RunOnce(ctx); err != nil {
 		t.Fatalf("RunOnce: %v", err)
@@ -71,6 +73,10 @@ func TestRunOnce_PurgesExpiredRows(t *testing.T) {
 	gone("expired token", err)
 	_, err = s.Tokens().GetByID(ctx, "t-new")
 	kept("valid token", err)
+	_, err = s.VerificationTokens().GetByHash(ctx, "v-old")
+	gone("expired verification token", err)
+	_, err = s.VerificationTokens().GetByHash(ctx, "v-new")
+	kept("valid verification token", err)
 }
 
 func TestRunOnce_RotatesAndCleansKeys(t *testing.T) {

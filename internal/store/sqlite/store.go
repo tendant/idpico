@@ -30,6 +30,8 @@ type Store struct {
 	authCodes   *authCodeRepository
 	tokens      *tokenRepository
 	signingKeys *signingKeyRepository
+	consents    *consentRepository
+	verifTokens *verificationTokenRepository
 	keys        *KeyRepository
 }
 
@@ -78,6 +80,8 @@ func NewStore(ctx context.Context, path string) (*Store, error) {
 	s.authCodes = &authCodeRepository{db: db}
 	s.tokens = &tokenRepository{db: db}
 	s.signingKeys = &signingKeyRepository{db: db}
+	s.consents = &consentRepository{db: db}
+	s.verifTokens = &verificationTokenRepository{db: db}
 	s.keys = &KeyRepository{db: db}
 
 	return s, nil
@@ -89,7 +93,11 @@ func (s *Store) Sessions() store.SessionRepository       { return s.sessions }
 func (s *Store) AuthCodes() store.AuthCodeRepository     { return s.authCodes }
 func (s *Store) Tokens() store.TokenRepository           { return s.tokens }
 func (s *Store) SigningKeys() store.SigningKeyRepository { return s.signingKeys }
-func (s *Store) Close() error                            { return s.db.Close() }
+func (s *Store) Consents() store.ConsentRepository       { return s.consents }
+func (s *Store) VerificationTokens() store.VerificationTokenRepository {
+	return s.verifTokens
+}
+func (s *Store) Close() error { return s.db.Close() }
 
 // Keys returns the crypto.KeyRepository backed by this store's signing_keys table.
 func (s *Store) Keys() *KeyRepository { return s.keys }

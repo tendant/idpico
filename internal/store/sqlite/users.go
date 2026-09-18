@@ -14,11 +14,11 @@ type userRepository struct {
 	db *sql.DB
 }
 
-const userColumns = "id, email, password_hash, display_name, active, created_at, updated_at"
+const userColumns = "id, email, password_hash, display_name, active, email_verified, admin, created_at, updated_at"
 
 func scanUser(row interface{ Scan(...any) error }) (*domain.User, error) {
 	var u domain.User
-	if err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.DisplayName, &u.Active, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.DisplayName, &u.Active, &u.EmailVerified, &u.Admin, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &u, nil
@@ -30,8 +30,8 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 	user.UpdatedAt = now
 
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO users (`+userColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		user.ID, user.Email, user.PasswordHash, user.DisplayName, user.Active, utc(user.CreatedAt), utc(user.UpdatedAt),
+		`INSERT INTO users (`+userColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		user.ID, user.Email, user.PasswordHash, user.DisplayName, user.Active, user.EmailVerified, user.Admin, utc(user.CreatedAt), utc(user.UpdatedAt),
 	)
 	if err != nil {
 		if violatesUserEmail(err) {
@@ -71,8 +71,8 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	user.UpdatedAt = time.Now()
 
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE users SET email = ?, password_hash = ?, display_name = ?, active = ?, updated_at = ? WHERE id = ?`,
-		user.Email, user.PasswordHash, user.DisplayName, user.Active, utc(user.UpdatedAt), user.ID,
+		`UPDATE users SET email = ?, password_hash = ?, display_name = ?, active = ?, email_verified = ?, admin = ?, updated_at = ? WHERE id = ?`,
+		user.Email, user.PasswordHash, user.DisplayName, user.Active, user.EmailVerified, user.Admin, utc(user.UpdatedAt), user.ID,
 	)
 	if err != nil {
 		if violatesUserEmail(err) {

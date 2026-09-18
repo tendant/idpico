@@ -27,6 +27,8 @@ type Store struct {
 	authCodes   *authCodeRepository
 	tokens      *tokenRepository
 	signingKeys *signingKeyRepository
+	consents    *consentRepository
+	verifTokens *verificationTokenRepository
 }
 
 // Option configures the Store.
@@ -53,6 +55,8 @@ func NewStore(dataDir string, opts ...Option) (*Store, error) {
 	s.authCodes = &authCodeRepository{store: s}
 	s.tokens = &tokenRepository{store: s}
 	s.signingKeys = &signingKeyRepository{store: s}
+	s.consents = &consentRepository{store: s}
+	s.verifTokens = &verificationTokenRepository{store: s}
 
 	return s, nil
 }
@@ -63,7 +67,11 @@ func (s *Store) Sessions() store.SessionRepository       { return s.sessions }
 func (s *Store) AuthCodes() store.AuthCodeRepository     { return s.authCodes }
 func (s *Store) Tokens() store.TokenRepository           { return s.tokens }
 func (s *Store) SigningKeys() store.SigningKeyRepository { return s.signingKeys }
-func (s *Store) Close() error                            { return nil }
+func (s *Store) Consents() store.ConsentRepository       { return s.consents }
+func (s *Store) VerificationTokens() store.VerificationTokenRepository {
+	return s.verifTokens
+}
+func (s *Store) Close() error { return nil }
 
 // Helper methods for file operations
 

@@ -269,11 +269,12 @@ func bootstrapData(ctx context.Context, cfg *config.Config, store store.Store, l
 		}
 
 		user := &domain.User{
-			ID:           uuid.New().String(),
-			Email:        u.Email,
-			PasswordHash: hash,
-			DisplayName:  u.Name,
-			Active:       true,
+			ID:            uuid.New().String(),
+			Email:         u.Email,
+			PasswordHash:  hash,
+			DisplayName:   u.Name,
+			Active:        true,
+			EmailVerified: true, // provisioned by the operator
 		}
 
 		if err := store.Users().Create(ctx, user); err != nil {

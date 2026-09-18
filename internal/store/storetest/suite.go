@@ -42,6 +42,12 @@ func Run(t *testing.T, newStore Factory) {
 		{"SigningKeyRepository_CRUD", SigningKeyRepository_CRUD},
 		{"SigningKeyRepository_DuplicateID", SigningKeyRepository_DuplicateID},
 		{"SigningKeyRepository_NoActiveKey", SigningKeyRepository_NoActiveKey},
+		{"ConsentRepository_UpsertGetDelete", ConsentRepository_UpsertGetDelete},
+		{"ConsentRepository_ListAndDeleteByUser", ConsentRepository_ListAndDeleteByUser},
+		{"VerificationTokenRepository_Lifecycle", VerificationTokenRepository_Lifecycle},
+		{"VerificationTokenRepository_DeleteByUserAndExpired", VerificationTokenRepository_DeleteByUserAndExpired},
+		{"UserRepository_FlagsRoundTrip", UserRepository_FlagsRoundTrip},
+		{"ClientRepository_SkipConsentRoundTrip", ClientRepository_SkipConsentRoundTrip},
 		{"NotFoundErrors", NotFoundErrors},
 	}
 
@@ -777,5 +783,206 @@ func NotFoundErrors(t *testing.T, newStore Factory) {
 	_, err = store.SigningKeys().GetByID(ctx, "nonexistent")
 	if !idperrors.IsCode(err, idperrors.CodeNotFound) {
 		t.Error("SigningKey GetByID should return not found")
+	}
+}
+
+func UserRepository_FlagsRoundTrip(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	ctx := context.Background()
+
+	u := &domain.User{ID: "u1", Email: "u1@example.com", Active: true, EmailVerified: true, Admin: true}
+	if err := store.Users().Create(ctx, u); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	got, _ := store.Users().GetByID(ctx, "u1")
+	if !got.EmailVerified || !got.Admin {
+		t.Errorf("flags not round-tripped on create: verified=%v admin=%v", got.EmailVerified, got.Admin)
+	}
+
+	got.EmailVerified, got.Admin = false, false
+	if err := store.Users().Update(ctx, got); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	got, _ = store.Users().GetByID(ctx, "u1")
+	if got.EmailVerified || got.Admin {
+		t.Errorf("flags not round-tripped on update: verified=%v admin=%v", got.EmailVerified, got.Admin)
+	}
+}
+
+func ClientRepository_SkipConsentRoundTrip(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	ctx := context.Background()
+
+	if err := store.Clients().Create(ctx, &domain.Client{ID: "c1", Name: "c1", SkipConsent: true}); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	got, _ := store.Clients().GetByID(ctx, "c1")
+	if !got.SkipConsent {
+		t.Error("SkipConsent not round-tripped")
+	}
+}
+
+func ConsentRepository_UpsertGetDelete(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	seedUsers(t, store, "u1")
+	seedClients(t, store, "c1")
+	ctx := context.Background()
+	repo := store.Consents()
+
+	if _, err := repo.Get(ctx, "u1", "c1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("Get before grant should be not found, got %v", err)
+	}
+
+	first := &domain.Consent{UserID: "u1", ClientID: "c1", Scopes: []string{"openid"}}
+	if err := repo.Upsert(ctx, first); err != nil {
+		t.Fatalf("Upsert failed: %v", err)
+	}
+	if first.ID == "" || first.GrantedAt.IsZero() {
+		t.Error("Upsert should assign ID and GrantedAt")
+	}
+
+	got, err := repo.Get(ctx, "u1", "c1")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if !got.Covers([]string{"openid"}) || got.Covers([]string{"openid", "email"}) {
+		t.Errorf("unexpected scopes %v", got.Scopes)
+	}
+
+	// Upsert again with wider scopes replaces the grant, keeping one row.
+	if err := repo.Upsert(ctx, &domain.Consent{UserID: "u1", ClientID: "c1", Scopes: []string{"openid", "email"}}); err != nil {
+		t.Fatalf("second Upsert failed: %v", err)
+	}
+	got, _ = repo.Get(ctx, "u1", "c1")
+	if !got.Covers([]string{"openid", "email"}) {
+		t.Errorf("scopes should be replaced, got %v", got.Scopes)
+	}
+	list, _ := repo.ListByUserID(ctx, "u1")
+	if len(list) != 1 {
+		t.Errorf("expected exactly one consent after upsert, got %d", len(list))
+	}
+
+	if err := repo.Delete(ctx, "u1", "c1"); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+	if _, err := repo.Get(ctx, "u1", "c1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Error("consent should be gone after delete")
+	}
+	if err := repo.Delete(ctx, "u1", "c1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("deleting missing consent should be not found, got %v", err)
+	}
+}
+
+func ConsentRepository_ListAndDeleteByUser(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	seedUsers(t, store, "u1", "u2")
+	seedClients(t, store, "c1", "c2")
+	ctx := context.Background()
+	repo := store.Consents()
+
+	repo.Upsert(ctx, &domain.Consent{UserID: "u1", ClientID: "c1", Scopes: []string{"openid"}})
+	repo.Upsert(ctx, &domain.Consent{UserID: "u1", ClientID: "c2", Scopes: []string{"openid"}})
+	repo.Upsert(ctx, &domain.Consent{UserID: "u2", ClientID: "c1", Scopes: []string{"openid"}})
+
+	list, err := repo.ListByUserID(ctx, "u1")
+	if err != nil {
+		t.Fatalf("ListByUserID failed: %v", err)
+	}
+	if len(list) != 2 {
+		t.Errorf("expected 2 consents for u1, got %d", len(list))
+	}
+
+	if err := repo.DeleteByUserID(ctx, "u1"); err != nil {
+		t.Fatalf("DeleteByUserID failed: %v", err)
+	}
+	list, _ = repo.ListByUserID(ctx, "u1")
+	if len(list) != 0 {
+		t.Errorf("u1 consents should be gone, got %d", len(list))
+	}
+	if _, err := repo.Get(ctx, "u2", "c1"); err != nil {
+		t.Errorf("u2 consent must survive: %v", err)
+	}
+}
+
+func VerificationTokenRepository_Lifecycle(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	seedUsers(t, store, "u1")
+	ctx := context.Background()
+	repo := store.VerificationTokens()
+
+	tok := &domain.VerificationToken{TokenHash: "h1", UserID: "u1", Purpose: domain.PurposePasswordReset, ExpiresAt: time.Now().Add(time.Hour)}
+	if err := repo.Create(ctx, tok); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if tok.CreatedAt.IsZero() {
+		t.Error("CreatedAt should be set")
+	}
+	if err := repo.Create(ctx, &domain.VerificationToken{TokenHash: "h1", UserID: "u1", Purpose: domain.PurposePasswordReset, ExpiresAt: time.Now().Add(time.Hour)}); !idperrors.IsCode(err, idperrors.CodeAlreadyExists) {
+		t.Errorf("duplicate hash should be already exists, got %v", err)
+	}
+
+	got, err := repo.GetByHash(ctx, "h1")
+	if err != nil {
+		t.Fatalf("GetByHash failed: %v", err)
+	}
+	if got.Used || !got.IsValid() || got.Purpose != domain.PurposePasswordReset {
+		t.Errorf("unexpected token state: %+v", got)
+	}
+
+	if err := repo.MarkUsed(ctx, "h1"); err != nil {
+		t.Fatalf("MarkUsed failed: %v", err)
+	}
+	got, _ = repo.GetByHash(ctx, "h1")
+	if !got.Used || got.IsValid() {
+		t.Error("token should be used and invalid")
+	}
+	if err := repo.MarkUsed(ctx, "missing"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("MarkUsed on missing token should be not found, got %v", err)
+	}
+	if _, err := repo.GetByHash(ctx, "missing"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("GetByHash on missing token should be not found, got %v", err)
+	}
+}
+
+func VerificationTokenRepository_DeleteByUserAndExpired(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	seedUsers(t, store, "u1", "u2")
+	ctx := context.Background()
+	repo := store.VerificationTokens()
+	future := time.Now().Add(time.Hour)
+
+	repo.Create(ctx, &domain.VerificationToken{TokenHash: "reset-1", UserID: "u1", Purpose: domain.PurposePasswordReset, ExpiresAt: future})
+	repo.Create(ctx, &domain.VerificationToken{TokenHash: "verify-1", UserID: "u1", Purpose: domain.PurposeEmailVerify, ExpiresAt: future})
+	repo.Create(ctx, &domain.VerificationToken{TokenHash: "reset-2", UserID: "u2", Purpose: domain.PurposePasswordReset, ExpiresAt: future})
+	repo.Create(ctx, &domain.VerificationToken{TokenHash: "expired", UserID: "u2", Purpose: domain.PurposePasswordReset, ExpiresAt: time.Now().Add(-time.Hour)})
+
+	// Delete one purpose for u1
+	if err := repo.DeleteByUserID(ctx, "u1", domain.PurposePasswordReset); err != nil {
+		t.Fatalf("DeleteByUserID failed: %v", err)
+	}
+	if _, err := repo.GetByHash(ctx, "reset-1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Error("reset-1 should be deleted")
+	}
+	if _, err := repo.GetByHash(ctx, "verify-1"); err != nil {
+		t.Error("verify-1 (other purpose) should remain")
+	}
+
+	// Delete all purposes for u1
+	if err := repo.DeleteByUserID(ctx, "u1", ""); err != nil {
+		t.Fatalf("DeleteByUserID(all) failed: %v", err)
+	}
+	if _, err := repo.GetByHash(ctx, "verify-1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Error("verify-1 should be deleted")
+	}
+
+	// Expired purge
+	if err := repo.DeleteExpired(ctx); err != nil {
+		t.Fatalf("DeleteExpired failed: %v", err)
+	}
+	if _, err := repo.GetByHash(ctx, "expired"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Error("expired token should be purged")
+	}
+	if _, err := repo.GetByHash(ctx, "reset-2"); err != nil {
+		t.Error("valid token should remain")
 	}
 }

@@ -99,6 +99,9 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 	if err := r.store.Tokens().DeleteExpired(ctx); err != nil {
 		errs = append(errs, err)
 	}
+	if err := r.store.VerificationTokens().DeleteExpired(ctx); err != nil {
+		errs = append(errs, err)
+	}
 
 	if r.keys != nil {
 		if err := r.maintainKeys(ctx); err != nil {

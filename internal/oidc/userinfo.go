@@ -73,7 +73,7 @@ func (s *UserInfoService) GetUserInfo(ctx context.Context, accessToken string) (
 	// Add claims based on scope
 	if strings.Contains(scope, "email") {
 		response.Email = user.Email
-		response.EmailVerified = true // Assume verified for now
+		response.EmailVerified = user.EmailVerified
 	}
 
 	if strings.Contains(scope, "profile") {

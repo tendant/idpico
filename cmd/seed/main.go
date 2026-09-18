@@ -88,11 +88,12 @@ func main() {
 	}
 
 	user := &domain.User{
-		ID:           uuid.New().String(),
-		Email:        "test@example.com",
-		PasswordHash: hash,
-		DisplayName:  "Test User",
-		Active:       true,
+		ID:            uuid.New().String(),
+		Email:         "test@example.com",
+		PasswordHash:  hash,
+		DisplayName:   "Test User",
+		Active:        true,
+		EmailVerified: true,
 	}
 
 	if err := store.Users().Create(ctx, user); err != nil {
