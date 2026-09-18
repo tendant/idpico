@@ -21,6 +21,10 @@ type KeyRepository interface {
 type KeyService struct {
 	repo KeyRepository
 	mu   sync.RWMutex
+
+	// active caches the current signing key so token issuance does not hit
+	// the repository. It is refreshed by EnsureActiveKey and RotateKey.
+	active *KeyPair
 }
 
 // KeyServiceOption configures the KeyService.
@@ -53,6 +57,7 @@ func (s *KeyService) EnsureActiveKey(ctx context.Context) (*KeyPair, error) {
 				return nil, fmt.Errorf("failed to load key from PEM: %w", err)
 			}
 		}
+		s.active = key
 		return key, nil
 	}
 
@@ -71,13 +76,26 @@ func (s *KeyService) EnsureActiveKey(ctx context.Context) (*KeyPair, error) {
 		return nil, fmt.Errorf("failed to activate key: %w", err)
 	}
 
+	s.active = key
 	return key, nil
 }
 
-// GetActiveKey returns the current active signing key.
+// GetActiveKey returns the current active signing key. The key is served
+// from an in-process cache once loaded; RotateKey refreshes it.
 func (s *KeyService) GetActiveKey(ctx context.Context) (*KeyPair, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	if s.active != nil {
+		key := s.active
+		s.mu.RUnlock()
+		return key, nil
+	}
+	s.mu.RUnlock()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.active != nil {
+		return s.active, nil
+	}
 
 	key, err := s.repo.GetActive(ctx)
 	if err != nil {
@@ -91,6 +109,7 @@ func (s *KeyService) GetActiveKey(ctx context.Context) (*KeyPair, error) {
 		}
 	}
 
+	s.active = key
 	return key, nil
 }
 
@@ -152,7 +171,21 @@ func (s *KeyService) RotateKey(ctx context.Context, expiresIn time.Duration) (*K
 		return nil, fmt.Errorf("failed to activate key: %w", err)
 	}
 
+	s.active = newKey
 	return newKey, nil
+}
+
+// ShouldRotate reports whether the active key is older than maxAge.
+// A zero or negative maxAge disables rotation.
+func (s *KeyService) ShouldRotate(ctx context.Context, maxAge time.Duration) (bool, error) {
+	if maxAge <= 0 {
+		return false, nil
+	}
+	key, err := s.GetActiveKey(ctx)
+	if err != nil {
+		return false, err
+	}
+	return time.Since(key.CreatedAt) >= maxAge, nil
 }
 
 // GetKeyByID returns a key by its ID (kid).

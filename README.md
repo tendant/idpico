@@ -65,6 +65,11 @@ IDP_ACCESS_TOKEN_TTL=15m
 IDP_REFRESH_TOKEN_TTL=168h   # 7 days
 IDP_AUTH_CODE_TTL=10m
 
+# Key rotation & maintenance
+IDP_SIGNING_KEY_ROTATION_DAYS=30   # 0 = disabled
+IDP_SIGNING_KEY_GRACE_PERIOD=24h   # rotated keys remain valid for verification
+IDP_MAINTENANCE_INTERVAL=10m       # expired-row purge + key rotation (0 = disabled)
+
 # Logging
 IDP_LOG_LEVEL=info           # debug, info, warn, error
 IDP_LOG_FORMAT=json          # json or text
@@ -315,6 +320,14 @@ Parameters:
 - `id_token_hint`: Optional. The ID token previously issued.
 - `post_logout_redirect_uri`: Optional. URL to redirect after logout (must be a relative path).
 - `state`: Optional. Opaque value passed through to the redirect.
+
+### Signing Key Rotation & Maintenance
+
+A background maintenance loop runs every `IDP_MAINTENANCE_INTERVAL` (default 10m, `0` disables it) and:
+
+- Deletes expired sessions, authorization codes and refresh tokens
+- Rotates the RS256 signing key once it is older than `IDP_SIGNING_KEY_ROTATION_DAYS` (default 30, `0` disables rotation). New tokens are signed with the new key immediately; the previous key stays in `/.well-known/jwks.json` and keeps verifying tokens for `IDP_SIGNING_KEY_GRACE_PERIOD` (default 24h), then is deleted
+- The grace period only needs to cover the access/ID token TTL — refresh tokens are opaque and unaffected by rotation
 
 ### Prometheus Metrics
 

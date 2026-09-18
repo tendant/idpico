@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadDefaults(t *testing.T) {
@@ -520,4 +521,29 @@ func TestStoreDriver(t *testing.T) {
 			t.Error("Expected error for unsupported store driver")
 		}
 	})
+}
+
+func TestMaintenanceDefaults(t *testing.T) {
+	clearIDPEnvVars()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.MaintenanceInterval != 10*time.Minute {
+		t.Errorf("Expected default maintenance interval 10m, got %v", cfg.MaintenanceInterval)
+	}
+	if cfg.SigningKeyMaxAge() != 30*24*time.Hour {
+		t.Errorf("Expected default key max age 30d, got %v", cfg.SigningKeyMaxAge())
+	}
+	if cfg.SigningKeyGracePeriod != 24*time.Hour {
+		t.Errorf("Expected default grace period 24h, got %v", cfg.SigningKeyGracePeriod)
+	}
+
+	os.Setenv("IDP_SIGNING_KEY_ROTATION_DAYS", "0")
+	defer os.Unsetenv("IDP_SIGNING_KEY_ROTATION_DAYS")
+	cfg, _ = Load()
+	if cfg.SigningKeyMaxAge() != 0 {
+		t.Errorf("Expected rotation disabled with 0 days, got %v", cfg.SigningKeyMaxAge())
+	}
 }

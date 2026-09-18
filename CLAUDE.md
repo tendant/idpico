@@ -78,6 +78,7 @@ internal/
   auth/                   # Login/session, cookies, CSRF
   oidc/                   # OAuth 2.0/OIDC flows
   crypto/                 # JWKS, key rotation, JWT signing
+  maintenance/            # Background purge of expired rows + key rotation
   store/                  # Persistence interfaces
     file/                 #   JSON file backend
     sqlite/               #   SQLite backend (default)
@@ -90,7 +91,7 @@ data/                     # idp.db (SQLite) or JSON files, auto-created
 All production code goes under `internal/` to prevent accidental coupling.
 
 ### Key Technical Decisions
-- **Signing keys**: Ed25519 recommended (or RSA)
+- **Signing keys**: RSA 2048 / RS256 (implemented). Ed25519/EdDSA is a possible future addition; the `signing_keys.algorithm` column already carries the alg
 - **Tokens**: JWT for both ID and access tokens with short TTL + refresh token rotation
 - **Database**: SQLite (default) or JSON files today; Postgres planned. Tables: users, clients, sessions, auth_codes, tokens, signing_keys
 - **Migrations**: goose, embedded via `embed.FS` and applied at startup. Keep SQL portable; dialect-specific DDL lives in its own directory
@@ -115,5 +116,5 @@ All production code goes under `internal/` to prevent accidental coupling.
 - HttpOnly/Secure/SameSite cookies with session ID rotation on login
 - CSRF protection on login forms
 - Exact redirect URI matching (no wildcards)
-- Token signing key rotation with grace period for old keys
+- Token signing key rotation with grace period for old keys (`internal/maintenance`, driven by `IDP_SIGNING_KEY_ROTATION_DAYS` / `IDP_SIGNING_KEY_GRACE_PERIOD`)
 - Rate limiting on login attempts

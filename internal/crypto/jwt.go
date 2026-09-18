@@ -79,10 +79,15 @@ func (g *TokenGenerator) GenerateIDToken(subject string, expiry time.Duration, c
 		ID:        uuid.New().String(),
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	token.Header["kid"] = g.keyPair.Kid
+	signingKey, err := g.signingKey(context.Background())
+	if err != nil {
+		return "", time.Time{}, err
+	}
 
-	tokenString, err := token.SignedString(g.keyPair.PrivateKey)
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	token.Header["kid"] = signingKey.Kid
+
+	tokenString, err := token.SignedString(signingKey.PrivateKey)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("failed to sign token: %w", err)
 	}
@@ -151,7 +156,25 @@ func (g *TokenGenerator) ParseTokenWithContext(ctx context.Context, tokenString 
 
 // GetKeyID returns the key ID used for signing.
 func (g *TokenGenerator) GetKeyID() string {
-	return g.keyPair.Kid
+	key, err := g.signingKey(context.Background())
+	if err != nil {
+		return ""
+	}
+	return key.Kid
+}
+
+// signingKey returns the key new tokens are signed with: the KeyService's
+// current active key when one is attached (so rotation takes effect without
+// restarting), otherwise the key the generator was constructed with.
+func (g *TokenGenerator) signingKey(ctx context.Context) (*KeyPair, error) {
+	if g.keyService == nil {
+		return g.keyPair, nil
+	}
+	key, err := g.keyService.GetActiveKey(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active signing key: %w", err)
+	}
+	return key, nil
 }
 
 // ValidateAccessToken validates an access token and returns its claims.

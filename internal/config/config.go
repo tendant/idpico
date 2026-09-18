@@ -30,10 +30,10 @@ type Config struct {
 	StoreDSN string `env:"IDP_STORE_DSN" env-default:""`
 
 	// Session settings
-	SessionDuration   time.Duration `env:"IDP_SESSION_DURATION" env-default:"24h"`
-	CookieSecret      string        `env:"IDP_COOKIE_SECRET"`
-	CookieSecure      bool          `env:"IDP_COOKIE_SECURE" env-default:"false"`
-	CookieDomain      string        `env:"IDP_COOKIE_DOMAIN" env-default:""`
+	SessionDuration time.Duration `env:"IDP_SESSION_DURATION" env-default:"24h"`
+	CookieSecret    string        `env:"IDP_COOKIE_SECRET"`
+	CookieSecure    bool          `env:"IDP_COOKIE_SECURE" env-default:"false"`
+	CookieDomain    string        `env:"IDP_COOKIE_DOMAIN" env-default:""`
 
 	// Token settings
 	AccessTokenTTL  time.Duration `env:"IDP_ACCESS_TOKEN_TTL" env-default:"15m"`
@@ -41,13 +41,17 @@ type Config struct {
 	AuthCodeTTL     time.Duration `env:"IDP_AUTH_CODE_TTL" env-default:"10m"`
 
 	// Key rotation
-	SigningKeyRotationDays int `env:"IDP_SIGNING_KEY_ROTATION_DAYS" env-default:"30"`
+	SigningKeyRotationDays int           `env:"IDP_SIGNING_KEY_ROTATION_DAYS" env-default:"30"` // 0 = disabled
+	SigningKeyGracePeriod  time.Duration `env:"IDP_SIGNING_KEY_GRACE_PERIOD" env-default:"24h"` // rotated keys stay valid for verification this long
+
+	// Maintenance (expired session/code/token purge + key rotation)
+	MaintenanceInterval time.Duration `env:"IDP_MAINTENANCE_INTERVAL" env-default:"10m"` // 0 = disabled
 
 	// Rate limiting
 	LoginRateLimit int `env:"IDP_LOGIN_RATE_LIMIT" env-default:"5"` // attempts per minute
 
 	// Account lockout
-	LockoutMaxAttempts int           `env:"IDP_LOCKOUT_MAX_ATTEMPTS" env-default:"5"`  // 0 = disabled
+	LockoutMaxAttempts int           `env:"IDP_LOCKOUT_MAX_ATTEMPTS" env-default:"5"` // 0 = disabled
 	LockoutDuration    time.Duration `env:"IDP_LOCKOUT_DURATION" env-default:"15m"`
 
 	// Logging
@@ -55,8 +59,8 @@ type Config struct {
 	LogFormat string `env:"IDP_LOG_FORMAT" env-default:"json"` // json or text
 
 	// CORS settings
-	CORSAllowedOrigins string `env:"IDP_CORS_ALLOWED_ORIGINS" env-default:""` // Comma-separated origins, empty = disabled
-	CORSAllowCredentials bool `env:"IDP_CORS_ALLOW_CREDENTIALS" env-default:"true"`
+	CORSAllowedOrigins   string `env:"IDP_CORS_ALLOWED_ORIGINS" env-default:""` // Comma-separated origins, empty = disabled
+	CORSAllowCredentials bool   `env:"IDP_CORS_ALLOW_CREDENTIALS" env-default:"true"`
 
 	// Security headers
 	SecurityHeadersEnabled bool   `env:"IDP_SECURITY_HEADERS_ENABLED" env-default:"true"`
@@ -72,7 +76,7 @@ type Config struct {
 
 	// Simple single-client configuration (takes precedence if IDP_CLIENT_ID is set)
 	ClientID          string `env:"IDP_CLIENT_ID"`
-	ClientSecret      string `env:"IDP_CLIENT_SECRET"`      // Empty for public clients
+	ClientSecret      string `env:"IDP_CLIENT_SECRET"`       // Empty for public clients
 	ClientRedirectURI string `env:"IDP_CLIENT_REDIRECT_URI"` // Space-separated for multiple URIs
 
 	// Complex multi-client configuration
@@ -124,6 +128,15 @@ func (c *Config) validateStore() error {
 	default:
 		return fmt.Errorf("invalid IDP_STORE_DRIVER %q (expected %q or %q)", c.StoreDriver, StoreDriverSQLite, StoreDriverFile)
 	}
+}
+
+// SigningKeyMaxAge returns the age after which the signing key is rotated,
+// or 0 when rotation is disabled.
+func (c *Config) SigningKeyMaxAge() time.Duration {
+	if c.SigningKeyRotationDays <= 0 {
+		return 0
+	}
+	return time.Duration(c.SigningKeyRotationDays) * 24 * time.Hour
 }
 
 // SQLitePath returns the SQLite database path: IDP_STORE_DSN if set,

@@ -19,6 +19,7 @@ import (
 	"github.com/tendant/simple-idp/internal/crypto"
 	"github.com/tendant/simple-idp/internal/domain"
 	idphttp "github.com/tendant/simple-idp/internal/http"
+	"github.com/tendant/simple-idp/internal/maintenance"
 	"github.com/tendant/simple-idp/internal/oidc"
 	"github.com/tendant/simple-idp/internal/store"
 	"github.com/tendant/simple-idp/internal/store/file"
@@ -164,6 +165,23 @@ func main() {
 
 	// Create HTTP server
 	server := idphttp.NewServer(cfg.Addr(), serverOpts...)
+
+	// Background maintenance: purge expired rows, rotate/clean signing keys
+	maintCtx, stopMaintenance := context.WithCancel(context.Background())
+	defer stopMaintenance()
+	if cfg.MaintenanceInterval > 0 {
+		runner := maintenance.NewRunner(store, keyService,
+			maintenance.WithLogger(logger),
+			maintenance.WithInterval(cfg.MaintenanceInterval),
+			maintenance.WithKeyRotation(cfg.SigningKeyMaxAge(), cfg.SigningKeyGracePeriod),
+		)
+		go runner.Run(maintCtx)
+		logger.Info("maintenance enabled",
+			"interval", cfg.MaintenanceInterval,
+			"key_rotation_days", cfg.SigningKeyRotationDays,
+			"key_grace_period", cfg.SigningKeyGracePeriod,
+		)
+	}
 
 	// Start server in goroutine
 	go func() {

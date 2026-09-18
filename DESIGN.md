@@ -60,7 +60,7 @@
    - Audit events (lightweight; v1 optional)
 
 4. **Crypto & Key Management**
-   - RSA or Ed25519 signing keys (recommend **Ed25519** for simplicity/perf)
+   - RSA (RS256) signing keys today; Ed25519 (EdDSA) is a candidate addition
    - Key rotation strategy and JWKS publication
 
 ### Request flows
@@ -369,6 +369,7 @@ Two strategies:
 ### v0.3 - IN PROGRESS
 - ✅ SQLite storage backend (default) with embedded goose migrations
 - ✅ Store conformance test suite shared by all backends
+- ✅ Background maintenance: expired-row purge, signing key rotation with grace period
 - PostgreSQL storage backend (reuses the SQLite schema/migration layout)
 - Password reset + email verification
 - Consent UI (optional)
