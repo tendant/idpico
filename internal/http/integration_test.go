@@ -153,9 +153,18 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		Public:       true,
 		SkipConsent:  true,
 		RedirectURIs: []string{"http://localhost:3000/callback"},
-		Scopes:       []string{"openid", "profile", "email"},
+		Scopes:       []string{"openid", "profile", "email", "groups"},
 	}
 	store.Clients().Create(ctx, publicClient)
+
+	// Groups: the test user is a member of "devs"
+	devs := &domain.Group{ID: "grp-devs", Name: "devs", Description: "Developers"}
+	if err := store.Groups().Create(ctx, devs); err != nil {
+		t.Fatalf("Failed to create group: %v", err)
+	}
+	store.Groups().Create(ctx, &domain.Group{ID: "grp-ops", Name: "ops"})
+	store.Groups().AddMember(ctx, devs.ID, testUser.ID)
+	groupClaims := oidc.NewGroupClaims(store.Groups(), "")
 
 	// Cookie secret
 	cookieSecret := "test-cookie-secret-32-bytes-long!"
@@ -186,8 +195,9 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		"http://localhost:8080",
 		15*time.Minute,
 		7*24*time.Hour,
+		oidc.WithGroupClaims(groupClaims),
 	)
-	userInfoService := oidc.NewUserInfoService(store.Users(), tokenGenerator)
+	userInfoService := oidc.NewUserInfoService(store.Users(), tokenGenerator, oidc.WithUserInfoGroups(groupClaims))
 
 	// Create HTTP server
 	server := NewServer(":0",
@@ -198,6 +208,7 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		WithAccountService(accountService, "1h0m0s"),
 		WithOIDCServices(authorizeService, tokenService, userInfoService),
 		WithConsentService(consentService),
+		WithGroupsClaim(groupClaims.ClaimName()),
 		WithAdmin(AdminConfig{
 			Store:          store,
 			AuthService:    authService,
@@ -1307,4 +1318,157 @@ func TestIntegration_EmailVerification(t *testing.T) {
 			t.Errorf("userinfo email_verified should be true, got %v", info["email_verified"])
 		}
 	})
+}
+
+// pkceAuthorize runs the first-party public client through /authorize and
+// /token for the signed-in client and returns the token response.
+func pkceAuthorize(t *testing.T, client *http.Client, base, scope string) oidc.TokenResponse {
+	t.Helper()
+	codeVerifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	hash := sha256.Sum256([]byte(codeVerifier))
+	p := url.Values{
+		"client_id": {"public-client"}, "redirect_uri": {"http://localhost:3000/callback"},
+		"response_type": {"code"}, "scope": {scope}, "nonce": {"nonce-xyz"},
+		"code_challenge": {base64.RawURLEncoding.EncodeToString(hash[:])}, "code_challenge_method": {"S256"},
+	}
+	resp, _ := client.Get(base + "/authorize?" + p.Encode())
+	resp.Body.Close()
+	code := mustParseURL(resp.Header.Get("Location")).Query().Get("code")
+	if code == "" {
+		t.Fatalf("no code in %s", resp.Header.Get("Location"))
+	}
+	form := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {"http://localhost:3000/callback"}, "client_id": {"public-client"}, "code_verifier": {codeVerifier}}
+	resp, err := http.PostForm(base+"/token", form)
+	if err != nil {
+		t.Fatalf("token request: %v", err)
+	}
+	defer resp.Body.Close()
+	var tokens oidc.TokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokens); err != nil || tokens.AccessToken == "" {
+		t.Fatalf("token exchange failed: status %d err %v", resp.StatusCode, err)
+	}
+	return tokens
+}
+
+func jwtPayload(t *testing.T, token string) map[string]any {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	var m map[string]any
+	json.Unmarshal(raw, &m)
+	return m
+}
+
+func userinfo(t *testing.T, base, accessToken string) map[string]any {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, base+"/userinfo", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("userinfo request: %v", err)
+	}
+	defer resp.Body.Close()
+	var m map[string]any
+	json.NewDecoder(resp.Body).Decode(&m)
+	return m
+}
+
+func TestIntegration_GroupsClaim(t *testing.T) {
+	forEachDriver(t, func(t *testing.T, driver string) {
+		env := setupTestEnv(t, driver)
+		defer env.cleanup()
+		base := env.server.URL
+
+		// Discovery advertises the scope and claim
+		resp, _ := http.Get(base + "/.well-known/openid-configuration")
+		var disc map[string]any
+		json.NewDecoder(resp.Body).Decode(&disc)
+		resp.Body.Close()
+		if !containsString(disc["scopes_supported"], "groups") || !containsString(disc["claims_supported"], "groups") {
+			t.Errorf("discovery should advertise groups: %v / %v", disc["scopes_supported"], disc["claims_supported"])
+		}
+
+		client := newClientWithCookies()
+		loginAs(t, client, base, "test@example.com", "password123")
+
+		// With the groups scope: ID token, access token and userinfo carry it; nonce is top-level
+		tokens := pkceAuthorize(t, client, base, "openid email groups")
+		id := jwtPayload(t, tokens.IDToken)
+		if g, ok := id["groups"].([]any); !ok || len(g) != 1 || g[0] != "devs" {
+			t.Errorf("ID token groups claim wrong: %v", id["groups"])
+		}
+		if id["nonce"] != "nonce-xyz" {
+			t.Errorf("nonce should be a top-level ID token claim, got %v", id["nonce"])
+		}
+		if _, nested := id["extra"]; nested {
+			t.Error("ID token must not contain a nested extra object")
+		}
+		at := jwtPayload(t, tokens.AccessToken)
+		if g, ok := at["groups"].([]any); !ok || len(g) != 1 {
+			t.Errorf("access token groups claim wrong: %v", at["groups"])
+		}
+		info := userinfo(t, base, tokens.AccessToken)
+		if g, ok := info["groups"].([]any); !ok || len(g) != 1 || g[0] != "devs" {
+			t.Errorf("userinfo groups wrong: %v", info["groups"])
+		}
+
+		// Without the scope nothing is released
+		tokens = pkceAuthorize(t, client, base, "openid email")
+		if _, has := jwtPayload(t, tokens.IDToken)["groups"]; has {
+			t.Error("groups must not be released without the scope")
+		}
+		if _, has := userinfo(t, base, tokens.AccessToken)["groups"]; has {
+			t.Error("userinfo must not include groups without the scope")
+		}
+
+		// A user with no memberships gets an empty list, not a missing claim
+		env.store.Groups().RemoveUser(context.Background(), env.testUser.ID)
+		tokens = pkceAuthorize(t, client, base, "openid groups")
+		if g, ok := jwtPayload(t, tokens.IDToken)["groups"].([]any); !ok || len(g) != 0 {
+			t.Errorf("expected empty groups list, got %v", jwtPayload(t, tokens.IDToken)["groups"])
+		}
+
+		// A client without the scope allowed is refused at /authorize
+		p := url.Values{"client_id": {"test-client"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"code"}, "scope": {"openid groups"}}
+		resp, _ = client.Get(base + "/authorize?" + p.Encode())
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), "not allowed") {
+			t.Errorf("client without groups scope should be rejected, got %d", resp.StatusCode)
+		}
+	})
+}
+
+func TestIntegration_GroupsCustomClaimName(t *testing.T) {
+	// Only the claim plumbing differs by name, so one driver is enough.
+	env := setupTestEnv(t, "sqlite")
+	defer env.cleanup()
+	base := env.server.URL
+
+	gc := oidc.NewGroupClaims(env.store.Groups(), "roles")
+	if gc.ClaimName() != "roles" {
+		t.Fatal("claim name not applied")
+	}
+	// Rebuild the userinfo service with the custom name to check flattening there too.
+	claims := &crypto.Claims{}
+	if err := gc.Apply(context.Background(), env.testUser, "openid groups", claims); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if claims.Groups != nil || len(claims.Extra["roles"].([]string)) != 1 {
+		t.Errorf("custom claim should be in Extra, got groups=%v extra=%v", claims.Groups, claims.Extra)
+	}
+	_ = base
+}
+
+func containsString(list any, want string) bool {
+	items, _ := list.([]any)
+	for _, it := range items {
+		if it == want {
+			return true
+		}
+	}
+	return false
 }

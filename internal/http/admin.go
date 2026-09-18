@@ -29,6 +29,7 @@ type AdminConfig struct {
 	KeyService     *crypto.KeyService
 	IssuerURL      string
 	KeyGracePeriod time.Duration
+	GroupsClaim    string // claim name shown on the groups page
 }
 
 // AdminHandler serves the server-rendered administration UI under /admin.
@@ -43,6 +44,9 @@ type AdminHandler struct {
 func NewAdminHandler(cfg AdminConfig, templates *Templates, logger *slog.Logger) *AdminHandler {
 	if cfg.KeyGracePeriod == 0 {
 		cfg.KeyGracePeriod = 24 * time.Hour
+	}
+	if cfg.GroupsClaim == "" {
+		cfg.GroupsClaim = "groups"
 	}
 	return &AdminHandler{cfg: cfg, templates: templates, logger: logger}
 }
@@ -64,6 +68,17 @@ func (h *AdminHandler) Routes(r chi.Router) {
 	r.Post("/users/{id}/revoke-sessions", h.RevokeUserSessions)
 	r.Post("/users/{id}/consents/{clientID}/revoke", h.RevokeUserConsent)
 	r.Post("/users/{id}/delete", h.DeleteUser)
+
+	r.Post("/users/{id}/groups", h.SetUserGroups)
+
+	r.Get("/groups", h.Groups)
+	r.Get("/groups/new", h.NewGroup)
+	r.Post("/groups", h.CreateGroup)
+	r.Get("/groups/{id}", h.EditGroup)
+	r.Post("/groups/{id}", h.UpdateGroup)
+	r.Post("/groups/{id}/members", h.AddGroupMember)
+	r.Post("/groups/{id}/members/{userID}/remove", h.RemoveGroupMember)
+	r.Post("/groups/{id}/delete", h.DeleteGroup)
 
 	r.Get("/clients", h.Clients)
 	r.Get("/clients/new", h.NewClient)
@@ -172,6 +187,7 @@ func (h *AdminHandler) notFound(w http.ResponseWriter, r *http.Request, what str
 type dashboardData struct {
 	adminBase
 	UserCount   int
+	GroupCount  int
 	ClientCount int
 	KeyCount    int
 	IssuerURL   string
@@ -180,6 +196,7 @@ type dashboardData struct {
 func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	users, _ := h.cfg.Store.Users().List(ctx)
+	groups, _ := h.cfg.Store.Groups().List(ctx)
 	clients, _ := h.cfg.Store.Clients().List(ctx)
 	keyCount := 0
 	if h.cfg.KeyService != nil {
@@ -190,6 +207,7 @@ func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	h.templates.Render(w, http.StatusOK, "admin/dashboard", dashboardData{
 		adminBase:   h.base(w, r, ""),
 		UserCount:   len(users),
+		GroupCount:  len(groups),
 		ClientCount: len(clients),
 		KeyCount:    keyCount,
 		IssuerURL:   h.cfg.IssuerURL,
@@ -209,7 +227,14 @@ type userFormData struct {
 	IsSelf            bool
 	User              *domain.User
 	Consents          []*domain.Consent
+	AllGroups         []groupMembership
 	MinPasswordLength int
+}
+
+// groupMembership pairs a group with whether the user being edited belongs to it.
+type groupMembership struct {
+	Group  *domain.Group
+	Member bool
 }
 
 func (h *AdminHandler) Users(w http.ResponseWriter, r *http.Request) {
@@ -335,7 +360,56 @@ func (h *AdminHandler) EditUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	consents, _ := h.cfg.Store.Consents().ListByUserID(r.Context(), user.ID)
-	h.renderUserForm(w, r, http.StatusOK, userFormData{User: user, Consents: consents})
+	h.renderUserForm(w, r, http.StatusOK, userFormData{User: user, Consents: consents, AllGroups: h.groupMemberships(r.Context(), user.ID)})
+}
+
+// groupMemberships lists every group flagged with the user's membership.
+func (h *AdminHandler) groupMemberships(ctx context.Context, userID string) []groupMembership {
+	all, err := h.cfg.Store.Groups().List(ctx)
+	if err != nil {
+		return nil
+	}
+	mine, _ := h.cfg.Store.Groups().GroupsForUser(ctx, userID)
+	member := make(map[string]bool, len(mine))
+	for _, g := range mine {
+		member[g.ID] = true
+	}
+	out := make([]groupMembership, 0, len(all))
+	for _, g := range all {
+		out = append(out, groupMembership{Group: g, Member: member[g.ID]})
+	}
+	return out
+}
+
+// SetUserGroups replaces the user's memberships with the checked groups.
+func (h *AdminHandler) SetUserGroups(w http.ResponseWriter, r *http.Request) {
+	if !h.checkCSRF(w, r) {
+		return
+	}
+	user, ok := h.loadUser(w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+
+	wanted := make(map[string]bool)
+	for _, id := range r.Form["group"] {
+		wanted[id] = true
+	}
+	for _, gm := range h.groupMemberships(ctx, user.ID) {
+		switch {
+		case wanted[gm.Group.ID] && !gm.Member:
+			if err := h.cfg.Store.Groups().AddMember(ctx, gm.Group.ID, user.ID); err != nil {
+				h.logger.Error("failed to add group member", "error", err)
+			}
+		case !wanted[gm.Group.ID] && gm.Member:
+			if err := h.cfg.Store.Groups().RemoveMember(ctx, gm.Group.ID, user.ID); err != nil {
+				h.logger.Error("failed to remove group member", "error", err)
+			}
+		}
+	}
+	h.logger.Info("admin updated user groups", "admin", currentAdmin(r).Email, "user_id", user.ID)
+	h.redirect(w, r, "/admin/users/"+user.ID, "Groups updated")
 }
 
 func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
@@ -505,6 +579,7 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	_ = h.cfg.Store.Tokens().RevokeByUserID(ctx, user.ID)
 	_ = h.cfg.Store.Consents().DeleteByUserID(ctx, user.ID)
 	_ = h.cfg.Store.VerificationTokens().DeleteByUserID(ctx, user.ID, "")
+	_ = h.cfg.Store.Groups().RemoveUser(ctx, user.ID)
 	if err := h.cfg.Store.Users().Delete(ctx, user.ID); err != nil {
 		h.logger.Error("failed to delete user", "error", err)
 		h.fail(w, r, http.StatusInternalServerError, "Failed to delete user")
@@ -512,6 +587,207 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	h.logger.Info("admin deleted user", "admin", currentAdmin(r).Email, "user_id", user.ID, "email", user.Email)
 	h.redirect(w, r, "/admin/users", "User "+user.Email+" deleted")
+}
+
+// Groups
+
+type groupRow struct {
+	Group       *domain.Group
+	MemberCount int
+}
+
+type groupsData struct {
+	adminBase
+	Groups    []groupRow
+	ClaimName string
+}
+
+type groupFormData struct {
+	adminBase
+	IsNew   bool
+	Group   *domain.Group
+	Members []*domain.User
+}
+
+func (h *AdminHandler) Groups(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	groups, err := h.cfg.Store.Groups().List(ctx)
+	if err != nil {
+		h.fail(w, r, http.StatusInternalServerError, "Failed to list groups")
+		return
+	}
+	rows := make([]groupRow, 0, len(groups))
+	for _, g := range groups {
+		ids, _ := h.cfg.Store.Groups().MemberIDs(ctx, g.ID)
+		rows = append(rows, groupRow{Group: g, MemberCount: len(ids)})
+	}
+	h.templates.Render(w, http.StatusOK, "admin/groups", groupsData{
+		adminBase: h.base(w, r, "groups"),
+		Groups:    rows,
+		ClaimName: h.cfg.GroupsClaim,
+	})
+}
+
+func (h *AdminHandler) NewGroup(w http.ResponseWriter, r *http.Request) {
+	h.renderGroupForm(w, r, http.StatusOK, groupFormData{IsNew: true, Group: &domain.Group{}})
+}
+
+func (h *AdminHandler) renderGroupForm(w http.ResponseWriter, r *http.Request, status int, data groupFormData) {
+	data.adminBase = h.base(w, r, "groups")
+	h.templates.Render(w, status, "admin/group_form", data)
+}
+
+func (h *AdminHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
+	if !h.checkCSRF(w, r) {
+		return
+	}
+	group := &domain.Group{
+		ID:          uuid.New().String(),
+		Name:        strings.TrimSpace(r.FormValue("name")),
+		Description: strings.TrimSpace(r.FormValue("description")),
+	}
+	if group.Name == "" {
+		data := groupFormData{IsNew: true, Group: group}
+		data.Error = "Name is required"
+		h.renderGroupForm(w, r, http.StatusBadRequest, data)
+		return
+	}
+	if err := h.cfg.Store.Groups().Create(r.Context(), group); err != nil {
+		msg := "Failed to create group"
+		if idperrors.IsCode(err, idperrors.CodeAlreadyExists) {
+			msg = "A group with that name already exists"
+		} else {
+			h.logger.Error("failed to create group", "error", err)
+		}
+		data := groupFormData{IsNew: true, Group: group}
+		data.Error = msg
+		h.renderGroupForm(w, r, http.StatusBadRequest, data)
+		return
+	}
+	h.logger.Info("admin created group", "admin", currentAdmin(r).Email, "group", group.Name)
+	h.redirect(w, r, "/admin/groups/"+group.ID, "Group created")
+}
+
+func (h *AdminHandler) loadGroup(w http.ResponseWriter, r *http.Request) (*domain.Group, bool) {
+	group, err := h.cfg.Store.Groups().GetByID(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		if idperrors.IsCode(err, idperrors.CodeNotFound) {
+			h.notFound(w, r, "Group")
+		} else {
+			h.fail(w, r, http.StatusInternalServerError, "Failed to load group")
+		}
+		return nil, false
+	}
+	return group, true
+}
+
+func (h *AdminHandler) groupMembers(ctx context.Context, groupID string) []*domain.User {
+	ids, _ := h.cfg.Store.Groups().MemberIDs(ctx, groupID)
+	members := make([]*domain.User, 0, len(ids))
+	for _, id := range ids {
+		if u, err := h.cfg.Store.Users().GetByID(ctx, id); err == nil {
+			members = append(members, u)
+		}
+	}
+	return members
+}
+
+func (h *AdminHandler) EditGroup(w http.ResponseWriter, r *http.Request) {
+	group, ok := h.loadGroup(w, r)
+	if !ok {
+		return
+	}
+	h.renderGroupForm(w, r, http.StatusOK, groupFormData{Group: group, Members: h.groupMembers(r.Context(), group.ID)})
+}
+
+func (h *AdminHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
+	if !h.checkCSRF(w, r) {
+		return
+	}
+	group, ok := h.loadGroup(w, r)
+	if !ok {
+		return
+	}
+	group.Name = strings.TrimSpace(r.FormValue("name"))
+	group.Description = strings.TrimSpace(r.FormValue("description"))
+
+	var msg string
+	if group.Name == "" {
+		msg = "Name is required"
+	} else if err := h.cfg.Store.Groups().Update(r.Context(), group); err != nil {
+		if idperrors.IsCode(err, idperrors.CodeAlreadyExists) {
+			msg = "A group with that name already exists"
+		} else {
+			h.logger.Error("failed to update group", "error", err)
+			msg = "Failed to update group"
+		}
+	}
+	if msg != "" {
+		data := groupFormData{Group: group, Members: h.groupMembers(r.Context(), group.ID)}
+		data.Error = msg
+		h.renderGroupForm(w, r, http.StatusBadRequest, data)
+		return
+	}
+	h.logger.Info("admin updated group", "admin", currentAdmin(r).Email, "group_id", group.ID)
+	h.redirect(w, r, "/admin/groups/"+group.ID, "Group updated")
+}
+
+func (h *AdminHandler) AddGroupMember(w http.ResponseWriter, r *http.Request) {
+	if !h.checkCSRF(w, r) {
+		return
+	}
+	group, ok := h.loadGroup(w, r)
+	if !ok {
+		return
+	}
+	email := strings.TrimSpace(r.FormValue("email"))
+	user, err := h.cfg.Store.Users().GetByEmail(r.Context(), email)
+	if err != nil {
+		h.redirect(w, r, "/admin/groups/"+group.ID, "No user with email "+email)
+		return
+	}
+	if err := h.cfg.Store.Groups().AddMember(r.Context(), group.ID, user.ID); err != nil {
+		h.logger.Error("failed to add group member", "error", err)
+		h.redirect(w, r, "/admin/groups/"+group.ID, "Failed to add member")
+		return
+	}
+	h.logger.Info("admin added group member", "admin", currentAdmin(r).Email, "group", group.Name, "user_id", user.ID)
+	h.redirect(w, r, "/admin/groups/"+group.ID, user.Email+" added to "+group.Name)
+}
+
+func (h *AdminHandler) RemoveGroupMember(w http.ResponseWriter, r *http.Request) {
+	if !h.checkCSRF(w, r) {
+		return
+	}
+	group, ok := h.loadGroup(w, r)
+	if !ok {
+		return
+	}
+	userID := chi.URLParam(r, "userID")
+	if err := h.cfg.Store.Groups().RemoveMember(r.Context(), group.ID, userID); err != nil && !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		h.logger.Error("failed to remove group member", "error", err)
+		h.redirect(w, r, "/admin/groups/"+group.ID, "Failed to remove member")
+		return
+	}
+	h.logger.Info("admin removed group member", "admin", currentAdmin(r).Email, "group", group.Name, "user_id", userID)
+	h.redirect(w, r, "/admin/groups/"+group.ID, "Member removed")
+}
+
+func (h *AdminHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
+	if !h.checkCSRF(w, r) {
+		return
+	}
+	group, ok := h.loadGroup(w, r)
+	if !ok {
+		return
+	}
+	if err := h.cfg.Store.Groups().Delete(r.Context(), group.ID); err != nil {
+		h.logger.Error("failed to delete group", "error", err)
+		h.fail(w, r, http.StatusInternalServerError, "Failed to delete group")
+		return
+	}
+	h.logger.Info("admin deleted group", "admin", currentAdmin(r).Email, "group", group.Name)
+	h.redirect(w, r, "/admin/groups", "Group "+group.Name+" deleted")
 }
 
 // Clients
@@ -529,7 +805,7 @@ type clientFormData struct {
 }
 
 var (
-	defaultClientScopes     = []string{"openid", "profile", "email", "offline_access"}
+	defaultClientScopes     = []string{"openid", "profile", "email", "offline_access", "groups"}
 	defaultClientGrantTypes = []string{"authorization_code", "refresh_token"}
 	clientIDPattern         = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
 )

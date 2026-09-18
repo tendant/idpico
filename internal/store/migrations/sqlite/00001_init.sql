@@ -87,6 +87,22 @@ CREATE TABLE verification_tokens (
 CREATE INDEX verification_tokens_user_id_idx    ON verification_tokens (user_id, purpose);
 CREATE INDEX verification_tokens_expires_at_idx ON verification_tokens (expires_at);
 
+CREATE TABLE groups (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at  TIMESTAMP NOT NULL,
+    updated_at  TIMESTAMP NOT NULL
+);
+CREATE UNIQUE INDEX groups_name_idx ON groups (LOWER(name));
+
+CREATE TABLE user_groups (
+    user_id  TEXT NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
+    group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    PRIMARY KEY (user_id, group_id)
+);
+CREATE INDEX user_groups_group_id_idx ON user_groups (group_id);
+
 -- Serves both store.SigningKeyRepository (domain.SigningKey) and
 -- crypto.KeyRepository (crypto.KeyPair); keys are stored PEM-encoded.
 CREATE TABLE signing_keys (
@@ -103,6 +119,8 @@ CREATE UNIQUE INDEX signing_keys_active_idx ON signing_keys (active) WHERE activ
 
 -- +goose Down
 DROP TABLE signing_keys;
+DROP TABLE user_groups;
+DROP TABLE groups;
 DROP TABLE verification_tokens;
 DROP TABLE consents;
 DROP TABLE tokens;

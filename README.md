@@ -65,6 +65,10 @@ IDP_ACCESS_TOKEN_TTL=15m
 IDP_REFRESH_TOKEN_TTL=168h   # 7 days
 IDP_AUTH_CODE_TTL=10m
 
+# Groups
+IDP_GROUPS_CLAIM=groups            # claim name for memberships
+IDP_BOOTSTRAP_GROUPS=              # "admins:alice@x.com bob@x.com,devs:carol@x.com"
+
 # Admin UI
 IDP_ADMIN_EMAILS=admin@example.com # who may open /admin (comma-separated)
 
@@ -142,6 +146,7 @@ You can also use a `.env` file (copy from `.env.example`).
 |----------|-------------|
 | `GET /admin` | Dashboard (requires a signed-in user with the admin flag) |
 | `/admin/users` | List, create, edit, invite, set password, revoke sessions/consents, delete |
+| `/admin/groups` | List, create, edit, add/remove members, delete |
 | `/admin/clients` | List, create, edit, regenerate secret, revoke tokens, delete |
 | `/admin/keys` | List signing keys, rotate now |
 
@@ -204,6 +209,7 @@ or from the Users page once you have one admin. `make seed` makes `test@example.
   name / active / verified / admin, set a password (signs the user out everywhere), send reset
   or verification emails, revoke sessions and refresh tokens, revoke consents, delete.
   You cannot delete or disable your own account or drop your own admin flag.
+- **Groups**: create groups, add members by email, or tick group checkboxes on a user's page.
 - **Clients**: create confidential or public (PKCE) clients; the secret is generated and shown
   exactly once. Edit redirect URIs, scopes, grant types, first-party (skip consent);
   regenerate the secret; revoke all tokens; delete.
@@ -374,6 +380,29 @@ scope prompts again, and `prompt=consent` always prompts. Standard OIDC `prompt`
 
 Clients marked `skip_consent` (first-party apps) never prompt. Set `IDP_REQUIRE_CONSENT=false`
 to disable the screen globally.
+
+### Groups
+
+Users can belong to groups, and a client that is granted the `groups` scope receives the
+member group names in the ID token, the access token, and `/userinfo`:
+
+```json
+{ "sub": "…", "email": "alice@example.com", "groups": ["cluster-admins", "devs"] }
+```
+
+A user with no memberships gets `"groups": []`; without the scope the claim is absent. Clients
+must have `groups` in their allowed scopes (bootstrap and admin-created clients do by default).
+`IDP_GROUPS_CLAIM` renames the claim (e.g. `roles`) for applications that expect a different
+name — there is no separate role model; a "role" is a group.
+
+Manage groups in the admin UI or seed them at startup:
+
+```bash
+IDP_BOOTSTRAP_GROUPS="cluster-admins:admin@example.com,viewers:alice@example.com bob@example.com"
+```
+
+Kubernetes: `--oidc-groups-claim=groups` lets you bind ClusterRoles to `Group` subjects named
+after simple-idp groups — see [docs/k3s-headlamp-setup.md](docs/k3s-headlamp-setup.md).
 
 ### Password Reset & Email Verification
 

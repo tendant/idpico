@@ -1,0 +1,23 @@
+{{define "title"}}Groups{{end}}
+{{define "content"}}
+<div class="toolbar">
+    <h1 style="margin:0">Groups</h1>
+    <a class="button" href="/admin/groups/new">New group</a>
+</div>
+<p class="muted">Group names are released to clients in the <code>{{.ClaimName}}</code> claim when the <code>groups</code> scope is granted.</p>
+<table>
+    <thead><tr><th>Name</th><th>Description</th><th>Members</th><th></th></tr></thead>
+    <tbody>
+    {{range .Groups}}
+    <tr>
+        <td><a href="/admin/groups/{{.Group.ID}}"><code>{{.Group.Name}}</code></a></td>
+        <td class="muted">{{.Group.Description}}</td>
+        <td>{{.MemberCount}}</td>
+        <td class="actions"><a class="button small secondary" href="/admin/groups/{{.Group.ID}}">Edit</a></td>
+    </tr>
+    {{else}}
+    <tr><td colspan="4" class="muted">No groups yet.</td></tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}

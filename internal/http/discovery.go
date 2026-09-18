@@ -32,13 +32,16 @@ type OIDCDiscovery struct {
 
 // DiscoveryHandler handles OIDC discovery endpoints.
 type DiscoveryHandler struct {
-	issuerURL string
+	issuerURL   string
+	groupsClaim string // empty when groups are not supported
 }
 
-// NewDiscoveryHandler creates a new DiscoveryHandler.
-func NewDiscoveryHandler(issuerURL string) *DiscoveryHandler {
+// NewDiscoveryHandler creates a new DiscoveryHandler. groupsClaim names the
+// claim group memberships are released under, or "" if groups are disabled.
+func NewDiscoveryHandler(issuerURL, groupsClaim string) *DiscoveryHandler {
 	return &DiscoveryHandler{
-		issuerURL: strings.TrimSuffix(issuerURL, "/"),
+		issuerURL:   strings.TrimSuffix(issuerURL, "/"),
+		groupsClaim: groupsClaim,
 	}
 }
 
@@ -47,6 +50,13 @@ func (h *DiscoveryHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Re
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
+	}
+
+	scopes := []string{"openid", "profile", "email", "offline_access"}
+	claims := []string{"iss", "sub", "aud", "exp", "iat", "email", "email_verified", "name"}
+	if h.groupsClaim != "" {
+		scopes = append(scopes, "groups")
+		claims = append(claims, h.groupsClaim)
 	}
 
 	discovery := OIDCDiscovery{
@@ -59,12 +69,7 @@ func (h *DiscoveryHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Re
 		RevocationEndpoint:    h.issuerURL + "/revoke",
 		IntrospectionEndpoint: h.issuerURL + "/introspect",
 
-		ScopesSupported: []string{
-			"openid",
-			"profile",
-			"email",
-			"offline_access",
-		},
+		ScopesSupported: scopes,
 
 		ResponseTypesSupported: []string{
 			"code",
@@ -93,16 +98,7 @@ func (h *DiscoveryHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Re
 			"none", // For public clients with PKCE
 		},
 
-		ClaimsSupported: []string{
-			"iss",
-			"sub",
-			"aud",
-			"exp",
-			"iat",
-			"email",
-			"email_verified",
-			"name",
-		},
+		ClaimsSupported: claims,
 
 		CodeChallengeMethodsSupported: []string{
 			"S256",

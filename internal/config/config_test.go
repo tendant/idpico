@@ -580,3 +580,26 @@ func TestMailConfig(t *testing.T) {
 		t.Errorf("Expected default SMTP port 587, got %d", cfg.SMTPPort)
 	}
 }
+
+func TestParseBootstrapGroups(t *testing.T) {
+	cfg := &Config{BootstrapGroups: "admins:alice@x.com bob@x.com, devs:carol@x.com ,empty:, :nobody,solo"}
+	groups := cfg.ParseBootstrapGroups()
+	if len(groups) != 4 {
+		t.Fatalf("expected 4 groups, got %d: %+v", len(groups), groups)
+	}
+	if groups[0].Name != "admins" || len(groups[0].Members) != 2 || groups[0].Members[1] != "bob@x.com" {
+		t.Errorf("unexpected first group: %+v", groups[0])
+	}
+	if groups[1].Name != "devs" || len(groups[1].Members) != 1 {
+		t.Errorf("unexpected second group: %+v", groups[1])
+	}
+	if groups[2].Name != "empty" || len(groups[2].Members) != 0 {
+		t.Errorf("group without members should still be created: %+v", groups[2])
+	}
+	if groups[3].Name != "solo" || len(groups[3].Members) != 0 {
+		t.Errorf("group without colon should be created: %+v", groups[3])
+	}
+	if (&Config{}).ParseBootstrapGroups() != nil {
+		t.Error("empty config should yield nil")
+	}
+}

@@ -54,7 +54,7 @@ func main() {
 		Name:         "Test Application",
 		RedirectURIs: []string{"http://localhost:3000/callback", "http://localhost:8081/callback"},
 		GrantTypes:   []string{"authorization_code", "refresh_token"},
-		Scopes:       []string{"openid", "profile", "email", "offline_access"},
+		Scopes:       []string{"openid", "profile", "email", "offline_access", "groups"},
 		Public:       false,
 	}
 
@@ -70,7 +70,7 @@ func main() {
 		Name:         "Test Public Application",
 		RedirectURIs: []string{"http://localhost:3000/callback", "http://localhost:8081/callback"},
 		GrantTypes:   []string{"authorization_code", "refresh_token"},
-		Scopes:       []string{"openid", "profile", "email", "offline_access"},
+		Scopes:       []string{"openid", "profile", "email", "offline_access", "groups"},
 		Public:       true,
 	}
 

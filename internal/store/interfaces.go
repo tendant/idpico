@@ -83,6 +83,25 @@ type VerificationTokenRepository interface {
 	DeleteExpired(ctx context.Context) error
 }
 
+type GroupRepository interface {
+	Create(ctx context.Context, group *domain.Group) error
+	GetByID(ctx context.Context, id string) (*domain.Group, error)
+	GetByName(ctx context.Context, name string) (*domain.Group, error)
+	Update(ctx context.Context, group *domain.Group) error
+	Delete(ctx context.Context, id string) error
+	List(ctx context.Context) ([]*domain.Group, error)
+
+	// AddMember is idempotent; RemoveMember returns NotFound if absent.
+	AddMember(ctx context.Context, groupID, userID string) error
+	RemoveMember(ctx context.Context, groupID, userID string) error
+	// MemberIDs lists the user IDs in a group.
+	MemberIDs(ctx context.Context, groupID string) ([]string, error)
+	// GroupsForUser lists the groups a user belongs to, ordered by name.
+	GroupsForUser(ctx context.Context, userID string) ([]*domain.Group, error)
+	// RemoveUser drops a user from every group.
+	RemoveUser(ctx context.Context, userID string) error
+}
+
 type Store interface {
 	Users() UserRepository
 	Clients() ClientRepository
@@ -92,5 +111,6 @@ type Store interface {
 	SigningKeys() SigningKeyRepository
 	Consents() ConsentRepository
 	VerificationTokens() VerificationTokenRepository
+	Groups() GroupRepository
 	Close() error
 }

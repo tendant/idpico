@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -16,14 +17,87 @@ type Claims struct {
 	EmailVerified bool   `json:"email_verified,omitempty"`
 	Name          string `json:"name,omitempty"`
 
+	// Group memberships (emitted when the "groups" scope is granted)
+	Groups []string `json:"groups,omitempty"`
+
 	// OAuth claims
 	Scope    string `json:"scope,omitempty"`
 	ClientID string `json:"client_id,omitempty"`
 
-	// Custom claims
-	Extra map[string]any `json:"extra,omitempty"`
+	// Extra claims are serialized as top-level members alongside the
+	// typed fields (e.g. "nonce", or groups under a custom claim name).
+	Extra map[string]any `json:"-"`
 
 	jwt.RegisteredClaims
+}
+
+// SetExtra records an additional top-level claim.
+func (c *Claims) SetExtra(name string, value any) {
+	if c.Extra == nil {
+		c.Extra = make(map[string]any)
+	}
+	c.Extra[name] = value
+}
+
+// claimsJSON is Claims without the custom marshalling, to avoid recursion.
+type claimsJSON Claims
+
+// MarshalJSON flattens Extra into the top-level object.
+func (c Claims) MarshalJSON() ([]byte, error) {
+	base, err := json.Marshal(claimsJSON(c))
+	if err != nil {
+		return nil, err
+	}
+	// A granted-but-empty groups list must survive omitempty: "[]" tells the
+	// client the user has no groups, absence means the scope was not granted.
+	emptyGroups := c.Groups != nil && len(c.Groups) == 0
+	if len(c.Extra) == 0 && !emptyGroups {
+		return base, nil
+	}
+
+	var merged map[string]json.RawMessage
+	if err := json.Unmarshal(base, &merged); err != nil {
+		return nil, err
+	}
+	if emptyGroups {
+		merged["groups"] = json.RawMessage("[]")
+	}
+	for k, v := range c.Extra {
+		if _, taken := merged[k]; taken {
+			continue // typed fields win
+		}
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		merged[k] = raw
+	}
+	return json.Marshal(merged)
+}
+
+// UnmarshalJSON restores typed fields and collects unknown members into Extra.
+func (c *Claims) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, (*claimsJSON)(c)); err != nil {
+		return err
+	}
+	var all map[string]any
+	if err := json.Unmarshal(data, &all); err != nil {
+		return err
+	}
+	for k, v := range all {
+		if !knownClaims[k] {
+			c.SetExtra(k, v)
+		}
+	}
+	return nil
+}
+
+// knownClaims are the JSON names of Claims' typed fields (including the
+// embedded registered claims) that must not be duplicated into Extra.
+var knownClaims = map[string]bool{
+	"email": true, "email_verified": true, "name": true, "groups": true,
+	"scope": true, "client_id": true,
+	"iss": true, "sub": true, "aud": true, "exp": true, "nbf": true, "iat": true, "jti": true,
 }
 
 // TokenGenerator generates and parses JWTs.
@@ -97,10 +171,12 @@ func (g *TokenGenerator) GenerateIDToken(subject string, expiry time.Duration, c
 
 // GenerateAccessToken generates an OAuth access token (JWT).
 func (g *TokenGenerator) GenerateAccessToken(subject string, expiry time.Duration, scope, clientID string) (string, time.Time, error) {
-	claims := &Claims{
-		Scope:    scope,
-		ClientID: clientID,
-	}
+	return g.GenerateAccessTokenWithClaims(subject, expiry, &Claims{Scope: scope, ClientID: clientID})
+}
+
+// GenerateAccessTokenWithClaims generates an access token carrying claims in
+// addition to scope and client_id (e.g. groups for resource servers).
+func (g *TokenGenerator) GenerateAccessTokenWithClaims(subject string, expiry time.Duration, claims *Claims) (string, time.Time, error) {
 	return g.GenerateIDToken(subject, expiry, claims)
 }
 

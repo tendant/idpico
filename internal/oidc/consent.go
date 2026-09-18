@@ -91,6 +91,8 @@ func ScopeDescription(scope string) string {
 		return "View your email address"
 	case "offline_access":
 		return "Stay signed in (issue refresh tokens)"
+	case ScopeGroups:
+		return "See which groups you belong to"
 	default:
 		return "Access: " + scope
 	}

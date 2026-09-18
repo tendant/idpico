@@ -361,3 +361,88 @@ func TestAdmin_Keys(t *testing.T) {
 		}
 	})
 }
+
+func TestAdmin_Groups(t *testing.T) {
+	forEachDriver(t, func(t *testing.T, driver string) {
+		env := setupTestEnv(t, driver)
+		defer env.cleanup()
+		base := env.server.URL
+		ctx := context.Background()
+		admin := adminClient(t, env)
+
+		status, body := get(t, admin, base+"/admin/groups")
+		if status != http.StatusOK || !strings.Contains(body, "devs") || !strings.Contains(body, "<code>groups</code>") {
+			t.Fatalf("groups list should show existing groups and claim name, got %d", status)
+		}
+
+		// Create, duplicate rejected
+		get(t, admin, base+"/admin/groups/new")
+		loc := postAndFollow(t, admin, base, "/admin/groups", url.Values{"name": {"cluster-admins"}, "description": {"Full access"}})
+		grp, err := env.store.Groups().GetByName(ctx, "cluster-admins")
+		if err != nil || !strings.HasPrefix(loc, "/admin/groups/"+grp.ID) {
+			t.Fatalf("group not created: %v %s", err, loc)
+		}
+		get(t, admin, base+"/admin/groups/new")
+		resp := postForm(t, admin, base, "/admin/groups", url.Values{"name": {"Cluster-Admins"}})
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("duplicate group name should be 400, got %d", resp.StatusCode)
+		}
+
+		// Add member by email, unknown email flashes an error
+		page := "/admin/groups/" + grp.ID
+		get(t, admin, base+page)
+		postAndFollow(t, admin, base, page+"/members", url.Values{"email": {"test@example.com"}})
+		if ids, _ := env.store.Groups().MemberIDs(ctx, grp.ID); len(ids) != 1 || ids[0] != env.testUser.ID {
+			t.Errorf("member not added: %v", ids)
+		}
+		get(t, admin, base+page)
+		loc = postAndFollow(t, admin, base, page+"/members", url.Values{"email": {"nobody@example.com"}})
+		if !strings.Contains(loc, "No+user") {
+			t.Errorf("unknown email should flash, got %s", loc)
+		}
+		if _, body := get(t, admin, base+page); !strings.Contains(body, "test@example.com") {
+			t.Error("group page should list members")
+		}
+
+		// Update name; remove member
+		postAndFollow(t, admin, base, page, url.Values{"name": {"admins"}, "description": {"renamed"}})
+		if g, _ := env.store.Groups().GetByID(ctx, grp.ID); g.Name != "admins" {
+			t.Errorf("rename not applied: %+v", g)
+		}
+		get(t, admin, base+page)
+		postAndFollow(t, admin, base, page+"/members/"+env.testUser.ID+"/remove", nil)
+		if ids, _ := env.store.Groups().MemberIDs(ctx, grp.ID); len(ids) != 0 {
+			t.Errorf("member not removed: %v", ids)
+		}
+
+		// User page: checkboxes set membership
+		userPage := "/admin/users/" + env.testUser.ID
+		if _, body := get(t, admin, base+userPage); !strings.Contains(body, `value="`+grp.ID+`"`) || !strings.Contains(body, `value="grp-devs" checked`) {
+			t.Error("user page should list all groups with current membership checked")
+		}
+		postAndFollow(t, admin, base, userPage+"/groups", url.Values{"group": {grp.ID, "grp-ops"}}) // drop devs, add admins+ops
+		mine, _ := env.store.Groups().GroupsForUser(ctx, env.testUser.ID)
+		if len(mine) != 2 || mine[0].Name != "admins" || mine[1].Name != "ops" {
+			t.Errorf("membership not updated from user page: %v", groupNames(mine))
+		}
+
+		// Delete group
+		get(t, admin, base+page)
+		postAndFollow(t, admin, base, page+"/delete", nil)
+		if _, err := env.store.Groups().GetByID(ctx, grp.ID); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+			t.Error("group should be deleted")
+		}
+		if mine, _ := env.store.Groups().GroupsForUser(ctx, env.testUser.ID); len(mine) != 1 {
+			t.Errorf("deleted group should be removed from members, got %v", groupNames(mine))
+		}
+	})
+}
+
+func groupNames(groups []*domain.Group) []string {
+	out := make([]string, len(groups))
+	for i, g := range groups {
+		out[i] = g.Name
+	}
+	return out
+}

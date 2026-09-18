@@ -48,6 +48,8 @@ func Run(t *testing.T, newStore Factory) {
 		{"VerificationTokenRepository_DeleteByUserAndExpired", VerificationTokenRepository_DeleteByUserAndExpired},
 		{"UserRepository_FlagsRoundTrip", UserRepository_FlagsRoundTrip},
 		{"ClientRepository_SkipConsentRoundTrip", ClientRepository_SkipConsentRoundTrip},
+		{"GroupRepository_CRUD", GroupRepository_CRUD},
+		{"GroupRepository_Membership", GroupRepository_Membership},
 		{"NotFoundErrors", NotFoundErrors},
 	}
 
@@ -985,4 +987,113 @@ func VerificationTokenRepository_DeleteByUserAndExpired(t *testing.T, newStore F
 	if _, err := repo.GetByHash(ctx, "reset-2"); err != nil {
 		t.Error("valid token should remain")
 	}
+}
+
+func GroupRepository_CRUD(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	ctx := context.Background()
+	repo := store.Groups()
+
+	g := &domain.Group{ID: "g1", Name: "Admins", Description: "Cluster admins"}
+	if err := repo.Create(ctx, g); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if g.CreatedAt.IsZero() {
+		t.Error("CreatedAt should be set")
+	}
+	if err := repo.Create(ctx, &domain.Group{ID: "g2", Name: "admins"}); !idperrors.IsCode(err, idperrors.CodeAlreadyExists) {
+		t.Errorf("group names should be unique case-insensitively, got %v", err)
+	}
+	if err := repo.Create(ctx, &domain.Group{ID: "g1", Name: "Other"}); !idperrors.IsCode(err, idperrors.CodeAlreadyExists) {
+		t.Errorf("duplicate ID should be already exists, got %v", err)
+	}
+
+	got, err := repo.GetByName(ctx, "ADMINS")
+	if err != nil || got.ID != "g1" {
+		t.Fatalf("GetByName should be case-insensitive: %v %v", got, err)
+	}
+
+	got.Description = "Updated"
+	if err := repo.Update(ctx, got); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	got, _ = repo.GetByID(ctx, "g1")
+	if got.Description != "Updated" {
+		t.Error("Update not persisted")
+	}
+
+	repo.Create(ctx, &domain.Group{ID: "g3", Name: "beta"})
+	list, _ := repo.List(ctx)
+	if len(list) != 2 || list[0].Name != "Admins" || list[1].Name != "beta" {
+		t.Errorf("List should be sorted by name, got %v", names(list))
+	}
+
+	if err := repo.Delete(ctx, "g1"); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+	if _, err := repo.GetByID(ctx, "g1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Error("group should be gone after delete")
+	}
+	if err := repo.Delete(ctx, "g1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("deleting missing group should be not found, got %v", err)
+	}
+}
+
+func GroupRepository_Membership(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	seedUsers(t, store, "u1", "u2")
+	ctx := context.Background()
+	repo := store.Groups()
+	repo.Create(ctx, &domain.Group{ID: "g1", Name: "zeta"})
+	repo.Create(ctx, &domain.Group{ID: "g2", Name: "alpha"})
+
+	if err := repo.AddMember(ctx, "g1", "u1"); err != nil {
+		t.Fatalf("AddMember failed: %v", err)
+	}
+	if err := repo.AddMember(ctx, "g1", "u1"); err != nil {
+		t.Errorf("AddMember should be idempotent, got %v", err)
+	}
+	repo.AddMember(ctx, "g2", "u1")
+	repo.AddMember(ctx, "g1", "u2")
+
+	ids, _ := repo.MemberIDs(ctx, "g1")
+	if len(ids) != 2 {
+		t.Errorf("g1 should have 2 members, got %v", ids)
+	}
+	groups, _ := repo.GroupsForUser(ctx, "u1")
+	if len(groups) != 2 || groups[0].Name != "alpha" || groups[1].Name != "zeta" {
+		t.Errorf("GroupsForUser should list both sorted by name, got %v", names(groups))
+	}
+
+	if err := repo.RemoveMember(ctx, "g2", "u1"); err != nil {
+		t.Fatalf("RemoveMember failed: %v", err)
+	}
+	if err := repo.RemoveMember(ctx, "g2", "u1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("removing absent member should be not found, got %v", err)
+	}
+
+	// Deleting a group drops its memberships
+	if err := repo.Delete(ctx, "g1"); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+	if groups, _ := repo.GroupsForUser(ctx, "u2"); len(groups) != 0 {
+		t.Errorf("u2 should have no groups after g1 deleted, got %v", names(groups))
+	}
+
+	// RemoveUser drops a user from everything
+	repo.AddMember(ctx, "g2", "u1")
+	if err := repo.RemoveUser(ctx, "u1"); err != nil {
+		t.Fatalf("RemoveUser failed: %v", err)
+	}
+	if ids, _ := repo.MemberIDs(ctx, "g2"); len(ids) != 0 {
+		t.Errorf("u1 should be removed from g2, got %v", ids)
+	}
+}
+
+func names(groups []*domain.Group) []string {
+	out := make([]string, len(groups))
+	for i, g := range groups {
+		out[i] = g.Name
+	}
+	return out
 }

@@ -78,6 +78,15 @@ type TokenService struct {
 	accessTTL      time.Duration
 	refreshTTL     time.Duration
 	issuer         string
+	groupClaims    *GroupClaims // nil = never emit groups
+}
+
+// TokenServiceOption configures the TokenService.
+type TokenServiceOption func(*TokenService)
+
+// WithGroupClaims emits group memberships in tokens when the groups scope is granted.
+func WithGroupClaims(gc *GroupClaims) TokenServiceOption {
+	return func(s *TokenService) { s.groupClaims = gc }
 }
 
 // NewTokenService creates a new TokenService.
@@ -89,8 +98,9 @@ func NewTokenService(
 	tokenGenerator *crypto.TokenGenerator,
 	issuer string,
 	accessTTL, refreshTTL time.Duration,
+	opts ...TokenServiceOption,
 ) *TokenService {
-	return &TokenService{
+	s := &TokenService{
 		clients:        clients,
 		authCodes:      authCodes,
 		tokens:         tokens,
@@ -100,6 +110,10 @@ func NewTokenService(
 		accessTTL:      accessTTL,
 		refreshTTL:     refreshTTL,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // ParseTokenRequest parses a token request from the HTTP request.
@@ -435,10 +449,17 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 
 	// Add nonce if provided
 	if nonce != "" {
-		if idTokenClaims.Extra == nil {
-			idTokenClaims.Extra = make(map[string]any)
-		}
-		idTokenClaims.Extra["nonce"] = nonce
+		idTokenClaims.SetExtra("nonce", nonce)
+	}
+
+	// Group memberships go in both tokens: the ID token for the client, the
+	// access token for resource servers that authorize on groups.
+	accessTokenClaims := &crypto.Claims{Scope: scope, ClientID: client.ID}
+	if err := s.groupClaims.Apply(ctx, user, scope, idTokenClaims); err != nil {
+		return nil, err
+	}
+	if err := s.groupClaims.Apply(ctx, user, scope, accessTokenClaims); err != nil {
+		return nil, err
 	}
 
 	// Generate ID token
@@ -448,7 +469,7 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 	}
 
 	// Generate access token
-	accessToken, _, err := s.tokenGenerator.GenerateAccessToken(user.ID, s.accessTTL, scope, client.ID)
+	accessToken, _, err := s.tokenGenerator.GenerateAccessTokenWithClaims(user.ID, s.accessTTL, accessTokenClaims)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}

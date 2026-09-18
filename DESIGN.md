@@ -372,7 +372,8 @@ Two strategies:
 - ✅ Background maintenance: expired-row purge, signing key rotation with grace period
 - ✅ Consent UI with remembered grants, `prompt=none|login|consent`
 - ✅ Password reset + email verification (log or SMTP mailer)
-- ✅ Admin web UI (/admin): users, clients, signing keys
+- ✅ Admin web UI (/admin): users, groups, clients, signing keys
+- ✅ Groups with `groups` scope/claim (configurable claim name)
 - PostgreSQL storage backend (reuses the SQLite schema/migration layout)
 - Rate limiting improvements
 

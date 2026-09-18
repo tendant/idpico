@@ -1,6 +1,8 @@
 package crypto
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -208,5 +210,66 @@ func TestTokenContainsKeyID(t *testing.T) {
 
 	if kid != keyPair.Kid {
 		t.Errorf("Token kid mismatch: expected %s, got %s", keyPair.Kid, kid)
+	}
+}
+
+func TestClaims_ExtraFlattenedTopLevel(t *testing.T) {
+	kp, _ := GenerateKeyPair(2048)
+	gen := NewTokenGenerator(kp, "http://idp", "http://idp")
+
+	claims := &Claims{Email: "a@example.com", Groups: []string{"admins", "devs"}}
+	claims.SetExtra("nonce", "n-123")
+	claims.SetExtra("roles", []string{"admins"})
+	claims.SetExtra("email", "override-ignored@example.com") // typed field wins
+
+	token, _, err := gen.GenerateIDToken("sub-1", time.Minute, claims)
+	if err != nil {
+		t.Fatalf("GenerateIDToken: %v", err)
+	}
+
+	// Decode the payload directly to check the wire format.
+	parts := strings.Split(token, ".")
+	payload, _ := base64.RawURLEncoding.DecodeString(parts[1])
+	var raw map[string]any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		t.Fatalf("payload: %v", err)
+	}
+	if raw["nonce"] != "n-123" {
+		t.Errorf("nonce should be a top-level claim, got %v (payload %s)", raw["nonce"], payload)
+	}
+	if _, nested := raw["extra"]; nested {
+		t.Error("extra must not be serialized as a nested object")
+	}
+	if raw["email"] != "a@example.com" {
+		t.Errorf("typed field should win over Extra, got %v", raw["email"])
+	}
+	if g, ok := raw["groups"].([]any); !ok || len(g) != 2 {
+		t.Errorf("groups claim missing: %v", raw["groups"])
+	}
+	if r, ok := raw["roles"].([]any); !ok || len(r) != 1 {
+		t.Errorf("custom claim missing: %v", raw["roles"])
+	}
+
+	// Parsing round-trips typed fields and puts unknown claims in Extra.
+	_, parsed, err := gen.ParseToken(token)
+	if err != nil {
+		t.Fatalf("ParseToken: %v", err)
+	}
+	if parsed.Extra["nonce"] != "n-123" || len(parsed.Groups) != 2 || parsed.Subject != "sub-1" {
+		t.Errorf("parsed claims wrong: %+v", parsed)
+	}
+	if _, dup := parsed.Extra["email"]; dup {
+		t.Error("typed claims must not be duplicated into Extra on parse")
+	}
+}
+
+func TestClaims_EmptyGroupsSerializedAsList(t *testing.T) {
+	granted, _ := json.Marshal(Claims{Groups: []string{}})
+	if !strings.Contains(string(granted), `"groups":[]`) {
+		t.Errorf("granted-but-empty groups should serialize as [], got %s", granted)
+	}
+	notGranted, _ := json.Marshal(Claims{})
+	if strings.Contains(string(notGranted), "groups") {
+		t.Errorf("nil groups should be omitted, got %s", notGranted)
 	}
 }

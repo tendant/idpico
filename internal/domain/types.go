@@ -32,6 +32,16 @@ type Client struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+// Group is a named set of users, exposed to clients through the "groups"
+// claim so applications can map memberships to their own permissions.
+type Group struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"` // Unique; this is the value emitted in the claim
+	Description string    `json:"description,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 // Consent records that a user allowed a client to act with a set of scopes.
 type Consent struct {
 	ID        string    `json:"id"`

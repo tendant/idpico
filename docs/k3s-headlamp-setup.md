@@ -133,6 +133,12 @@ spec:
             secretKeyRef:
               name: simple-idp-secrets
               key: bootstrap-users
+        # Groups released in the "groups" claim; k3s maps them to RBAC Group subjects
+        - name: IDP_BOOTSTRAP_GROUPS
+          value: "cluster-admins:admin@example.com,viewers:viewer@example.com"
+        # Who may open the admin UI at /admin
+        - name: IDP_ADMIN_EMAILS
+          value: "admin@example.com"
         volumeMounts:
         - name: data
           mountPath: /app/data
@@ -280,6 +286,7 @@ kube-apiserver-arg:
   - "oidc-issuer-url=https://idp.example.com"
   - "oidc-client-id=headlamp"
   - "oidc-username-claim=email"
+  - "oidc-groups-claim=groups"
 EOF
 
 sudo systemctl restart k3s
@@ -308,6 +315,7 @@ runcmd:
       --kube-apiserver-arg=oidc-issuer-url=${oidc_issuer_url}
       --kube-apiserver-arg=oidc-client-id=${oidc_client_id}
       --kube-apiserver-arg=oidc-username-claim=email
+      --kube-apiserver-arg=oidc-groups-claim=groups
 %{ endif ~}
 ```
 
@@ -336,6 +344,7 @@ ps aux | grep kube-apiserver | grep oidc
 # --oidc-issuer-url=https://idp.example.com
 # --oidc-client-id=headlamp
 # --oidc-username-claim=email
+# --oidc-groups-claim=groups
 
 # Check k3s logs
 sudo journalctl -u k3s | grep -i oidc
@@ -425,7 +434,44 @@ spec:
 
 ## Part 4: Configure RBAC for OIDC Users
 
-OIDC users are identified by their email (the `oidc-username-claim`). Create ClusterRoleBindings to grant permissions:
+OIDC users are identified by their email (`oidc-username-claim`) and, when Headlamp requests
+the `groups` scope, by their simple-idp groups (`oidc-groups-claim`). Binding roles to groups
+is the maintainable option: add or remove people in the simple-idp admin UI (`/admin/groups`)
+and RBAC follows without touching the cluster.
+
+```yaml
+# oidc-rbac-groups.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: oidc-cluster-admins
+subjects:
+- kind: Group
+  name: cluster-admins        # simple-idp group name, as emitted in the groups claim
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: oidc-viewers
+subjects:
+- kind: Group
+  name: viewers
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: view
+  apiGroup: rbac.authorization.k8s.io
+```
+
+> Headlamp must request the `groups` scope for the claim to be released. In the Helm values
+> set `config.oidc.scopes: "openid profile email groups"` (bootstrap clients allow it by default).
+
+You can still bind individual users by email:
 
 ```yaml
 # oidc-rbac.yaml
@@ -458,9 +504,10 @@ roleRef:
 
 ### Adding New Users
 
-1. Add user to simple-idp bootstrap users (update the secret)
-2. Add ClusterRoleBinding for the user's email
-3. Restart simple-idp: `kubectl rollout restart deployment simple-idp -n simple-idp`
+Open `https://idp.example.com/admin` as an `IDP_ADMIN_EMAILS` user, create the user (leave the
+password blank to email them an invite), and tick the groups they belong to. No restart needed.
+Alternatively update `IDP_BOOTSTRAP_USERS` / `IDP_BOOTSTRAP_GROUPS` and
+`kubectl rollout restart deployment simple-idp -n simple-idp`.
 
 ## Part 5: Logout
 
@@ -580,6 +627,7 @@ kube-apiserver-arg:
   - "oidc-issuer-url=https://idp.example.com"
   - "oidc-client-id=headlamp"
   - "oidc-username-claim=email"
+  - "oidc-groups-claim=groups"
 EOF
 sudo systemctl restart k3s
 ```

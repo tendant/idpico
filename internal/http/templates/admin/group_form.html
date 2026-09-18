@@ -1,0 +1,70 @@
+{{define "title"}}{{if .IsNew}}New Group{{else}}{{.Group.Name}}{{end}}{{end}}
+{{define "content"}}
+<h1>{{if .IsNew}}New Group{{else}}{{.Group.Name}}{{end}}</h1>
+
+<div class="card">
+<form method="POST" action="{{if .IsNew}}/admin/groups{{else}}/admin/groups/{{.Group.ID}}{{end}}">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <div class="form-row two">
+        <div>
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" value="{{.Group.Name}}" required{{if .IsNew}} autofocus{{end}}>
+            <div class="help">This exact value appears in the claim, e.g. <code>cluster-admins</code>.</div>
+        </div>
+        <div>
+            <label for="description">Description</label>
+            <input type="text" id="description" name="description" value="{{.Group.Description}}">
+        </div>
+    </div>
+    <button type="submit">{{if .IsNew}}Create group{{else}}Save changes{{end}}</button>
+    <a class="button secondary" href="/admin/groups">Cancel</a>
+</form>
+</div>
+
+{{if not .IsNew}}
+<h2>Members</h2>
+{{if .Members}}
+<table>
+    <thead><tr><th>Email</th><th>Name</th><th></th></tr></thead>
+    <tbody>
+    {{range .Members}}
+    <tr>
+        <td><a href="/admin/users/{{.ID}}">{{.Email}}</a></td>
+        <td>{{.DisplayName}}</td>
+        <td class="actions">
+            <form class="inline" method="POST" action="/admin/groups/{{$.Group.ID}}/members/{{.ID}}/remove">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button type="submit" class="small secondary">Remove</button>
+            </form>
+        </td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<div class="card muted">No members yet.</div>
+{{end}}
+
+<div class="card" style="margin-top:16px">
+    <form method="POST" action="/admin/groups/{{.Group.ID}}/members">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="form-row two">
+            <div>
+                <label for="email">Add member by email</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+        </div>
+        <button type="submit" class="secondary">Add member</button>
+    </form>
+</div>
+
+<h2>Danger Zone</h2>
+<div class="card danger-zone">
+    <p class="muted">Deleting the group removes it from every member; it stops appearing in their tokens on the next sign-in.</p>
+    <form class="inline" method="POST" action="/admin/groups/{{.Group.ID}}/delete">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="danger">Delete group</button>
+    </form>
+</div>
+{{end}}
+{{end}}

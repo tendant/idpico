@@ -62,7 +62,7 @@ func TestHealthHandler_Readyz(t *testing.T) {
 }
 
 func TestDiscoveryHandler_OpenIDConfiguration(t *testing.T) {
-	handler := NewDiscoveryHandler("https://idp.example.com")
+	handler := NewDiscoveryHandler("https://idp.example.com", "groups")
 
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/openid-configuration", nil)
 	w := httptest.NewRecorder()
@@ -116,7 +116,7 @@ func TestDiscoveryHandler_OpenIDConfiguration(t *testing.T) {
 }
 
 func TestDiscoveryHandler_OpenIDConfiguration_MethodNotAllowed(t *testing.T) {
-	handler := NewDiscoveryHandler("https://idp.example.com")
+	handler := NewDiscoveryHandler("https://idp.example.com", "groups")
 
 	req := httptest.NewRequest(http.MethodPost, "/.well-known/openid-configuration", nil)
 	w := httptest.NewRecorder()
@@ -130,7 +130,7 @@ func TestDiscoveryHandler_OpenIDConfiguration_MethodNotAllowed(t *testing.T) {
 
 func TestDiscoveryHandler_TrailingSlashNormalization(t *testing.T) {
 	// Issuer URL with trailing slash should be normalized
-	handler := NewDiscoveryHandler("https://idp.example.com/")
+	handler := NewDiscoveryHandler("https://idp.example.com/", "")
 
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/openid-configuration", nil)
 	w := httptest.NewRecorder()

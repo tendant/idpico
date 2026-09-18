@@ -109,7 +109,8 @@ All production code goes under `internal/` to prevent accidental coupling.
 ### Public Endpoints
 - OIDC: `/.well-known/openid-configuration`, `/authorize`, `/token`, `/userinfo`, `/.well-known/jwks.json`
 - Auth UI: `/login`, `/logout`, `/consent`, `/forgot-password`, `/reset-password`, `/verify-email`
-- Admin UI: `/admin` (users, clients, signing keys; requires `User.Admin`, granted via `IDP_ADMIN_EMAILS`)
+- Admin UI: `/admin` (users, groups, clients, signing keys; requires `User.Admin`, granted via `IDP_ADMIN_EMAILS`)
+- Groups: `groups` scope releases memberships as the `groups` claim (`IDP_GROUPS_CLAIM` renames it). No separate role model — a role is a group.
 - Ops: `/healthz`, `/readyz`, `/metrics`
 
 ## Security Requirements

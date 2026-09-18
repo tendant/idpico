@@ -67,6 +67,7 @@ func main() {
 
 	// Bootstrap users and clients from environment variables
 	bootstrapData(context.Background(), cfg, store, logger)
+	bootstrapGroups(context.Background(), cfg, store, logger)
 	grantAdmins(context.Background(), cfg, store, logger)
 
 	// Initialize key service for JWT signing
@@ -130,6 +131,8 @@ func main() {
 		cfg.AuthCodeTTL,
 	)
 
+	groupClaims := oidc.NewGroupClaims(store.Groups(), cfg.GroupsClaim)
+
 	tokenService := oidc.NewTokenService(
 		store.Clients(),
 		store.AuthCodes(),
@@ -139,9 +142,10 @@ func main() {
 		cfg.IssuerURL,
 		cfg.AccessTokenTTL,
 		cfg.RefreshTokenTTL,
+		oidc.WithGroupClaims(groupClaims),
 	)
 
-	userInfoService := oidc.NewUserInfoService(store.Users(), tokenGenerator)
+	userInfoService := oidc.NewUserInfoService(store.Users(), tokenGenerator, oidc.WithUserInfoGroups(groupClaims))
 
 	// Build server options
 	serverOpts := []idphttp.Option{
@@ -151,6 +155,7 @@ func main() {
 		idphttp.WithAuthService(authService),
 		idphttp.WithAccountService(accountService, cfg.PasswordResetTTL.String()),
 		idphttp.WithOIDCServices(authorizeService, tokenService, userInfoService),
+		idphttp.WithGroupsClaim(groupClaims.ClaimName()),
 		idphttp.WithLoginRateLimit(cfg.LoginRateLimit),
 	}
 
@@ -162,6 +167,7 @@ func main() {
 		KeyService:     keyService,
 		IssuerURL:      cfg.IssuerURL,
 		KeyGracePeriod: cfg.SigningKeyGracePeriod,
+		GroupsClaim:    groupClaims.ClaimName(),
 	}))
 
 	// Consent screen (per-client skip_consent still applies)
@@ -272,6 +278,32 @@ func openStore(ctx context.Context, cfg *config.Config, logger *slog.Logger) (st
 	}
 }
 
+// bootstrapGroups creates the groups and memberships from IDP_BOOTSTRAP_GROUPS,
+// skipping anything that already exists.
+func bootstrapGroups(ctx context.Context, cfg *config.Config, store store.Store, logger *slog.Logger) {
+	for _, bg := range cfg.ParseBootstrapGroups() {
+		group, err := store.Groups().GetByName(ctx, bg.Name)
+		if err != nil {
+			group = &domain.Group{ID: uuid.New().String(), Name: bg.Name}
+			if err := store.Groups().Create(ctx, group); err != nil {
+				logger.Error("failed to create bootstrap group", "group", bg.Name, "error", err)
+				continue
+			}
+			logger.Info("created bootstrap group", "group", bg.Name)
+		}
+		for _, email := range bg.Members {
+			user, err := store.Users().GetByEmail(ctx, email)
+			if err != nil {
+				logger.Warn("bootstrap group member not found", "group", bg.Name, "email", email)
+				continue
+			}
+			if err := store.Groups().AddMember(ctx, group.ID, user.ID); err != nil {
+				logger.Error("failed to add bootstrap group member", "group", bg.Name, "email", email, "error", err)
+			}
+		}
+	}
+}
+
 // grantAdmins flags the users listed in IDP_ADMIN_EMAILS as administrators.
 func grantAdmins(ctx context.Context, cfg *config.Config, store store.Store, logger *slog.Logger) {
 	for _, email := range cfg.ParseAdminEmails() {
@@ -370,7 +402,7 @@ func bootstrapData(ctx context.Context, cfg *config.Config, store store.Store, l
 			Name:         c.ID,
 			RedirectURIs: c.RedirectURIs,
 			GrantTypes:   []string{"authorization_code", "refresh_token"},
-			Scopes:       []string{"openid", "profile", "email", "offline_access"},
+			Scopes:       []string{"openid", "profile", "email", "offline_access", "groups"},
 			Public:       c.Public,
 		}
 

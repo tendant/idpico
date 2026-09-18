@@ -34,6 +34,7 @@ type Server struct {
 	securityHeadersConfig *SecurityHeadersConfig
 	metricsEnabled        bool
 	adminConfig           *AdminConfig
+	groupsClaim           string
 }
 
 // Option configures the Server.
@@ -82,6 +83,13 @@ func WithAccountService(accountService *auth.AccountService, resetTTL string) Op
 	return func(s *Server) {
 		s.accountService = accountService
 		s.accountResetTTL = resetTTL
+	}
+}
+
+// WithGroupsClaim advertises the groups scope and claim in discovery.
+func WithGroupsClaim(name string) Option {
+	return func(s *Server) {
+		s.groupsClaim = name
 	}
 }
 
@@ -194,7 +202,7 @@ func NewServer(addr string, opts ...Option) *Server {
 
 	// OIDC discovery endpoint
 	if s.issuerURL != "" {
-		discovery := NewDiscoveryHandler(s.issuerURL)
+		discovery := NewDiscoveryHandler(s.issuerURL, s.groupsClaim)
 		r.Get("/.well-known/openid-configuration", discovery.OpenIDConfiguration)
 	}
 

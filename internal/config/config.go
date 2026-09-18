@@ -86,6 +86,12 @@ type Config struct {
 	// Metrics
 	MetricsEnabled bool `env:"IDP_METRICS_ENABLED" env-default:"true"`
 
+	// Groups
+	GroupsClaim string `env:"IDP_GROUPS_CLAIM" env-default:"groups"` // Claim name memberships are emitted under
+	// BootstrapGroups creates groups and memberships on startup.
+	// Format: "group:email1 email2,group2:email3" (members space-separated, groups comma-separated)
+	BootstrapGroups string `env:"IDP_BOOTSTRAP_GROUPS" env-default:""`
+
 	// AdminEmails lists users (comma-separated) granted access to the admin UI
 	// on startup. Admins can promote further users from the UI.
 	AdminEmails string `env:"IDP_ADMIN_EMAILS" env-default:""`
@@ -249,6 +255,27 @@ func (c *Config) ParseBootstrapUsers() []BootstrapUser {
 		users = append(users, user)
 	}
 	return users
+}
+
+// BootstrapGroup is a group and its members to create on startup.
+type BootstrapGroup struct {
+	Name    string
+	Members []string // emails
+}
+
+// ParseBootstrapGroups parses IDP_BOOTSTRAP_GROUPS.
+// Format: "admins:alice@x.com bob@x.com,devs:carol@x.com"
+func (c *Config) ParseBootstrapGroups() []BootstrapGroup {
+	var groups []BootstrapGroup
+	for _, entry := range splitList(c.BootstrapGroups) {
+		name, members, _ := strings.Cut(entry, ":")
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		groups = append(groups, BootstrapGroup{Name: name, Members: strings.Fields(members)})
+	}
+	return groups
 }
 
 // ParseAdminEmails parses the comma-separated IDP_ADMIN_EMAILS list.
