@@ -274,4 +274,106 @@ func TestPragmasApplied(t *testing.T) {
 	if busy != 5000 {
 		t.Errorf("expected busy_timeout=5000, got %d", busy)
 	}
+
+	var fk int
+	if err := s.DB().QueryRow(`PRAGMA foreign_keys`).Scan(&fk); err != nil {
+		t.Fatalf("PRAGMA foreign_keys: %v", err)
+	}
+	if fk != 1 {
+		t.Error("expected foreign_keys=ON")
+	}
+}
+
+// Referential integrity
+
+func TestForeignKeys_RejectUnknownReferences(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	exp := time.Now().Add(time.Hour)
+
+	s.Users().Create(ctx, &domain.User{ID: "u1", Email: "u1@example.com"})
+	s.Clients().Create(ctx, &domain.Client{ID: "c1", Name: "c1"})
+
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"session unknown user", s.Sessions().Create(ctx, &domain.Session{ID: "s", UserID: "nope", ExpiresAt: exp})},
+		{"token unknown user", s.Tokens().Create(ctx, &domain.Token{ID: "t1", UserID: "nope", ClientID: "c1", ExpiresAt: exp})},
+		{"token unknown client", s.Tokens().Create(ctx, &domain.Token{ID: "t2", UserID: "u1", ClientID: "nope", ExpiresAt: exp})},
+		{"auth code unknown user", s.AuthCodes().Create(ctx, &domain.AuthCode{Code: "a1", UserID: "nope", ClientID: "c1", ExpiresAt: exp})},
+		{"auth code unknown client", s.AuthCodes().Create(ctx, &domain.AuthCode{Code: "a2", UserID: "u1", ClientID: "nope", ExpiresAt: exp})},
+	}
+	for _, tc := range cases {
+		if !idperrors.IsCode(tc.err, idperrors.CodeInvalidInput) {
+			t.Errorf("%s: expected invalid_input, got %v", tc.name, tc.err)
+		}
+	}
+}
+
+func TestForeignKeys_CascadeOnUserDelete(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	exp := time.Now().Add(time.Hour)
+
+	s.Users().Create(ctx, &domain.User{ID: "u1", Email: "u1@example.com"})
+	s.Users().Create(ctx, &domain.User{ID: "u2", Email: "u2@example.com"})
+	s.Clients().Create(ctx, &domain.Client{ID: "c1", Name: "c1"})
+
+	mustCreate(t, s.Sessions().Create(ctx, &domain.Session{ID: "s1", UserID: "u1", ExpiresAt: exp}))
+	mustCreate(t, s.Sessions().Create(ctx, &domain.Session{ID: "s2", UserID: "u2", ExpiresAt: exp}))
+	mustCreate(t, s.Tokens().Create(ctx, &domain.Token{ID: "t1", UserID: "u1", ClientID: "c1", ExpiresAt: exp}))
+	mustCreate(t, s.AuthCodes().Create(ctx, &domain.AuthCode{Code: "a1", UserID: "u1", ClientID: "c1", ExpiresAt: exp}))
+
+	if err := s.Users().Delete(ctx, "u1"); err != nil {
+		t.Fatalf("Delete user failed: %v", err)
+	}
+
+	if _, err := s.Sessions().GetByID(ctx, "s1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("session should cascade on user delete, got %v", err)
+	}
+	if _, err := s.Tokens().GetByID(ctx, "t1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("token should cascade on user delete, got %v", err)
+	}
+	if _, err := s.AuthCodes().GetByCode(ctx, "a1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("auth code should cascade on user delete, got %v", err)
+	}
+	if _, err := s.Sessions().GetByID(ctx, "s2"); err != nil {
+		t.Errorf("other user's session must survive: %v", err)
+	}
+}
+
+func TestForeignKeys_CascadeOnClientDelete(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	exp := time.Now().Add(time.Hour)
+
+	s.Users().Create(ctx, &domain.User{ID: "u1", Email: "u1@example.com"})
+	s.Clients().Create(ctx, &domain.Client{ID: "c1", Name: "c1"})
+	s.Clients().Create(ctx, &domain.Client{ID: "c2", Name: "c2"})
+
+	mustCreate(t, s.Tokens().Create(ctx, &domain.Token{ID: "t1", UserID: "u1", ClientID: "c1", ExpiresAt: exp}))
+	mustCreate(t, s.Tokens().Create(ctx, &domain.Token{ID: "t2", UserID: "u1", ClientID: "c2", ExpiresAt: exp}))
+	mustCreate(t, s.AuthCodes().Create(ctx, &domain.AuthCode{Code: "a1", UserID: "u1", ClientID: "c1", ExpiresAt: exp}))
+
+	if err := s.Clients().Delete(ctx, "c1"); err != nil {
+		t.Fatalf("Delete client failed: %v", err)
+	}
+
+	if _, err := s.Tokens().GetByID(ctx, "t1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("token should cascade on client delete, got %v", err)
+	}
+	if _, err := s.AuthCodes().GetByCode(ctx, "a1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("auth code should cascade on client delete, got %v", err)
+	}
+	if _, err := s.Tokens().GetByID(ctx, "t2"); err != nil {
+		t.Errorf("other client's token must survive: %v", err)
+	}
+}
+
+func mustCreate(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
 }

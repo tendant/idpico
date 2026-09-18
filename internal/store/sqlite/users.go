@@ -34,7 +34,7 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 		user.ID, user.Email, user.PasswordHash, user.DisplayName, user.Active, utc(user.CreatedAt), utc(user.UpdatedAt),
 	)
 	if err != nil {
-		if violatesColumn(err, "users", "email") {
+		if violatesUserEmail(err) {
 			return idperrors.AlreadyExists("user with email", user.Email)
 		}
 		if isUniqueViolation(err) {
@@ -57,7 +57,7 @@ func (r *userRepository) GetByID(ctx context.Context, id string) (*domain.User, 
 }
 
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
-	u, err := scanUser(r.db.QueryRowContext(ctx, `SELECT `+userColumns+` FROM users WHERE email = ?`, email))
+	u, err := scanUser(r.db.QueryRowContext(ctx, `SELECT `+userColumns+` FROM users WHERE LOWER(email) = LOWER(?)`, email))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, idperrors.NotFound("user with email", email)
 	}
@@ -75,7 +75,7 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 		user.Email, user.PasswordHash, user.DisplayName, user.Active, utc(user.UpdatedAt), user.ID,
 	)
 	if err != nil {
-		if violatesColumn(err, "users", "email") {
+		if violatesUserEmail(err) {
 			return idperrors.AlreadyExists("user with email", user.Email)
 		}
 		return idperrors.Internal("failed to update user", err)

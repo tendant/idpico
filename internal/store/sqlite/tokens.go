@@ -24,6 +24,9 @@ func (r *tokenRepository) Create(ctx context.Context, token *domain.Token) error
 		token.ID, token.UserID, token.ClientID, token.Scope, utc(token.CreatedAt), utc(token.ExpiresAt), token.Revoked,
 	)
 	if err != nil {
+		if isForeignKeyViolation(err) {
+			return referenceError("user or client")
+		}
 		if isUniqueViolation(err) {
 			return idperrors.AlreadyExists("token", token.ID)
 		}

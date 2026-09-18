@@ -24,6 +24,9 @@ func (r *sessionRepository) Create(ctx context.Context, session *domain.Session)
 		session.ID, session.UserID, utc(session.CreatedAt), utc(session.ExpiresAt), session.UserAgent, session.IPAddress,
 	)
 	if err != nil {
+		if isForeignKeyViolation(err) {
+			return referenceError("user")
+		}
 		if isUniqueViolation(err) {
 			return idperrors.AlreadyExists("session", session.ID)
 		}

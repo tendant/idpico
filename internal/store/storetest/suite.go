@@ -28,6 +28,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"UserRepository_CRUD", UserRepository_CRUD},
 		{"UserRepository_DuplicateEmail", UserRepository_DuplicateEmail},
 		{"UserRepository_DuplicateID", UserRepository_DuplicateID},
+		{"UserRepository_EmailCaseInsensitive", UserRepository_EmailCaseInsensitive},
 		{"ClientRepository_CRUD", ClientRepository_CRUD},
 		{"SessionRepository_CRUD", SessionRepository_CRUD},
 		{"SessionRepository_DeleteByUserID", SessionRepository_DeleteByUserID},
@@ -48,6 +49,28 @@ func Run(t *testing.T, newStore Factory) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.fn(t, newStore)
 		})
+	}
+}
+
+// seedUsers creates placeholder users so rows that reference them satisfy
+// foreign keys on backends that enforce them.
+func seedUsers(t *testing.T, s store.Store, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if err := s.Users().Create(context.Background(), &domain.User{ID: id, Email: id + "@example.com", Active: true}); err != nil {
+			t.Fatalf("seed user %s: %v", id, err)
+		}
+	}
+}
+
+// seedClients creates placeholder clients so rows that reference them satisfy
+// foreign keys on backends that enforce them.
+func seedClients(t *testing.T, s store.Store, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if err := s.Clients().Create(context.Background(), &domain.Client{ID: id, Name: id}); err != nil {
+			t.Fatalf("seed client %s: %v", id, err)
+		}
 	}
 }
 
@@ -165,6 +188,35 @@ func UserRepository_DuplicateID(t *testing.T, newStore Factory) {
 	}
 }
 
+func UserRepository_EmailCaseInsensitive(t *testing.T, newStore Factory) {
+	store := newStore(t)
+
+	ctx := context.Background()
+	repo := store.Users()
+
+	if err := repo.Create(ctx, &domain.User{ID: "user-1", Email: "Alice@Example.com"}); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Lookup ignores case
+	found, err := repo.GetByEmail(ctx, "alice@example.com")
+	if err != nil {
+		t.Fatalf("GetByEmail should match case-insensitively: %v", err)
+	}
+	if found.ID != "user-1" {
+		t.Errorf("Expected ID 'user-1', got '%s'", found.ID)
+	}
+	if found.Email != "Alice@Example.com" {
+		t.Errorf("Email should be stored as given, got '%s'", found.Email)
+	}
+
+	// Uniqueness ignores case
+	err = repo.Create(ctx, &domain.User{ID: "user-2", Email: "ALICE@example.com"})
+	if !idperrors.IsCode(err, idperrors.CodeAlreadyExists) {
+		t.Errorf("Should return already exists for case-variant duplicate email, got %v", err)
+	}
+}
+
 // Client Repository Tests
 
 func ClientRepository_CRUD(t *testing.T, newStore Factory) {
@@ -229,6 +281,7 @@ func ClientRepository_CRUD(t *testing.T, newStore Factory) {
 
 func SessionRepository_CRUD(t *testing.T, newStore Factory) {
 	store := newStore(t)
+	seedUsers(t, store, "user-1")
 
 	ctx := context.Background()
 	repo := store.Sessions()
@@ -268,6 +321,7 @@ func SessionRepository_CRUD(t *testing.T, newStore Factory) {
 
 func SessionRepository_DeleteByUserID(t *testing.T, newStore Factory) {
 	store := newStore(t)
+	seedUsers(t, store, "user-1", "user-2")
 
 	ctx := context.Background()
 	repo := store.Sessions()
@@ -298,6 +352,7 @@ func SessionRepository_DeleteByUserID(t *testing.T, newStore Factory) {
 
 func SessionRepository_DeleteExpired(t *testing.T, newStore Factory) {
 	store := newStore(t)
+	seedUsers(t, store, "u1")
 
 	ctx := context.Background()
 	repo := store.Sessions()
@@ -329,6 +384,8 @@ func SessionRepository_DeleteExpired(t *testing.T, newStore Factory) {
 
 func AuthCodeRepository_CRUD(t *testing.T, newStore Factory) {
 	store := newStore(t)
+	seedUsers(t, store, "user-1")
+	seedClients(t, store, "client-1")
 
 	ctx := context.Background()
 	repo := store.AuthCodes()
@@ -386,6 +443,8 @@ func AuthCodeRepository_CRUD(t *testing.T, newStore Factory) {
 
 func AuthCodeRepository_DeleteExpired(t *testing.T, newStore Factory) {
 	store := newStore(t)
+	seedUsers(t, store, "u1")
+	seedClients(t, store, "c1")
 
 	ctx := context.Background()
 	repo := store.AuthCodes()
@@ -417,6 +476,8 @@ func AuthCodeRepository_DeleteExpired(t *testing.T, newStore Factory) {
 
 func TokenRepository_CRUD(t *testing.T, newStore Factory) {
 	store := newStore(t)
+	seedUsers(t, store, "user-1")
+	seedClients(t, store, "client-1")
 
 	ctx := context.Background()
 	repo := store.Tokens()
@@ -462,6 +523,8 @@ func TokenRepository_CRUD(t *testing.T, newStore Factory) {
 
 func TokenRepository_RevokeByUserID(t *testing.T, newStore Factory) {
 	store := newStore(t)
+	seedUsers(t, store, "user-1", "user-2")
+	seedClients(t, store, "c1")
 
 	ctx := context.Background()
 	repo := store.Tokens()
@@ -492,6 +555,8 @@ func TokenRepository_RevokeByUserID(t *testing.T, newStore Factory) {
 
 func TokenRepository_RevokeByClientID(t *testing.T, newStore Factory) {
 	store := newStore(t)
+	seedUsers(t, store, "u1")
+	seedClients(t, store, "client-1", "client-2")
 
 	ctx := context.Background()
 	repo := store.Tokens()
@@ -521,6 +586,8 @@ func TokenRepository_RevokeByClientID(t *testing.T, newStore Factory) {
 
 func TokenRepository_DeleteExpired(t *testing.T, newStore Factory) {
 	store := newStore(t)
+	seedUsers(t, store, "u1")
+	seedClients(t, store, "c1")
 
 	ctx := context.Background()
 	repo := store.Tokens()

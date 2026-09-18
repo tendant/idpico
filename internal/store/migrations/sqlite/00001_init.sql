@@ -1,13 +1,15 @@
 -- +goose Up
 CREATE TABLE users (
     id            TEXT PRIMARY KEY,
-    email         TEXT NOT NULL UNIQUE,
+    email         TEXT NOT NULL,
     password_hash TEXT NOT NULL DEFAULT '',
     display_name  TEXT NOT NULL DEFAULT '',
     active        BOOLEAN NOT NULL DEFAULT TRUE,
     created_at    TIMESTAMP NOT NULL,
     updated_at    TIMESTAMP NOT NULL
 );
+-- Emails are unique case-insensitively; lookups use LOWER(email) to hit this index.
+CREATE UNIQUE INDEX users_email_idx ON users (LOWER(email));
 
 CREATE TABLE clients (
     id            TEXT PRIMARY KEY,
@@ -23,7 +25,7 @@ CREATE TABLE clients (
 
 CREATE TABLE sessions (
     id         TEXT PRIMARY KEY,
-    user_id    TEXT NOT NULL,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMP NOT NULL,
     expires_at TIMESTAMP NOT NULL,
     user_agent TEXT NOT NULL DEFAULT '',
@@ -34,8 +36,8 @@ CREATE INDEX sessions_expires_at_idx ON sessions (expires_at);
 
 CREATE TABLE auth_codes (
     code                  TEXT PRIMARY KEY,
-    client_id             TEXT NOT NULL,
-    user_id               TEXT NOT NULL,
+    client_id             TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    user_id               TEXT NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
     redirect_uri          TEXT NOT NULL DEFAULT '',
     scope                 TEXT NOT NULL DEFAULT '',
     code_challenge        TEXT NOT NULL DEFAULT '',
@@ -45,12 +47,14 @@ CREATE TABLE auth_codes (
     expires_at            TIMESTAMP NOT NULL,
     used                  BOOLEAN NOT NULL DEFAULT FALSE
 );
+CREATE INDEX auth_codes_client_id_idx  ON auth_codes (client_id);
+CREATE INDEX auth_codes_user_id_idx    ON auth_codes (user_id);
 CREATE INDEX auth_codes_expires_at_idx ON auth_codes (expires_at);
 
 CREATE TABLE tokens (
     id         TEXT PRIMARY KEY,
-    user_id    TEXT NOT NULL,
-    client_id  TEXT NOT NULL,
+    user_id    TEXT NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+    client_id  TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
     scope      TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP NOT NULL,
     expires_at TIMESTAMP NOT NULL,

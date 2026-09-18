@@ -26,6 +26,9 @@ func (r *authCodeRepository) Create(ctx context.Context, code *domain.AuthCode) 
 		utc(code.CreatedAt), utc(code.ExpiresAt), code.Used,
 	)
 	if err != nil {
+		if isForeignKeyViolation(err) {
+			return referenceError("user or client")
+		}
 		if isUniqueViolation(err) {
 			return idperrors.AlreadyExists("auth code", code.Code)
 		}

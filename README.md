@@ -178,6 +178,8 @@ pure Go (`modernc.org/sqlite`), so the static Docker image works unchanged.
 - Schema is created and migrated automatically on startup (embedded [goose](https://github.com/pressly/goose) migrations under `internal/store/migrations/`)
 - WAL journaling with a 5s busy timeout
 - Tables: `users`, `clients`, `sessions`, `auth_codes`, `tokens`, `signing_keys`
+- Foreign keys are enforced: deleting a user or client cascades to its sessions, auth codes and tokens
+- Emails are unique case-insensitively (`LOWER(email)` index); the JSON backend applies the same rule
 
 Inspect it with any SQLite client, e.g. `sqlite3 data/idp.db '.tables'`.
 

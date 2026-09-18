@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/pressly/goose/v3"
+	idperrors "github.com/tendant/simple-idp/internal/errors"
 	"github.com/tendant/simple-idp/internal/store"
 	"github.com/tendant/simple-idp/internal/store/migrations"
 	sqlite "modernc.org/sqlite"
@@ -129,9 +130,23 @@ func isUniqueViolation(err error) bool {
 	return code == sqlite3.SQLITE_CONSTRAINT_UNIQUE || code == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY
 }
 
-// violatesColumn reports whether a unique-violation error names table.column.
-func violatesColumn(err error, table, column string) bool {
-	return isUniqueViolation(err) && strings.Contains(err.Error(), table+"."+column)
+// isForeignKeyViolation reports whether err is a FOREIGN KEY constraint failure,
+// i.e. the row references a user or client that does not exist.
+func isForeignKeyViolation(err error) bool {
+	var serr *sqlite.Error
+	return errors.As(err, &serr) && serr.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY
+}
+
+// violatesUserEmail reports whether err is the users email uniqueness failure.
+// SQLite names the expression index ("index 'users_email_idx'") rather than
+// the column for this constraint.
+func violatesUserEmail(err error) bool {
+	return isUniqueViolation(err) && strings.Contains(err.Error(), "users_email_idx")
+}
+
+// referenceError converts a foreign-key failure into the caller-facing error.
+func referenceError(what string) error {
+	return idperrors.InvalidInput("referenced " + what + " does not exist")
 }
 
 // rowsAffected returns whether an UPDATE/DELETE touched at least one row.

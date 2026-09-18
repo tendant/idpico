@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -130,7 +131,7 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 		if u.ID == user.ID {
 			return idperrors.AlreadyExists("user", user.ID)
 		}
-		if u.Email == user.Email {
+		if strings.EqualFold(u.Email, user.Email) {
 			return idperrors.AlreadyExists("user with email", user.Email)
 		}
 	}
@@ -164,7 +165,7 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	}
 
 	for _, u := range data.Users {
-		if u.Email == email {
+		if strings.EqualFold(u.Email, email) {
 			return u, nil
 		}
 	}
