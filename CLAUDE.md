@@ -52,14 +52,18 @@ Implementation proceeds in phases to enable faster iteration:
 ## Build Commands
 
 ```bash
-make build              # Build the binary
+make build              # Build ./idp and ./idpctl
 make run                # Build and run the server
 make run-dev            # Run with debug logging
+make seed               # Dev users/groups/clients in ./data
 make test               # Run all tests
+make ci                 # Exactly what GitHub Actions runs: gofmt, vet, -race tests, static build
 make test-flow          # Test full OIDC flow
-go vet ./...            # Lint
-go fmt ./...            # Format code
+make docker-build       # Container image (ghcr.io/tendant/simple-idp)
+make compose-up         # docker compose up --build
 ```
+
+CI (`.github/workflows/ci.yml`) runs `make ci`'s steps on every push/PR and publishes the image to GHCR on `main` and `v*` tags. Releases: update CHANGELOG.md, tag `vX.Y.Z`, push the tag.
 
 ## Architecture Overview
 
@@ -97,7 +101,7 @@ All production code goes under `internal/` to prevent accidental coupling.
 - **Signing keys**: RSA 2048 / RS256 (implemented). Ed25519/EdDSA is a possible future addition; the `signing_keys.algorithm` column already carries the alg
 - **Tokens**: JWT for both ID and access tokens with short TTL + refresh token rotation
 - **Database**: SQLite (default) or JSON files today; Postgres planned. Tables: users, clients, sessions, auth_codes, tokens, signing_keys
-- **Migrations**: goose, embedded via `embed.FS` and applied at startup. Keep SQL portable; dialect-specific DDL lives in its own directory
+- **Migrations**: goose, embedded via `embed.FS` and applied at startup. Keep SQL portable; dialect-specific DDL lives in its own directory. **Shipped migrations are frozen** (`00001_init.sql` as of v0.0.2): every schema change is a new `0000N_<name>.sql`, never an edit of an existing file
 - **Dependency versions**: `go.mod` targets Go 1.24 (matches the Dockerfile). Newer goose/modernc releases require Go 1.25+; check a dependency's `go` directive before bumping
 - **Config**: Environment variables with `IDP_` prefix (e.g., `IDP_ISSUER_URL`, `IDP_STORE_DRIVER`, `IDP_COOKIE_SECRET`)
 

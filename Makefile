@@ -1,4 +1,4 @@
-.PHONY: build run test clean fmt vet lint help
+.PHONY: build run test clean fmt vet lint help seed docker-build docker-run compose-up ci
 
 # Binary name
 BINARY := idp
@@ -29,6 +29,19 @@ test-cover: ## Run tests with coverage
 	go test -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 
+## Container
+IMAGE ?= ghcr.io/tendant/simple-idp
+TAG   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
+docker-build: ## Build the container image
+	docker build -t $(IMAGE):$(TAG) -t $(IMAGE):latest .
+
+docker-run: docker-build ## Run the image locally on :8080
+	docker run --rm -p 8080:8080 -e IDP_BOOTSTRAP_USERS="admin@example.com:password123:Admin" -e IDP_ADMIN_EMAILS=admin@example.com $(IMAGE):$(TAG)
+
+compose-up: ## Start via docker compose
+	docker compose up --build
+
 ## Code quality
 fmt: ## Format code
 	go fmt ./...
@@ -37,6 +50,13 @@ vet: ## Run go vet
 	go vet ./...
 
 lint: fmt vet ## Run all linters
+
+ci: ## What CI runs: gofmt check, vet, race tests, static build
+	@test -z "$$(gofmt -l .)" || (echo "gofmt needed:"; gofmt -l .; exit 1)
+	go vet ./...
+	go test -race -count=1 ./...
+	CGO_ENABLED=0 GOOS=linux go build -o /dev/null ./cmd/idp
+	CGO_ENABLED=0 GOOS=linux go build -o /dev/null ./cmd/idpctl
 
 ## Clean
 clean: ## Clean build artifacts

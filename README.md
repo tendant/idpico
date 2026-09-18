@@ -28,17 +28,18 @@ A lightweight Identity Provider (IdP) implementing OAuth 2.0 and OpenID Connect 
 ## Quick Start
 
 ```bash
-# Build
-make build
+# From source
+make build && make seed && make run        # test@example.com / password123
 
-# Run with default settings
-make run
-
-# Run with debug logging
-make run-dev
+# Or with Docker
+docker compose up                          # admin@example.com / password123
 ```
 
-The server starts at `http://localhost:8080` by default.
+The server starts at `http://localhost:8080`. Open `/playground` to run a login end to end,
+`/admin` for the console. Kubernetes manifests are in [`deploy/k8s/`](deploy/k8s/) (kustomize;
+see [docs/k3s-headlamp-setup.md](docs/k3s-headlamp-setup.md) for a full walkthrough).
+
+Container images: `ghcr.io/tendant/simple-idp:<version>` (built by CI on every tag).
 
 ## Configuration
 
@@ -536,11 +537,14 @@ Available metrics at `/metrics`:
 ## Development
 
 ```bash
-make build        # Build binary
+make build        # Build ./idp and ./idpctl
 make run          # Build and run
 make run-dev      # Run with debug logging
+make seed         # Dev users, groups and clients
 make test         # Run tests
+make ci           # gofmt check, vet, race tests, static build (same as GitHub Actions)
 make test-flow    # Test full OIDC flow
+make docker-build # Build the container image
 make fmt          # Format code
 make vet          # Run go vet
 make clean        # Clean build artifacts

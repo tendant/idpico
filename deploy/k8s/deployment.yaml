@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simple-idp
+  labels:
+    app: simple-idp
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # the SQLite volume cannot be shared between two pods
+  selector:
+    matchLabels:
+      app: simple-idp
+  template:
+    metadata:
+      labels:
+        app: simple-idp
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001    # the "idp" user baked into the image
+        runAsGroup: 10001
+        fsGroup: 10001      # so the volume is writable by that user
+      containers:
+        - name: simple-idp
+          image: ghcr.io/tendant/simple-idp:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: IDP_HOST
+              value: "0.0.0.0"
+            - name: IDP_PORT
+              value: "8080"
+            # Must match the external URL exactly (scheme, host, no trailing slash)
+            - name: IDP_ISSUER_URL
+              value: "https://idp.example.com"
+            - name: IDP_DATA_DIR
+              value: "/app/data"
+            - name: IDP_COOKIE_SECURE
+              value: "true"
+            - name: IDP_LOG_FORMAT
+              value: "json"
+            - name: IDP_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef: { name: simple-idp-secrets, key: cookie-secret }
+            - name: IDP_BOOTSTRAP_USERS
+              valueFrom:
+                secretKeyRef: { name: simple-idp-secrets, key: bootstrap-users }
+            - name: IDP_ADMIN_EMAILS
+              value: "admin@example.com"
+            - name: IDP_BOOTSTRAP_GROUPS
+              value: "cluster-admins:admin@example.com"
+            # First OIDC client (e.g. Headlamp); add more via the admin UI or idpctl
+            - name: IDP_CLIENT_ID
+              value: "headlamp"
+            - name: IDP_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: { name: simple-idp-secrets, key: client-secret }
+            - name: IDP_CLIENT_REDIRECT_URI
+              value: "https://k8s.example.com/oidc-callback"
+            # Shared deployment: turn the built-in test client off
+            - name: IDP_PLAYGROUND_ENABLED
+              value: "false"
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: simple-idp-data

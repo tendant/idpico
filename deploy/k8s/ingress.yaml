@@ -1,0 +1,24 @@
+# Assumes an ingress controller and cert-manager ClusterIssuer named
+# "letsencrypt". Adjust host, class and annotations for your cluster.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: simple-idp
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [idp.example.com]
+      secretName: simple-idp-tls
+  rules:
+    - host: idp.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: simple-idp
+                port:
+                  name: http

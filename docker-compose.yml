@@ -1,0 +1,29 @@
+# One-line local IdP: `docker compose up`
+# Then open http://localhost:8080/playground (admin@example.com / password123)
+services:
+  idp:
+    build: .
+    image: ghcr.io/tendant/simple-idp:latest
+    ports:
+      - "8080:8080"
+    environment:
+      IDP_ISSUER_URL: http://localhost:8080
+      IDP_COOKIE_SECRET: change-me-to-a-long-random-string
+      IDP_LOG_FORMAT: text
+      # Dev accounts, groups and admin access
+      IDP_BOOTSTRAP_USERS: "admin@example.com:password123:Admin,alice@example.com:password123:Alice"
+      IDP_BOOTSTRAP_GROUPS: "admins:admin@example.com,devs:admin@example.com alice@example.com"
+      IDP_ADMIN_EMAILS: admin@example.com
+      # Your application's client (a secret is shown once by the admin UI / idpctl for others)
+      IDP_CLIENT_ID: my-app
+      IDP_CLIENT_SECRET: my-app-secret
+      IDP_CLIENT_REDIRECT_URI: http://localhost:3000/callback
+    volumes:
+      - idp-data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+
+volumes:
+  idp-data:

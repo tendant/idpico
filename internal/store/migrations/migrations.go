@@ -3,6 +3,10 @@
 // Migrations are grouped by dialect (one directory per SQL engine) so that the
 // same repository code can run against multiple databases while each engine
 // gets DDL written in its own type vocabulary.
+//
+// Released migrations are frozen: once a version has shipped, schema changes
+// go in a new numbered file (goose applies them in order and records each in
+// goose_db_version), never in an existing one.
 package migrations
 
 import (

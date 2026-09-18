@@ -62,6 +62,10 @@ docker push your-registry/simple-idp:latest
 
 ### 1.2 Create Kubernetes Manifests
 
+> Ready-made manifests live in [`deploy/k8s/`](../deploy/k8s/) (`kubectl apply -k deploy/k8s`
+> after editing the hostnames and creating the secret). The inline version below shows the
+> same thing step by step.
+
 ```yaml
 # simple-idp.yaml
 apiVersion: v1
