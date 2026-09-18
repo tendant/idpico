@@ -11,9 +11,9 @@
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <div class="form-row">
             <label>Scopes</label>
-            <label class="check"><input type="checkbox" checked disabled> openid</label>
+            <label class="check inline"><input type="checkbox" checked disabled> openid</label>
             {{range .Scopes}}
-            <label class="check"><input type="checkbox" name="scope" value="{{.Name}}"{{if .Checked}} checked{{end}}> {{.Name}}</label>
+            <label class="check inline"><input type="checkbox" name="scope" value="{{.Name}}"{{if .Checked}} checked{{end}}> {{.Name}}</label>
             {{end}}
         </div>
         <div class="form-row">
@@ -27,7 +27,7 @@
         </div>
         <div class="form-row">
             <label for="max_age">max_age (seconds, optional)</label>
-            <input type="text" id="max_age" name="max_age" placeholder="e.g. 60" style="width:140px">
+            <input type="text" id="max_age" name="max_age" placeholder="e.g. 60" class="short">
         </div>
         <button type="submit">Sign in via /authorize</button>
     </form>
@@ -35,7 +35,7 @@
 
 <div class="card">
     <h2 style="margin-top:0">How it works</h2>
-    <table>
+    <table class="kv">
         <tr><th>Client</th><td><code>{{.ClientID}}</code> (confidential, PKCE S256)</td></tr>
         <tr><th>Redirect URI</th><td><code>{{.RedirectURI}}</code></td></tr>
         <tr><th>Issuer</th><td><code>{{.Issuer}}</code></td></tr>
@@ -46,7 +46,7 @@
 </div>
 
 {{if .Result}}
-<h2>2. Result <span class="badge">{{.Result.ObtainedVia}}</span> <span class="muted">{{.Result.At}}</span></h2>
+<h2>2. Result <span class="badge info">{{.Result.ObtainedVia}}</span> <span class="muted">{{.Result.At}}</span></h2>
 <div class="grid">
     <div class="card">
         <h2 style="margin-top:0">ID token claims</h2>

@@ -76,7 +76,7 @@ cmd/idpctl/               # CLI for users, groups, clients, keys (same store)
 cmd/seed/                 # Dev seed data
 internal/
   config/                 # Configuration loading/validation
-  http/                   # Router, middleware, handlers, embedded templates (templates/, templates/admin/)
+  http/                   # Router, middleware, handlers, embedded templates (templates/{,admin,wide}/) and static/style.css
   auth/                   # Login/session, cookies, CSRF
   oidc/                   # OAuth 2.0/OIDC flows
   crypto/                 # JWKS, key rotation, JWT signing
@@ -115,6 +115,12 @@ All production code goes under `internal/` to prevent accidental coupling.
 - Playground: `/playground` is a built-in relying party (client `playground`) that drives the IdP's own endpoints in-process via the router; disable with `IDP_PLAYGROUND_ENABLED=false`
 - Groups: `groups` scope releases memberships as the `groups` claim (`IDP_GROUPS_CLAIM` renames it). No separate role model — a role is a group.
 - Ops: `/healthz`, `/readyz`, `/metrics`
+
+## UI Conventions
+
+- Server-rendered `html/template`, no JavaScript, no build step. Three layouts: `templates/layout.html` (centered card: login, consent, reset), `templates/admin/layout.html` (admin console), `templates/wide/layout.html` (playground)
+- All styling is in `internal/http/static/style.css`, served at `/static/style.css`. Colors are CSS custom properties on `:root` with a `prefers-color-scheme: dark` override — add tokens there, never hard-code colors in templates
+- Forms are plain POST + redirect with a `csrf_token` hidden field and a `?flash=` message
 
 ## Security Requirements
 

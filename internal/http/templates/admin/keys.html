@@ -1,7 +1,7 @@
 {{define "title"}}Signing Keys{{end}}
 {{define "content"}}
 <div class="toolbar">
-    <h1 style="margin:0">Signing Keys</h1>
+    <h1>Signing Keys</h1>
     <form class="inline" method="POST" action="/admin/keys/rotate">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <button type="submit">Rotate now</button>

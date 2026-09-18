@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -207,4 +208,22 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+func TestStaticStylesheet(t *testing.T) {
+	srv := NewServer(":0")
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/static/style.css", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/css") {
+		t.Errorf("expected text/css, got %q", ct)
+	}
+	if !strings.Contains(rec.Body.String(), "prefers-color-scheme: dark") {
+		t.Error("stylesheet should include the dark mode override")
+	}
+	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "max-age") {
+		t.Errorf("stylesheet should be cacheable, got %q", cc)
+	}
 }

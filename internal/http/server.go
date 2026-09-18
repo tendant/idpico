@@ -235,6 +235,7 @@ func NewServer(addr string, opts ...Option) *Server {
 	}
 
 	templates := LoadTemplates(s.logger)
+	r.Handle("/static/*", http.StripPrefix("/static/", StaticHandler()))
 
 	// Rate limiters: "interactive" for anything a person submits (login-sized),
 	// "api" for endpoints legitimate apps call frequently. Nil when disabled.

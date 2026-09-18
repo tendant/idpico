@@ -16,6 +16,23 @@ import (
 //go:embed templates/*.html templates/admin/*.html templates/wide/*.html
 var templateFS embed.FS
 
+//go:embed static/*
+var staticFS embed.FS
+
+// StaticHandler serves the embedded stylesheet (and any future assets)
+// under /static/ with long-lived caching; the files only change with the binary.
+func StaticHandler() http.Handler {
+	sub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		panic(err)
+	}
+	files := http.FileServer(http.FS(sub))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		files.ServeHTTP(w, r)
+	})
+}
+
 // Templates renders the server-side HTML pages. Every page is parsed together
 // with the shared layout so it only has to define "title" and "content".
 type Templates struct {

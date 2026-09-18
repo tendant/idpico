@@ -283,7 +283,7 @@ or from the Users page once you have one admin. `make seed` makes `test@example.
   regenerate the secret; revoke all tokens; delete.
 - **Signing keys**: see active / retiring keys and rotate immediately.
 
-Every form is CSRF-protected. Every mutation — along with sign-ins (including failures and
+The UI follows the system light/dark preference. Every form is CSRF-protected. Every mutation — along with sign-ins (including failures and
 lockouts), sign-outs, consent decisions, password resets and key rotations — is written to the
 audit log (`/admin/audit`, pruned after `IDP_AUDIT_RETENTION`, default 90 days).
 
