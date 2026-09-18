@@ -54,6 +54,9 @@ type Config struct {
 	SMTPFrom        string `env:"IDP_SMTP_FROM" env-default:""`
 	SMTPImplicitTLS bool   `env:"IDP_SMTP_IMPLICIT_TLS" env-default:"false"` // TLS from the first byte (port 465)
 
+	// Built-in OIDC relying party at /playground for trying the flow
+	PlaygroundEnabled bool `env:"IDP_PLAYGROUND_ENABLED" env-default:"true"`
+
 	// Consent
 	RequireConsent bool `env:"IDP_REQUIRE_CONSENT" env-default:"true"` // Show the consent screen for clients without skip_consent
 

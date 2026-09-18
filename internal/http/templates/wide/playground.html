@@ -1,0 +1,84 @@
+{{define "title"}}OIDC Playground{{end}}
+{{define "content"}}
+<h1>OIDC Playground</h1>
+<p class="muted">A built-in relying party. It runs the Authorization Code + PKCE flow against this IdP as the
+<code>{{.ClientID}}</code> client, then shows exactly what your application would receive.</p>
+
+<div class="grid">
+<div class="card">
+    <h2 style="margin-top:0">1. Start a login</h2>
+    <form method="POST" action="/playground/start">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="form-row">
+            <label>Scopes</label>
+            <label class="check"><input type="checkbox" checked disabled> openid</label>
+            {{range .Scopes}}
+            <label class="check"><input type="checkbox" name="scope" value="{{.Name}}"{{if .Checked}} checked{{end}}> {{.Name}}</label>
+            {{end}}
+        </div>
+        <div class="form-row">
+            <label for="prompt">prompt</label>
+            <select id="prompt" name="prompt">
+                <option value="">(none — default behaviour)</option>
+                <option value="login">login — force re-authentication</option>
+                <option value="consent">consent — force the consent screen</option>
+                <option value="none">none — fail instead of interacting</option>
+            </select>
+        </div>
+        <div class="form-row">
+            <label for="max_age">max_age (seconds, optional)</label>
+            <input type="text" id="max_age" name="max_age" placeholder="e.g. 60" style="width:140px">
+        </div>
+        <button type="submit">Sign in via /authorize</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">How it works</h2>
+    <table>
+        <tr><th>Client</th><td><code>{{.ClientID}}</code> (confidential, PKCE S256)</td></tr>
+        <tr><th>Redirect URI</th><td><code>{{.RedirectURI}}</code></td></tr>
+        <tr><th>Issuer</th><td><code>{{.Issuer}}</code></td></tr>
+        <tr><th>Steps</th><td class="muted">state + nonce + code_verifier generated → <code>/authorize</code> → login/consent → callback with code → <code>/token</code> → decode → <code>/userinfo</code></td></tr>
+    </table>
+    {{if .LastError}}<p class="muted" style="margin-top:12px">Last callback error: <code>{{.LastError}}</code></p>{{end}}
+</div>
+</div>
+
+{{if .Result}}
+<h2>2. Result <span class="badge">{{.Result.ObtainedVia}}</span> <span class="muted">{{.Result.At}}</span></h2>
+<div class="grid">
+    <div class="card">
+        <h2 style="margin-top:0">ID token claims</h2>
+        <pre>{{.Result.IDTokenClaims}}</pre>
+        <p class="muted">header: <code>{{.Result.IDTokenHeader}}</code>{{if .Result.NonceOK}} · nonce verified{{end}}</p>
+    </div>
+    <div class="card">
+        <h2 style="margin-top:0">Access token claims</h2>
+        <pre>{{.Result.AccessTokenClaims}}</pre>
+        <p class="muted">expires in {{.Result.ExpiresIn}}s · scope <code>{{.Result.Scope}}</code></p>
+    </div>
+    <div class="card">
+        <h2 style="margin-top:0">/userinfo</h2>
+        <pre>{{.Result.UserInfo}}</pre>
+    </div>
+    <div class="card">
+        <h2 style="margin-top:0">Token response (raw)</h2>
+        <pre>{{.Result.Raw}}</pre>
+    </div>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0">3. Try things with these tokens</h2>
+    <form class="inline" method="POST" action="/playground/userinfo"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button type="submit" class="secondary">Call /userinfo again</button></form>
+    <form class="inline" method="POST" action="/playground/introspect"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button type="submit" class="secondary">Introspect access token</button></form>
+    {{if .Result.RefreshToken}}
+    <form class="inline" method="POST" action="/playground/refresh"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button type="submit" class="secondary">Refresh tokens</button></form>
+    <form class="inline" method="POST" action="/playground/revoke"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button type="submit" class="secondary">Revoke refresh token</button></form>
+    {{end}}
+    <form class="inline" method="POST" action="/playground/logout"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button type="submit" class="secondary">RP-initiated logout</button></form>
+    <form class="inline" method="POST" action="/playground/clear"><input type="hidden" name="csrf_token" value="{{.CSRFToken}}"><button type="submit" class="secondary">Forget tokens</button></form>
+    {{if .Result.Extra}}<h2>Last call</h2><pre>{{.Result.Extra}}</pre>{{end}}
+</div>
+{{end}}
+{{end}}

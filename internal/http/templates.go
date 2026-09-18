@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-//go:embed templates/*.html templates/admin/*.html
+//go:embed templates/*.html templates/admin/*.html templates/wide/*.html
 var templateFS embed.FS
 
 // Templates renders the server-side HTML pages. Every page is parsed together
@@ -31,6 +31,9 @@ func LoadTemplates(logger *slog.Logger) *Templates {
 		panic(err)
 	}
 	if err := t.loadDir(templateFS, "templates/admin", "layout.html", "admin/"); err != nil {
+		panic(err)
+	}
+	if err := t.loadDir(templateFS, "templates/wide", "layout.html", "wide/"); err != nil {
 		panic(err)
 	}
 	return t

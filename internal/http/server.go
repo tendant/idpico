@@ -14,6 +14,7 @@ import (
 	"github.com/tendant/simple-idp/internal/crypto"
 	"github.com/tendant/simple-idp/internal/metrics"
 	"github.com/tendant/simple-idp/internal/oidc"
+	"github.com/tendant/simple-idp/internal/store"
 )
 
 // Server represents the HTTP server.
@@ -37,6 +38,8 @@ type Server struct {
 	adminConfig           *AdminConfig
 	groupsClaim           string
 	audit                 *audit.Recorder
+	playground            bool
+	playgroundClients     store.ClientRepository
 }
 
 // Option configures the Server.
@@ -85,6 +88,15 @@ func WithAccountService(accountService *auth.AccountService, resetTTL string) Op
 	return func(s *Server) {
 		s.accountService = accountService
 		s.accountResetTTL = resetTTL
+	}
+}
+
+// WithPlayground mounts the built-in OIDC relying party at /playground and
+// registers its client in the given repository.
+func WithPlayground(clients store.ClientRepository) Option {
+	return func(s *Server) {
+		s.playground = true
+		s.playgroundClients = clients
 	}
 }
 
@@ -297,13 +309,28 @@ func NewServer(addr string, opts ...Option) *Server {
 				return
 			}
 		}
-		templates.Render(w, http.StatusOK, "message", messagePageData{
+		landing := messagePageData{
 			Title:     "Simple IdP",
 			Message:   "This is an OpenID Connect identity provider for local development.",
 			BackURL:   "/login",
 			BackLabel: "Sign in",
-		})
+		}
+		if s.playground {
+			landing.BackURL, landing.BackLabel = "/playground", "Try the OIDC playground"
+		}
+		templates.Render(w, http.StatusOK, "message", landing)
 	})
+
+	// OIDC playground (built-in relying party)
+	if s.playground && s.authService != nil && s.issuerURL != "" {
+		pg, err := NewPlaygroundHandler(context.Background(), s.playgroundClients, s.authService.CSRF(), r, templates, s.issuerURL, s.logger)
+		if err != nil {
+			s.logger.Error("failed to enable playground", "error", err)
+		} else {
+			r.Route("/playground", pg.Routes)
+			s.logger.Info("OIDC playground enabled at /playground")
+		}
+	}
 
 	// Admin UI
 	if s.adminConfig != nil && s.authService != nil {

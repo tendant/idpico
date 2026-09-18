@@ -69,8 +69,9 @@ IDP_AUTH_CODE_TTL=10m
 IDP_GROUPS_CLAIM=groups            # claim name for memberships
 IDP_BOOTSTRAP_GROUPS=              # "admins:alice@x.com bob@x.com,devs:carol@x.com"
 
-# Admin UI
+# Admin UI & playground
 IDP_ADMIN_EMAILS=admin@example.com # who may open /admin (comma-separated)
+IDP_PLAYGROUND_ENABLED=true        # built-in test client at /playground
 
 # Consent
 IDP_REQUIRE_CONSENT=true           # consent screen for third-party clients
@@ -141,7 +142,22 @@ You can also use a `.env` file (copy from `.env.example`).
 | `GET/POST /reset-password` | Choose a new password from an emailed link |
 | `GET /verify-email` | Confirm an email address from an emailed link |
 
-### Admin UI
+### OIDC Playground
+
+Open `http://localhost:8080/playground` to try the whole flow without writing a client. It is a
+built-in relying party (client id `playground`, registered automatically with a fresh secret
+on every start) that runs Authorization Code + PKCE against this IdP through the same HTTP
+endpoints an external app would use, then shows:
+
+- the decoded ID token and access token claims (with nonce verification)
+- the `/userinfo` response
+- buttons to call `/userinfo`, `/introspect`, refresh, `/revoke`, and RP-initiated logout
+
+Pick scopes (`groups`, `offline_access`, …) and `prompt`/`max_age` values to see how the IdP
+reacts. Open it at the configured `IDP_ISSUER_URL` host, since the callback is an absolute
+URL under the issuer. Disable with `IDP_PLAYGROUND_ENABLED=false`.
+
+## Admin UI
 | Endpoint | Description |
 |----------|-------------|
 | `GET /admin` | Dashboard (requires a signed-in user with the admin flag) |
@@ -199,6 +215,21 @@ You can also use a `.env` file (copy from `.env.example`).
      "scope": "openid profile email"
    }
    ```
+
+## OIDC Playground
+
+Open `http://localhost:8080/playground` to try the whole flow without writing a client. It is a
+built-in relying party (client id `playground`, registered automatically with a fresh secret
+on every start) that runs Authorization Code + PKCE against this IdP through the same HTTP
+endpoints an external app would use, then shows:
+
+- the decoded ID token and access token claims (with nonce verification)
+- the `/userinfo` response
+- buttons to call `/userinfo`, `/introspect`, refresh, `/revoke`, and RP-initiated logout
+
+Pick scopes (`groups`, `offline_access`, …) and `prompt`/`max_age` values to see how the IdP
+reacts. Open it at the configured `IDP_ISSUER_URL` host, since the callback is an absolute
+URL under the issuer. Disable with `IDP_PLAYGROUND_ENABLED=false`.
 
 ## Admin UI
 

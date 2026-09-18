@@ -178,6 +178,11 @@ func main() {
 		GroupsClaim:    groupClaims.ClaimName(),
 	}))
 
+	// OIDC playground
+	if cfg.PlaygroundEnabled {
+		serverOpts = append(serverOpts, idphttp.WithPlayground(store.Clients()))
+	}
+
 	// Consent screen (per-client skip_consent still applies)
 	if cfg.RequireConsent {
 		serverOpts = append(serverOpts, idphttp.WithConsentService(oidc.NewConsentService(store.Consents())))

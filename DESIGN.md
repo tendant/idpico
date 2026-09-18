@@ -376,6 +376,7 @@ Two strategies:
 - ✅ Groups with `groups` scope/claim (configurable claim name)
 - ✅ Audit log with retention; client secrets hashed at rest
 - ✅ Rate limits on all secret-accepting endpoints; per-address reset throttle
+- ✅ OIDC playground: built-in relying party at /playground
 - PostgreSQL storage backend (reuses the SQLite schema/migration layout)
 
 ### v1.0
