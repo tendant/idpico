@@ -547,3 +547,36 @@ func TestMaintenanceDefaults(t *testing.T) {
 		t.Errorf("Expected rotation disabled with 0 days, got %v", cfg.SigningKeyMaxAge())
 	}
 }
+
+func TestMailConfig(t *testing.T) {
+	clearIDPEnvVars()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.MailDriver != MailDriverLog {
+		t.Errorf("Expected default mail driver 'log', got %q", cfg.MailDriver)
+	}
+	if cfg.PasswordResetTTL != time.Hour || cfg.EmailVerifyTTL != 24*time.Hour {
+		t.Errorf("Unexpected default TTLs: reset=%v verify=%v", cfg.PasswordResetTTL, cfg.EmailVerifyTTL)
+	}
+
+	os.Setenv("IDP_MAIL_DRIVER", "smtp")
+	defer os.Unsetenv("IDP_MAIL_DRIVER")
+	if _, err := Load(); err == nil {
+		t.Error("smtp driver without host/from should fail validation")
+	}
+
+	os.Setenv("IDP_SMTP_HOST", "smtp.example.com")
+	os.Setenv("IDP_SMTP_FROM", "idp@example.com")
+	defer os.Unsetenv("IDP_SMTP_HOST")
+	defer os.Unsetenv("IDP_SMTP_FROM")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("smtp config should load: %v", err)
+	}
+	if cfg.SMTPPort != 587 {
+		t.Errorf("Expected default SMTP port 587, got %d", cfg.SMTPPort)
+	}
+}

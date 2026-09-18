@@ -22,6 +22,8 @@ type Server struct {
 	logger                *slog.Logger
 	keyService            *crypto.KeyService
 	authService           *auth.Service
+	accountService        *auth.AccountService
+	accountResetTTL       string
 	authorizeService      *oidc.AuthorizeService
 	consentService        *oidc.ConsentService
 	tokenService          *oidc.TokenService
@@ -70,6 +72,15 @@ func WithOIDCServices(authorizeService *oidc.AuthorizeService, tokenService *oid
 		s.authorizeService = authorizeService
 		s.tokenService = tokenService
 		s.userInfoService = userInfoService
+	}
+}
+
+// WithAccountService enables the password reset and email verification
+// pages. resetTTL is shown to users as the link lifetime (e.g. "1 hour").
+func WithAccountService(accountService *auth.AccountService, resetTTL string) Option {
+	return func(s *Server) {
+		s.accountService = accountService
+		s.accountResetTTL = resetTTL
 	}
 }
 
@@ -203,6 +214,23 @@ func NewServer(addr string, opts ...Option) *Server {
 
 		r.Post("/logout", login.Logout)
 		r.Get("/logout", login.Logout) // Also support GET for simple links
+
+		// Self-service password reset and email verification
+		if s.accountService != nil {
+			login.EnableForgotPassword()
+			account := NewAccountHandler(s.accountService, s.authService.CSRF(), templates, s.accountResetTTL, s.logger)
+			r.Get("/forgot-password", account.ForgotPasswordPage)
+			r.Get("/reset-password", account.ResetPasswordPage)
+			r.Get("/verify-email", account.VerifyEmail)
+			if s.loginRateLimit > 0 {
+				limited := r.With(httprate.LimitByIP(s.loginRateLimit, time.Minute))
+				limited.Post("/forgot-password", account.ForgotPassword)
+				limited.Post("/reset-password", account.ResetPassword)
+			} else {
+				r.Post("/forgot-password", account.ForgotPassword)
+				r.Post("/reset-password", account.ResetPassword)
+			}
+		}
 	}
 
 	// OIDC endpoints

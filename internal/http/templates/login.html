@@ -22,4 +22,7 @@
     </div>
     <button type="submit">Sign In</button>
 </form>
+{{if .ForgotPasswordURL}}
+<div class="links"><a href="{{.ForgotPasswordURL}}">Forgot your password?</a></div>
+{{end}}
 {{end}}

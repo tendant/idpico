@@ -19,6 +19,7 @@ import (
 	"github.com/tendant/simple-idp/internal/crypto"
 	"github.com/tendant/simple-idp/internal/domain"
 	idphttp "github.com/tendant/simple-idp/internal/http"
+	"github.com/tendant/simple-idp/internal/mail"
 	"github.com/tendant/simple-idp/internal/maintenance"
 	"github.com/tendant/simple-idp/internal/oidc"
 	"github.com/tendant/simple-idp/internal/store"
@@ -104,6 +105,20 @@ func main() {
 		auth.WithLockout(lockoutService),
 	)
 
+	// Outbound mail + self-service account flows
+	mailer, err := newMailer(cfg, logger)
+	if err != nil {
+		logger.Error("failed to initialize mailer", "error", err)
+		os.Exit(1)
+	}
+	accountService := auth.NewAccountService(
+		store.Users(), store.VerificationTokens(), store.Sessions(), store.Tokens(),
+		mailer, cfg.IssuerURL,
+		auth.WithAccountLogger(logger),
+		auth.WithResetTTL(cfg.PasswordResetTTL),
+		auth.WithVerifyTTL(cfg.EmailVerifyTTL),
+	)
+
 	// Initialize token generator with KeyService for key rotation support
 	tokenGenerator := crypto.NewTokenGeneratorWithKeyService(activeKey, keyService, cfg.IssuerURL, cfg.IssuerURL)
 
@@ -133,6 +148,7 @@ func main() {
 		idphttp.WithKeyService(keyService),
 		idphttp.WithIssuerURL(cfg.IssuerURL),
 		idphttp.WithAuthService(authService),
+		idphttp.WithAccountService(accountService, cfg.PasswordResetTTL.String()),
 		idphttp.WithOIDCServices(authorizeService, tokenService, userInfoService),
 		idphttp.WithLoginRateLimit(cfg.LoginRateLimit),
 	}
@@ -242,6 +258,25 @@ func openStore(ctx context.Context, cfg *config.Config, logger *slog.Logger) (st
 
 	default:
 		return nil, nil, fmt.Errorf("unsupported store driver %q", cfg.StoreDriver)
+	}
+}
+
+// newMailer builds the outbound mailer selected by IDP_MAIL_DRIVER.
+func newMailer(cfg *config.Config, logger *slog.Logger) (mail.Mailer, error) {
+	switch cfg.MailDriver {
+	case config.MailDriverSMTP:
+		logger.Info("using smtp mailer", "host", cfg.SMTPHost, "port", cfg.SMTPPort, "from", cfg.SMTPFrom)
+		return mail.NewSMTPMailer(mail.SMTPConfig{
+			Host:        cfg.SMTPHost,
+			Port:        cfg.SMTPPort,
+			Username:    cfg.SMTPUsername,
+			Password:    cfg.SMTPPassword,
+			From:        cfg.SMTPFrom,
+			ImplicitTLS: cfg.SMTPImplicitTLS,
+		})
+	default:
+		logger.Info("using log mailer: emails are written to the server log, not sent")
+		return mail.NewLogMailer(logger), nil
 	}
 }
 

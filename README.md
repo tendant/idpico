@@ -68,6 +68,12 @@ IDP_AUTH_CODE_TTL=10m
 # Consent
 IDP_REQUIRE_CONSENT=true           # consent screen for third-party clients
 
+# Email (password reset / verification links)
+IDP_MAIL_DRIVER=log                # log = print to server log, smtp = send
+IDP_SMTP_HOST=                     # required for smtp, with IDP_SMTP_FROM
+IDP_PASSWORD_RESET_TTL=1h
+IDP_EMAIL_VERIFY_TTL=24h
+
 # Key rotation & maintenance
 IDP_SIGNING_KEY_ROTATION_DAYS=30   # 0 = disabled
 IDP_SIGNING_KEY_GRACE_PERIOD=24h   # rotated keys remain valid for verification
@@ -124,6 +130,9 @@ You can also use a `.env` file (copy from `.env.example`).
 | `POST /login` | Process login |
 | `GET /logout` | Logout |
 | `POST /consent` | Records the user's allow/deny decision from the consent screen |
+| `GET/POST /forgot-password` | Request a password reset link by email |
+| `GET/POST /reset-password` | Choose a new password from an emailed link |
+| `GET /verify-email` | Confirm an email address from an emailed link |
 
 ### Operations
 | Endpoint | Description |
@@ -337,6 +346,22 @@ scope prompts again, and `prompt=consent` always prompts. Standard OIDC `prompt`
 
 Clients marked `skip_consent` (first-party apps) never prompt. Set `IDP_REQUIRE_CONSENT=false`
 to disable the screen globally.
+
+### Password Reset & Email Verification
+
+Users can request a reset link from the login page (`/forgot-password`). Links are random,
+single-use, expire after `IDP_PASSWORD_RESET_TTL` (default 1h), and only their hash is stored.
+Completing a reset revokes all of the user's sessions and refresh tokens. The response never
+reveals whether an address exists.
+
+Email verification works the same way (`/verify-email`, `IDP_EMAIL_VERIFY_TTL`, default 24h)
+and sets the `email_verified` claim returned in ID tokens and `/userinfo`. Bootstrap users are
+created verified; verification mail is sent from the admin UI.
+
+With the default `IDP_MAIL_DRIVER=log`, emails are written to the server log instead of being
+sent — the link is right there when you're testing locally. Set `IDP_MAIL_DRIVER=smtp` with
+`IDP_SMTP_HOST`, `IDP_SMTP_FROM` and optional `IDP_SMTP_USERNAME`/`IDP_SMTP_PASSWORD` to
+deliver real mail (STARTTLS when offered; `IDP_SMTP_IMPLICIT_TLS=true` for port 465).
 
 ### Signing Key Rotation & Maintenance
 

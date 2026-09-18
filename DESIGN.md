@@ -371,8 +371,8 @@ Two strategies:
 - ✅ Store conformance test suite shared by all backends
 - ✅ Background maintenance: expired-row purge, signing key rotation with grace period
 - ✅ Consent UI with remembered grants, `prompt=none|login|consent`
+- ✅ Password reset + email verification (log or SMTP mailer)
 - PostgreSQL storage backend (reuses the SQLite schema/migration layout)
-- Password reset + email verification
 - Rate limiting improvements
 
 ### v1.0

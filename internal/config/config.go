@@ -40,6 +40,19 @@ type Config struct {
 	RefreshTokenTTL time.Duration `env:"IDP_REFRESH_TOKEN_TTL" env-default:"168h"` // 7 days
 	AuthCodeTTL     time.Duration `env:"IDP_AUTH_CODE_TTL" env-default:"10m"`
 
+	// Account self-service (password reset, email verification)
+	PasswordResetTTL time.Duration `env:"IDP_PASSWORD_RESET_TTL" env-default:"1h"`
+	EmailVerifyTTL   time.Duration `env:"IDP_EMAIL_VERIFY_TTL" env-default:"24h"`
+
+	// Outbound mail: "log" prints messages to the server log, "smtp" sends them
+	MailDriver      string `env:"IDP_MAIL_DRIVER" env-default:"log"`
+	SMTPHost        string `env:"IDP_SMTP_HOST" env-default:""`
+	SMTPPort        int    `env:"IDP_SMTP_PORT" env-default:"587"`
+	SMTPUsername    string `env:"IDP_SMTP_USERNAME" env-default:""`
+	SMTPPassword    string `env:"IDP_SMTP_PASSWORD" env-default:""`
+	SMTPFrom        string `env:"IDP_SMTP_FROM" env-default:""`
+	SMTPImplicitTLS bool   `env:"IDP_SMTP_IMPLICIT_TLS" env-default:"false"` // TLS from the first byte (port 465)
+
 	// Consent
 	RequireConsent bool `env:"IDP_REQUIRE_CONSENT" env-default:"true"` // Show the consent screen for clients without skip_consent
 
@@ -113,6 +126,9 @@ func Load() (*Config, error) {
 	if err := cfg.validateStore(); err != nil {
 		return nil, err
 	}
+	if err := cfg.validateMail(); err != nil {
+		return nil, err
+	}
 
 	return &cfg, nil
 }
@@ -130,6 +146,27 @@ func (c *Config) validateStore() error {
 		return nil
 	default:
 		return fmt.Errorf("invalid IDP_STORE_DRIVER %q (expected %q or %q)", c.StoreDriver, StoreDriverSQLite, StoreDriverFile)
+	}
+}
+
+// Mail drivers.
+const (
+	MailDriverLog  = "log"
+	MailDriverSMTP = "smtp"
+)
+
+func (c *Config) validateMail() error {
+	c.MailDriver = strings.ToLower(strings.TrimSpace(c.MailDriver))
+	switch c.MailDriver {
+	case MailDriverLog:
+		return nil
+	case MailDriverSMTP:
+		if c.SMTPHost == "" || c.SMTPFrom == "" {
+			return fmt.Errorf("IDP_SMTP_HOST and IDP_SMTP_FROM are required when IDP_MAIL_DRIVER=smtp")
+		}
+		return nil
+	default:
+		return fmt.Errorf("invalid IDP_MAIL_DRIVER %q (expected %q or %q)", c.MailDriver, MailDriverLog, MailDriverSMTP)
 	}
 }
 

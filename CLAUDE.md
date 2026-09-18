@@ -79,6 +79,7 @@ internal/
   oidc/                   # OAuth 2.0/OIDC flows
   crypto/                 # JWKS, key rotation, JWT signing
   maintenance/            # Background purge of expired rows + key rotation
+  mail/                   # Outbound email (log mailer for dev, SMTP)
   store/                  # Persistence interfaces
     file/                 #   JSON file backend
     sqlite/               #   SQLite backend (default)

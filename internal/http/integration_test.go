@@ -20,6 +20,7 @@ import (
 	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/crypto"
 	"github.com/tendant/simple-idp/internal/domain"
+	"github.com/tendant/simple-idp/internal/mail"
 	"github.com/tendant/simple-idp/internal/oidc"
 	"github.com/tendant/simple-idp/internal/store"
 	"github.com/tendant/simple-idp/internal/store/file"
@@ -34,6 +35,7 @@ type testEnv struct {
 	keyService   *crypto.KeyService
 	testUser     *domain.User
 	testClient   *domain.Client
+	mailer       *mail.MemoryMailer
 	dataDir      string
 	cookieSecret string
 }
@@ -151,6 +153,11 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		auth.WithLockout(lockoutService),
 	)
 
+	// Self-service account flows with an in-memory mailer
+	mailer := &mail.MemoryMailer{}
+	accountService := auth.NewAccountService(store.Users(), store.VerificationTokens(), store.Sessions(), store.Tokens(),
+		mailer, "http://localhost:8080", auth.WithAccountLogger(logger))
+
 	// Create OIDC services
 	authorizeService := oidc.NewAuthorizeService(store.Clients(), store.AuthCodes(), 10*time.Minute)
 	consentService := oidc.NewConsentService(store.Consents())
@@ -172,6 +179,7 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		WithIssuerURL("http://localhost:8080"),
 		WithKeyService(keyService),
 		WithAuthService(authService),
+		WithAccountService(accountService, "1h0m0s"),
 		WithOIDCServices(authorizeService, tokenService, userInfoService),
 		WithConsentService(consentService),
 	)
@@ -186,6 +194,7 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		keyService:   keyService,
 		testUser:     testUser,
 		testClient:   testClient,
+		mailer:       mailer,
 		dataDir:      dataDir,
 		cookieSecret: cookieSecret,
 	}
@@ -1107,5 +1116,171 @@ func TestIntegration_Consent(t *testing.T) {
 				t.Errorf("session should be gone after prompt=login, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
 			}
 		})
+	})
+}
+
+// linkToken pulls the token out of the link in the last email.
+func linkToken(t *testing.T, mailer *mail.MemoryMailer, path string) string {
+	t.Helper()
+	msg := mailer.Last()
+	if msg == nil {
+		t.Fatal("expected an email")
+	}
+	for _, word := range strings.Fields(msg.Body) {
+		if strings.Contains(word, path+"?token=") {
+			return mustParseURL(word).Query().Get("token")
+		}
+	}
+	t.Fatalf("no %s link in email: %q", path, msg.Body)
+	return ""
+}
+
+func TestIntegration_PasswordReset(t *testing.T) {
+	forEachDriver(t, func(t *testing.T, driver string) {
+		env := setupTestEnv(t, driver)
+		defer env.cleanup()
+		base := env.server.URL
+		client := newClientWithCookies()
+
+		// Login page links to the flow
+		resp, _ := client.Get(base + "/login")
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if !strings.Contains(string(body), "/forgot-password") {
+			t.Error("login page should link to forgot-password")
+		}
+
+		// Request a reset
+		resp, _ = client.Get(base + "/forgot-password")
+		resp.Body.Close()
+		form := url.Values{"email": {"test@example.com"}, "csrf_token": {csrfCookie(client, base)}}
+		resp, _ = client.PostForm(base+"/forgot-password", form)
+		body, _ = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "reset link has been sent") {
+			t.Fatalf("expected confirmation page, got %d", resp.StatusCode)
+		}
+		token := linkToken(t, env.mailer, "/reset-password")
+
+		// Unknown email gets the same page and no mail
+		sent := len(env.mailer.Messages)
+		resp, _ = client.Get(base + "/forgot-password")
+		resp.Body.Close()
+		form = url.Values{"email": {"nobody@example.com"}, "csrf_token": {csrfCookie(client, base)}}
+		resp, _ = client.PostForm(base+"/forgot-password", form)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || len(env.mailer.Messages) != sent {
+			t.Errorf("unknown email should not be distinguishable: status %d, mails %d->%d", resp.StatusCode, sent, len(env.mailer.Messages))
+		}
+
+		// Open the link, submit mismatched passwords, then a good one
+		resp, _ = client.Get(base + "/reset-password?token=" + url.QueryEscape(token))
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected reset form, got %d", resp.StatusCode)
+		}
+		form = url.Values{"token": {token}, "password": {"new-password-1"}, "confirm": {"different"}, "csrf_token": {csrfCookie(client, base)}}
+		resp, _ = client.PostForm(base+"/reset-password", form)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("mismatched passwords should be rejected, got %d", resp.StatusCode)
+		}
+		form.Set("confirm", "new-password-1")
+		form.Set("csrf_token", csrfCookie(client, base))
+		resp, _ = client.PostForm(base+"/reset-password", form)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusFound || !strings.HasPrefix(resp.Header.Get("Location"), "/login") {
+			t.Fatalf("expected redirect to login after reset, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
+		}
+
+		// Link is now dead
+		resp, _ = client.Get(base + "/reset-password?token=" + url.QueryEscape(token))
+		resp.Body.Close()
+		form.Set("csrf_token", csrfCookie(client, base))
+		resp, _ = client.PostForm(base+"/reset-password", form)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("reused reset link should fail, got %d", resp.StatusCode)
+		}
+
+		// Old password fails, new one works
+		resp, _ = client.Get(base + "/login")
+		resp.Body.Close()
+		form = url.Values{"email": {"test@example.com"}, "password": {"password123"}, "csrf_token": {csrfCookie(client, base)}}
+		resp, _ = client.PostForm(base+"/login", form)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("old password should be rejected, got %d", resp.StatusCode)
+		}
+		loginAs(t, client, base, "test@example.com", "new-password-1")
+	})
+}
+
+func TestIntegration_EmailVerification(t *testing.T) {
+	forEachDriver(t, func(t *testing.T, driver string) {
+		env := setupTestEnv(t, driver)
+		defer env.cleanup()
+		base := env.server.URL
+		ctx := context.Background()
+
+		user, _ := env.store.Users().GetByID(ctx, env.testUser.ID)
+		if user.EmailVerified {
+			t.Fatal("test user should start unverified")
+		}
+
+		// Bad link
+		resp, _ := http.Get(base + "/verify-email?token=nope")
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("bad token should be 400, got %d", resp.StatusCode)
+		}
+
+		// Real link (sent by the account service, as the admin UI will do)
+		accounts := auth.NewAccountService(env.store.Users(), env.store.VerificationTokens(), env.store.Sessions(), env.store.Tokens(), env.mailer, base)
+		if err := accounts.SendEmailVerification(ctx, user); err != nil {
+			t.Fatalf("SendEmailVerification: %v", err)
+		}
+		token := linkToken(t, env.mailer, "/verify-email")
+
+		resp, _ = http.Get(base + "/verify-email?token=" + url.QueryEscape(token))
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "has been verified") {
+			t.Fatalf("expected verified page, got %d: %s", resp.StatusCode, body)
+		}
+
+		user, _ = env.store.Users().GetByID(ctx, env.testUser.ID)
+		if !user.EmailVerified {
+			t.Error("user should be verified")
+		}
+
+		// The claim now reflects it: log in, authorize the first-party client, exchange, check ID token
+		client := newClientWithCookies()
+		loginAs(t, client, base, "test@example.com", "password123")
+		codeVerifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+		hash := sha256.Sum256([]byte(codeVerifier))
+		p := url.Values{
+			"client_id": {"public-client"}, "redirect_uri": {"http://localhost:3000/callback"},
+			"response_type": {"code"}, "scope": {"openid email"},
+			"code_challenge": {base64.RawURLEncoding.EncodeToString(hash[:])}, "code_challenge_method": {"S256"},
+		}
+		resp, _ = client.Get(base + "/authorize?" + p.Encode())
+		resp.Body.Close()
+		code := mustParseURL(resp.Header.Get("Location")).Query().Get("code")
+		tokenForm := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {"http://localhost:3000/callback"}, "client_id": {"public-client"}, "code_verifier": {codeVerifier}}
+		resp, _ = http.PostForm(base+"/token", tokenForm)
+		var tokens oidc.TokenResponse
+		json.NewDecoder(resp.Body).Decode(&tokens)
+		resp.Body.Close()
+
+		req, _ := http.NewRequest(http.MethodGet, base+"/userinfo", nil)
+		req.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
+		resp, _ = http.DefaultClient.Do(req)
+		var info map[string]any
+		json.NewDecoder(resp.Body).Decode(&info)
+		resp.Body.Close()
+		if v, _ := info["email_verified"].(bool); !v {
+			t.Errorf("userinfo email_verified should be true, got %v", info["email_verified"])
+		}
 	})
 }

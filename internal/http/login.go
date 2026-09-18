@@ -14,6 +14,8 @@ type LoginHandler struct {
 	authService *auth.Service
 	logger      *slog.Logger
 	templates   *Templates
+	// forgotPasswordURL is linked from the login form; empty hides the link.
+	forgotPasswordURL string
 }
 
 // NewLoginHandler creates a new LoginHandler.
@@ -23,6 +25,11 @@ func NewLoginHandler(authService *auth.Service, templates *Templates, logger *sl
 		logger:      logger,
 		templates:   templates,
 	}
+}
+
+// EnableForgotPassword shows the "Forgot your password?" link on the login page.
+func (h *LoginHandler) EnableForgotPassword() {
+	h.forgotPasswordURL = "/forgot-password"
 }
 
 // LoginPage handles GET /login - displays the login form.
@@ -47,9 +54,10 @@ func (h *LoginHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.templates.Render(w, http.StatusOK, "login", loginPageData{
-		CSRFToken: csrfToken,
-		ReturnURL: r.URL.Query().Get("return_url"),
-		Message:   r.URL.Query().Get("message"),
+		CSRFToken:         csrfToken,
+		ReturnURL:         r.URL.Query().Get("return_url"),
+		Message:           r.URL.Query().Get("message"),
+		ForgotPasswordURL: h.forgotPasswordURL,
 	})
 }
 
@@ -154,9 +162,10 @@ func (h *LoginHandler) renderLoginError(w http.ResponseWriter, errMsg, returnURL
 	csrfToken, _ := h.authService.CSRF().GenerateToken(w)
 
 	h.templates.Render(w, http.StatusUnauthorized, "login", loginPageData{
-		CSRFToken: csrfToken,
-		ReturnURL: returnURL,
-		Error:     errMsg,
+		CSRFToken:         csrfToken,
+		ReturnURL:         returnURL,
+		Error:             errMsg,
+		ForgotPasswordURL: h.forgotPasswordURL,
 	})
 }
 
@@ -176,8 +185,9 @@ func isValidReturnURL(returnURL string) bool {
 }
 
 type loginPageData struct {
-	CSRFToken string
-	ReturnURL string
-	Error     string
-	Message   string
+	CSRFToken         string
+	ReturnURL         string
+	Error             string
+	Message           string
+	ForgotPasswordURL string
 }
