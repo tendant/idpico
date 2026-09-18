@@ -18,7 +18,7 @@ run: build ## Build and run the server
 run-dev: build ## Run with debug logging
 	IDP_LOG_LEVEL=debug IDP_LOG_FORMAT=text ./$(BINARY)
 
-seed: ## Create test user (test@example.com / password123, admin) and clients in the default store
+seed: ## Create test users (test@example.com admin, alice@example.com; password123), groups and clients
 	go run ./cmd/seed
 
 ## Test

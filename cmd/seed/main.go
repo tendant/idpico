@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/tendant/simple-idp/internal/auth"
@@ -85,34 +86,62 @@ func main() {
 		fmt.Printf("Created public client: %s\n", publicClient.ID)
 	}
 
-	// Create test user
+	// Create test users: an admin and a regular user
 	password := "password123"
 	hash, err := auth.HashPassword(password)
 	if err != nil {
 		log.Fatalf("Failed to hash password: %v", err)
 	}
 
-	user := &domain.User{
-		ID:            uuid.New().String(),
-		Email:         "test@example.com",
-		PasswordHash:  hash,
-		DisplayName:   "Test User",
-		Active:        true,
-		EmailVerified: true,
-		Admin:         true,
+	users := []*domain.User{
+		{ID: uuid.New().String(), Email: "test@example.com", PasswordHash: hash, DisplayName: "Test User", Active: true, EmailVerified: true, Admin: true},
+		{ID: uuid.New().String(), Email: "alice@example.com", PasswordHash: hash, DisplayName: "Alice", Active: true, EmailVerified: true},
+	}
+	for _, u := range users {
+		if err := store.Users().Create(ctx, u); err != nil {
+			fmt.Printf("User %s may already exist: %v\n", u.Email, err)
+		} else {
+			fmt.Printf("Created user: %s (password: %s, admin: %v)\n", u.Email, password, u.Admin)
+		}
 	}
 
-	if err := store.Users().Create(ctx, user); err != nil {
-		fmt.Printf("User may already exist: %v\n", err)
-	} else {
-		fmt.Printf("Created user: %s (password: %s)\n", user.Email, password)
+	// Create groups and memberships (released in the "groups" claim)
+	groups := []struct {
+		name, description string
+		members           []string
+	}{
+		{"admins", "Administrators", []string{"test@example.com"}},
+		{"devs", "Developers", []string{"test@example.com", "alice@example.com"}},
+	}
+	for _, g := range groups {
+		group, err := store.Groups().GetByName(ctx, g.name)
+		if err != nil {
+			group = &domain.Group{ID: uuid.New().String(), Name: g.name, Description: g.description}
+			if err := store.Groups().Create(ctx, group); err != nil {
+				fmt.Printf("Group %s could not be created: %v\n", g.name, err)
+				continue
+			}
+			fmt.Printf("Created group: %s\n", g.name)
+		}
+		for _, email := range g.members {
+			u, err := store.Users().GetByEmail(ctx, email)
+			if err != nil {
+				continue
+			}
+			if err := store.Groups().AddMember(ctx, group.ID, u.ID); err != nil {
+				fmt.Printf("Could not add %s to %s: %v\n", email, g.name, err)
+			}
+		}
+		fmt.Printf("Group %s members: %s\n", g.name, strings.Join(g.members, ", "))
 	}
 
 	fmt.Println("\nSeed data created successfully!")
 	fmt.Println("\nTest with:")
 	fmt.Println("  1. Start server: IDP_COOKIE_SECRET=your-secret-here go run ./cmd/idp")
 	fmt.Println("  2. Open browser: http://localhost:8080/authorize?client_id=test-client&redirect_uri=http://localhost:3000/callback&response_type=code&scope=openid%20profile%20email&state=test123")
-	fmt.Println("  3. Login with: test@example.com / password123")
+	fmt.Println("  3. Login with: test@example.com / password123 (admin, groups: admins devs)")
+	fmt.Println("                 alice@example.com / password123 (groups: devs)")
+	fmt.Println("  4. Or use the playground: http://localhost:8080/playground and the admin UI: http://localhost:8080/admin")
 
 	os.Exit(0)
 }

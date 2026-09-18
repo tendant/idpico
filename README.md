@@ -269,7 +269,9 @@ while the server is up; with the JSON file driver stop the server first.
 
 A server-rendered admin console lives at `/admin`. Sign in with a user that has the admin
 flag — grant it with `IDP_ADMIN_EMAILS` (applied on startup to existing or bootstrap users)
-or from the Users page once you have one admin. `make seed` makes `test@example.com` an admin.
+or from the Users page once you have one admin. `make seed` creates `test@example.com` (admin,
+groups `admins` + `devs`) and `alice@example.com` (groups `devs`), both with password
+`password123`, plus `test-client` / `test-public-client`.
 
 - **Users**: create (with a password, or leave it blank to send an invite link), edit email /
   name / active / verified / admin, set a password (signs the user out everywhere), send reset
