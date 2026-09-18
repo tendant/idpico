@@ -260,16 +260,19 @@ re-created from the environment).
 
 ### Rate Limiting
 
-The IdP includes rate limiting to prevent brute-force attacks:
+Per-IP limits guard every endpoint that accepts a guessable secret. `IDP_LOGIN_RATE_LIMIT`
+(default 5) sets the interactive limit; API endpoints get 10× that. Set to `0` to disable.
 
-| Endpoint | Default Limit | Window |
-|----------|---------------|--------|
-| `POST /login` | 5 requests | 1 minute |
-| `POST /token` | 50 requests | 1 minute |
+| Endpoints | Default Limit | Window |
+|-----------|---------------|--------|
+| `POST /login`, `POST /consent`, `POST /forgot-password`, `POST /reset-password`, `GET /verify-email` | 5 requests | 1 minute |
+| `POST /token`, `POST /revoke`, `POST /introspect` | 50 requests | 1 minute |
 
 When the limit is exceeded, the server returns HTTP 429 (Too Many Requests).
 
-Configure via `IDP_LOGIN_RATE_LIMIT` environment variable. Set to `0` to disable.
+Self-service password reset is additionally throttled per address: at most one email per
+`IDP_PASSWORD_RESET_INTERVAL` (default 2m) to the same mailbox, regardless of source IP.
+Admin-triggered sends are not throttled.
 
 ### Account Lockout
 

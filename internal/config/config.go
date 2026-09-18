@@ -41,8 +41,9 @@ type Config struct {
 	AuthCodeTTL     time.Duration `env:"IDP_AUTH_CODE_TTL" env-default:"10m"`
 
 	// Account self-service (password reset, email verification)
-	PasswordResetTTL time.Duration `env:"IDP_PASSWORD_RESET_TTL" env-default:"1h"`
-	EmailVerifyTTL   time.Duration `env:"IDP_EMAIL_VERIFY_TTL" env-default:"24h"`
+	PasswordResetTTL      time.Duration `env:"IDP_PASSWORD_RESET_TTL" env-default:"1h"`
+	PasswordResetInterval time.Duration `env:"IDP_PASSWORD_RESET_INTERVAL" env-default:"2m"` // min gap between reset emails to one address (0 = off)
+	EmailVerifyTTL        time.Duration `env:"IDP_EMAIL_VERIFY_TTL" env-default:"24h"`
 
 	// Outbound mail: "log" prints messages to the server log, "smtp" sends them
 	MailDriver      string `env:"IDP_MAIL_DRIVER" env-default:"log"`

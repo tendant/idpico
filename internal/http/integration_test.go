@@ -1478,3 +1478,41 @@ func containsString(list any, want string) bool {
 	}
 	return false
 }
+
+func TestIntegration_RateLimitCoversConsentAndVerify(t *testing.T) {
+	env := setupTestEnv(t, "sqlite")
+	defer env.cleanup()
+
+	// Build a second server on the same store with a tiny limit
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv := NewServer(":0",
+		WithLogger(logger),
+		WithAuthService(env.authService),
+		WithAccountService(auth.NewAccountService(env.store.Users(), env.store.VerificationTokens(), env.store.Sessions(), env.store.Tokens(), env.mailer, "http://x"), "1h"),
+		WithLoginRateLimit(2),
+	)
+	ts := httptest.NewServer(srv.Router())
+	defer ts.Close()
+
+	hits := func(path string, method string) int {
+		for i := 1; i <= 5; i++ {
+			var resp *http.Response
+			if method == http.MethodPost {
+				resp, _ = http.PostForm(ts.URL+path, url.Values{})
+			} else {
+				resp, _ = http.Get(ts.URL + path)
+			}
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusTooManyRequests {
+				return i
+			}
+		}
+		return 0
+	}
+	if n := hits("/verify-email?token=x", http.MethodGet); n == 0 {
+		t.Error("verify-email should be rate limited")
+	}
+	if n := hits("/forgot-password", http.MethodPost); n == 0 {
+		t.Error("forgot-password should be rate limited")
+	}
+}

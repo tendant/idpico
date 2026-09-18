@@ -224,17 +224,29 @@ func NewServer(addr string, opts ...Option) *Server {
 
 	templates := LoadTemplates(s.logger)
 
+	// Rate limiters: "interactive" for anything a person submits (login-sized),
+	// "api" for endpoints legitimate apps call frequently. Nil when disabled.
+	var interactive, api func(http.Handler) http.Handler
+	if s.loginRateLimit > 0 {
+		interactive = httprate.LimitByIP(s.loginRateLimit, time.Minute)
+		api = httprate.LimitByIP(s.loginRateLimit*10, time.Minute)
+	}
+	limited := func(limiter func(http.Handler) http.Handler) chi.Router {
+		if limiter == nil {
+			return r
+		}
+		return r.With(limiter)
+	}
+
 	// Login endpoints
 	if s.authService != nil {
 		login := NewLoginHandler(s.authService, templates, s.logger)
 		r.Get("/login", login.LoginPage)
 
 		// Apply rate limiting to login POST to prevent brute-force attacks
-		if s.loginRateLimit > 0 {
-			r.With(httprate.LimitByIP(s.loginRateLimit, time.Minute)).Post("/login", login.Login)
-			s.logger.Info("login rate limiting enabled", "limit", s.loginRateLimit, "window", "1m")
-		} else {
-			r.Post("/login", login.Login)
+		limited(interactive).Post("/login", login.Login)
+		if interactive != nil {
+			s.logger.Info("rate limiting enabled", "interactive_per_min", s.loginRateLimit, "api_per_min", s.loginRateLimit*10)
 		}
 
 		r.Post("/logout", login.Logout)
@@ -246,15 +258,9 @@ func NewServer(addr string, opts ...Option) *Server {
 			account := NewAccountHandler(s.accountService, s.authService.CSRF(), templates, s.accountResetTTL, s.logger)
 			r.Get("/forgot-password", account.ForgotPasswordPage)
 			r.Get("/reset-password", account.ResetPasswordPage)
-			r.Get("/verify-email", account.VerifyEmail)
-			if s.loginRateLimit > 0 {
-				limited := r.With(httprate.LimitByIP(s.loginRateLimit, time.Minute))
-				limited.Post("/forgot-password", account.ForgotPassword)
-				limited.Post("/reset-password", account.ResetPassword)
-			} else {
-				r.Post("/forgot-password", account.ForgotPassword)
-				r.Post("/reset-password", account.ResetPassword)
-			}
+			limited(interactive).Get("/verify-email", account.VerifyEmail) // consumes a token: limit guessing
+			limited(interactive).Post("/forgot-password", account.ForgotPassword)
+			limited(interactive).Post("/reset-password", account.ResetPassword)
 		}
 	}
 
@@ -263,24 +269,15 @@ func NewServer(addr string, opts ...Option) *Server {
 		oidcHandler := NewOIDCHandler(s.authService, s.authorizeService, s.consentService, s.tokenService, s.userInfoService, templates, s.logger)
 		oidcHandler.audit = s.audit
 		r.Get("/authorize", oidcHandler.Authorize)
-		r.Post("/consent", oidcHandler.Consent)
+		limited(interactive).Post("/consent", oidcHandler.Consent)
 
-		// Apply rate limiting to token endpoint to prevent brute-force attacks
-		if s.loginRateLimit > 0 {
-			// Token endpoint gets higher limit since legitimate apps make frequent requests
-			r.With(httprate.LimitByIP(s.loginRateLimit*10, time.Minute)).Post("/token", oidcHandler.Token)
-		} else {
-			r.Post("/token", oidcHandler.Token)
-		}
-
+		// Endpoints apps call often get the higher "api" limit; it still
+		// bounds client-secret and token guessing.
+		limited(api).Post("/token", oidcHandler.Token)
 		r.Get("/userinfo", oidcHandler.UserInfo)
 		r.Post("/userinfo", oidcHandler.UserInfo)
-
-		// Token revocation endpoint (RFC 7009)
-		r.Post("/revoke", oidcHandler.Revoke)
-
-		// Token introspection endpoint (RFC 7662)
-		r.Post("/introspect", oidcHandler.Introspect)
+		limited(api).Post("/revoke", oidcHandler.Revoke)         // RFC 7009
+		limited(api).Post("/introspect", oidcHandler.Introspect) // RFC 7662
 	}
 
 	// Landing page: admins go to the admin UI, everyone else sees a status page

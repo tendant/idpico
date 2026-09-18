@@ -375,8 +375,8 @@ Two strategies:
 - ✅ Admin web UI (/admin): users, groups, clients, signing keys
 - ✅ Groups with `groups` scope/claim (configurable claim name)
 - ✅ Audit log with retention; client secrets hashed at rest
+- ✅ Rate limits on all secret-accepting endpoints; per-address reset throttle
 - PostgreSQL storage backend (reuses the SQLite schema/migration layout)
-- Rate limiting improvements
 
 ### v1.0
 - Hardening, docs, k8s manifests, upgrade guide

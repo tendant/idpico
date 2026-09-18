@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -38,6 +39,19 @@ type AccountService struct {
 	resetTTL  time.Duration
 	verifyTTL time.Duration
 	audit     *audit.Recorder
+
+	// Per-address throttle for self-service reset requests, so one IP (or a
+	// distributed set) cannot flood a mailbox. Admin-triggered sends bypass it.
+	resetInterval time.Duration
+	lastReset     map[string]time.Time
+	mu            sync.Mutex
+	now           func() time.Time
+}
+
+// WithResetInterval sets the minimum time between self-service reset emails
+// to the same address (0 disables the throttle).
+func WithResetInterval(d time.Duration) AccountOption {
+	return func(s *AccountService) { s.resetInterval = d }
 }
 
 // WithAccountAudit records reset, password-change and verification events.
@@ -75,20 +89,49 @@ func NewAccountService(
 	opts ...AccountOption,
 ) *AccountService {
 	s := &AccountService{
-		users:     users,
-		tokens:    tokens,
-		sessions:  sessions,
-		refresh:   refresh,
-		mailer:    mailer,
-		baseURL:   strings.TrimRight(baseURL, "/"),
-		logger:    slog.Default(),
-		resetTTL:  time.Hour,
-		verifyTTL: 24 * time.Hour,
+		users:         users,
+		tokens:        tokens,
+		sessions:      sessions,
+		refresh:       refresh,
+		mailer:        mailer,
+		baseURL:       strings.TrimRight(baseURL, "/"),
+		logger:        slog.Default(),
+		resetTTL:      time.Hour,
+		verifyTTL:     24 * time.Hour,
+		resetInterval: 2 * time.Minute,
+		lastReset:     map[string]time.Time{},
+		now:           time.Now,
 	}
 	for _, opt := range opts {
 		opt(s)
 	}
 	return s
+}
+
+// throttled reports whether a reset email to the address was sent within
+// resetInterval, and otherwise records this send.
+func (s *AccountService) throttled(email string) bool {
+	if s.resetInterval <= 0 {
+		return false
+	}
+	key := strings.ToLower(strings.TrimSpace(email))
+	now := s.now()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Opportunistically drop stale entries so the map does not grow forever.
+	if len(s.lastReset) > 1000 {
+		for k, at := range s.lastReset {
+			if now.Sub(at) >= s.resetInterval {
+				delete(s.lastReset, k)
+			}
+		}
+	}
+	if at, ok := s.lastReset[key]; ok && now.Sub(at) < s.resetInterval {
+		return true
+	}
+	s.lastReset[key] = now
+	return false
 }
 
 // ValidatePassword enforces the password policy.
@@ -113,6 +156,10 @@ func (s *AccountService) RequestPasswordReset(ctx context.Context, email string)
 	}
 	if !user.Active {
 		s.logger.Info("password reset requested for disabled account", "user_id", user.ID)
+		return nil
+	}
+	if s.throttled(user.Email) {
+		s.logger.Info("password reset request throttled", "user_id", user.ID, "interval", s.resetInterval)
 		return nil
 	}
 	return s.SendPasswordReset(ctx, user)

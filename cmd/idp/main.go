@@ -123,6 +123,7 @@ func main() {
 		mailer, cfg.IssuerURL,
 		auth.WithAccountLogger(logger),
 		auth.WithResetTTL(cfg.PasswordResetTTL),
+		auth.WithResetInterval(cfg.PasswordResetInterval),
 		auth.WithVerifyTTL(cfg.EmailVerifyTTL),
 		auth.WithAccountAudit(auditRecorder),
 	)

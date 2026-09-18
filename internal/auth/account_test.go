@@ -113,9 +113,36 @@ func TestPasswordReset_DoesNotRevealAccounts(t *testing.T) {
 	}
 }
 
+func TestPasswordReset_ThrottledPerAddress(t *testing.T) {
+	ctx := context.Background()
+	svc, s, mailer := newAccountService(t)
+	now := time.Now()
+	svc.now = func() time.Time { return now }
+
+	svc.RequestPasswordReset(ctx, "alice@example.com")
+	svc.RequestPasswordReset(ctx, "ALICE@example.com") // same mailbox, different case
+	if len(mailer.Messages) != 1 {
+		t.Fatalf("second request inside the interval should not send, got %d emails", len(mailer.Messages))
+	}
+
+	// Admin-triggered sends are not throttled
+	user, _ := s.Users().GetByID(ctx, "u1")
+	if err := svc.SendPasswordReset(ctx, user); err != nil || len(mailer.Messages) != 2 {
+		t.Errorf("admin send should bypass throttle: err=%v emails=%d", err, len(mailer.Messages))
+	}
+
+	// After the interval the self-service request goes through again
+	now = now.Add(3 * time.Minute)
+	svc.RequestPasswordReset(ctx, "alice@example.com")
+	if len(mailer.Messages) != 3 {
+		t.Errorf("request after the interval should send, got %d emails", len(mailer.Messages))
+	}
+}
+
 func TestPasswordReset_NewRequestInvalidatesOldToken(t *testing.T) {
 	ctx := context.Background()
 	svc, _, mailer := newAccountService(t)
+	svc.resetInterval = 0 // test issues two requests back to back
 
 	svc.RequestPasswordReset(ctx, "alice@example.com")
 	first := tokenFromMail(t, mailer)
