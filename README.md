@@ -39,7 +39,7 @@ The server starts at `http://localhost:8080`. Open `/playground` to run a login 
 `/admin` for the console. Kubernetes manifests are in [`deploy/k8s/`](deploy/k8s/) (kustomize;
 see [docs/k3s-headlamp-setup.md](docs/k3s-headlamp-setup.md) for a full walkthrough).
 
-Container images: `ghcr.io/tendant/simple-idp:<version>` (built by CI on every tag).
+Images are not published; build your own with `make docker-build` and push it to your registry.
 
 ## Configuration
 

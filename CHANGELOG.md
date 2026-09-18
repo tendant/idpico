@@ -43,8 +43,8 @@ client, and an audit trail.
   `IDP_SIGNING_KEY_GRACE_PERIOD`, `IDP_AUDIT_RETENTION`)
 - Audit log of sign-ins, consent, password changes, key rotations and admin actions
 - Rate limits on every secret-accepting endpoint; per-address password reset throttle
-- Shared stylesheet with dark mode; `docker-compose.yml`, `deploy/k8s/`, GitHub Actions CI,
-  container image on GHCR
+- Shared stylesheet with dark mode; `docker-compose.yml`, `deploy/k8s/`, GitHub Actions CI
+  (verification only — images are built locally with `make docker-build`)
 
 ### Fixed
 

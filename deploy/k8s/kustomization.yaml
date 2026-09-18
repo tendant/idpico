@@ -1,6 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: simple-idp
+# Point the image at your registry:
+#   kustomize edit set image simple-idp=registry.example.com/simple-idp:0.0.2
 resources:
   - namespace.yaml
   - pvc.yaml

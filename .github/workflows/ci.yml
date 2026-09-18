@@ -1,18 +1,17 @@
 name: CI
 
+# Verification only: nothing is published or released from GitHub.
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   test:
-    name: Lint, vet, test
+    name: Lint, vet, test, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,39 +41,5 @@ jobs:
           go build -o /dev/null ./cmd/idp
           go build -o /dev/null ./cmd/idpctl
 
-  image:
-    name: Container image
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Image tags
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
-
-      - name: Build (and push on main / tags)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Container image builds (not pushed)
+        run: docker build -t simple-idp:ci .

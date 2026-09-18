@@ -3,7 +3,7 @@
 services:
   idp:
     build: .
-    image: ghcr.io/tendant/simple-idp:latest
+    image: simple-idp:local
     ports:
       - "8080:8080"
     environment:

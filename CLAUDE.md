@@ -59,11 +59,11 @@ make seed               # Dev users/groups/clients in ./data
 make test               # Run all tests
 make ci                 # Exactly what GitHub Actions runs: gofmt, vet, -race tests, static build
 make test-flow          # Test full OIDC flow
-make docker-build       # Container image (ghcr.io/tendant/simple-idp)
+make docker-build       # Container image (local; push to your own registry)
 make compose-up         # docker compose up --build
 ```
 
-CI (`.github/workflows/ci.yml`) runs `make ci`'s steps on every push/PR and publishes the image to GHCR on `main` and `v*` tags. Releases: update CHANGELOG.md, tag `vX.Y.Z`, push the tag.
+CI (`.github/workflows/ci.yml`) runs `make ci`'s steps plus a throwaway `docker build` on every push/PR. **Nothing is released or published from GitHub**: images are built with `make docker-build` and pushed to a registry by hand. Releases: update CHANGELOG.md, tag `vX.Y.Z`.
 
 ## Architecture Overview
 

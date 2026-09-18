@@ -23,7 +23,7 @@ spec:
         fsGroup: 10001      # so the volume is writable by that user
       containers:
         - name: simple-idp
-          image: ghcr.io/tendant/simple-idp:latest
+          image: simple-idp:latest   # build with `make docker-build` and push to your own registry
           ports:
             - containerPort: 8080
               name: http

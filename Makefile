@@ -30,7 +30,7 @@ test-cover: ## Run tests with coverage
 	go tool cover -html=coverage.out -o coverage.html
 
 ## Container
-IMAGE ?= ghcr.io/tendant/simple-idp
+IMAGE ?= simple-idp
 TAG   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 docker-build: ## Build the container image

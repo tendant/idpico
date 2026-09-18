@@ -380,7 +380,7 @@ Two strategies:
 - PostgreSQL storage backend (reuses the SQLite schema/migration layout)
 
 ### v1.0
-- ✅ k8s manifests (deploy/k8s), docker-compose, CI, container image
+- ✅ k8s manifests (deploy/k8s), docker-compose, CI (verification only)
 - Hardening review, upgrade guide
 
 Note: these milestone names are roadmap labels; git tags follow their own sequence (v0.0.2 shipped the v0.3 scope).
