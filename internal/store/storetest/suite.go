@@ -52,6 +52,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"ClientRepository_SkipConsentRoundTrip", ClientRepository_SkipConsentRoundTrip},
 		{"GroupRepository_CRUD", GroupRepository_CRUD},
 		{"GroupRepository_Membership", GroupRepository_Membership},
+		{"AuditRepository_AppendListPrune", AuditRepository_AppendListPrune},
 		{"NotFoundErrors", NotFoundErrors},
 	}
 
@@ -1167,4 +1168,47 @@ func tokenIDs(list []*domain.Token) []string {
 		out[i] = s.ID
 	}
 	return out
+}
+
+func AuditRepository_AppendListPrune(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	ctx := context.Background()
+	repo := store.Audit()
+
+	old := &domain.AuditEvent{At: time.Now().Add(-48 * time.Hour), Action: "login.success", ActorEmail: "a@example.com"}
+	if err := repo.Append(ctx, old); err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+	if old.ID == "" {
+		t.Error("Append should assign an ID")
+	}
+	recent := &domain.AuditEvent{Action: "user.created", ActorID: "admin", ActorEmail: "admin@example.com", TargetType: "user", TargetID: "u1", Detail: "x", IP: "10.0.0.1"}
+	if err := repo.Append(ctx, recent); err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+	if recent.At.IsZero() {
+		t.Error("Append should stamp the time")
+	}
+
+	list, err := repo.List(ctx, 10)
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(list) != 2 || list[0].Action != "user.created" || list[1].Action != "login.success" {
+		t.Errorf("List should be newest first, got %v", list)
+	}
+	if list[0].TargetID != "u1" || list[0].IP != "10.0.0.1" || list[0].ActorEmail != "admin@example.com" {
+		t.Errorf("fields not round-tripped: %+v", list[0])
+	}
+	if list, _ := repo.List(ctx, 1); len(list) != 1 || list[0].Action != "user.created" {
+		t.Error("List should honour the limit")
+	}
+
+	if err := repo.DeleteBefore(ctx, time.Now().Add(-24*time.Hour)); err != nil {
+		t.Fatalf("DeleteBefore failed: %v", err)
+	}
+	list, _ = repo.List(ctx, 10)
+	if len(list) != 1 || list[0].Action != "user.created" {
+		t.Errorf("old event should be pruned, got %v", list)
+	}
 }

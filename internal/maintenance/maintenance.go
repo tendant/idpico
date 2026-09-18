@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/tendant/simple-idp/internal/audit"
 	"github.com/tendant/simple-idp/internal/crypto"
 	"github.com/tendant/simple-idp/internal/store"
 )
@@ -22,6 +23,19 @@ type Runner struct {
 	interval  time.Duration // how often Run executes the tasks
 	keyMaxAge time.Duration // rotate the active key once older than this; 0 disables
 	keyGrace  time.Duration // how long a rotated key stays valid for verification
+
+	auditRetention time.Duration // prune audit events older than this; 0 keeps everything
+	audit          *audit.Recorder
+}
+
+// WithAuditRetention prunes audit events older than d on each run (0 = keep forever).
+func WithAuditRetention(d time.Duration) Option {
+	return func(r *Runner) { r.auditRetention = d }
+}
+
+// WithAudit records key rotations performed by the maintenance loop.
+func WithAudit(rec *audit.Recorder) Option {
+	return func(r *Runner) { r.audit = rec }
 }
 
 // Option configures the Runner.
@@ -102,6 +116,11 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 	if err := r.store.VerificationTokens().DeleteExpired(ctx); err != nil {
 		errs = append(errs, err)
 	}
+	if r.auditRetention > 0 {
+		if err := r.store.Audit().DeleteBefore(ctx, time.Now().Add(-r.auditRetention)); err != nil {
+			errs = append(errs, err)
+		}
+	}
 
 	if r.keys != nil {
 		if err := r.maintainKeys(ctx); err != nil {
@@ -124,6 +143,7 @@ func (r *Runner) maintainKeys(ctx context.Context) error {
 			return err
 		}
 		r.logger.Info("rotated signing key", "kid", newKey.Kid, "grace_period", r.keyGrace)
+		r.audit.Record(ctx, audit.Event{ActorEmail: "maintenance", Action: audit.KeyRotated, TargetType: "key", TargetID: newKey.Kid, Detail: "scheduled rotation"})
 	}
 
 	return r.keys.CleanupExpiredKeys(ctx)

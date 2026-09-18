@@ -31,6 +31,7 @@ type Store struct {
 	consents    *consentRepository
 	verifTokens *verificationTokenRepository
 	groups      *groupRepository
+	audit       *auditRepository
 }
 
 // Option configures the Store.
@@ -60,6 +61,7 @@ func NewStore(dataDir string, opts ...Option) (*Store, error) {
 	s.consents = &consentRepository{store: s}
 	s.verifTokens = &verificationTokenRepository{store: s}
 	s.groups = &groupRepository{store: s}
+	s.audit = &auditRepository{store: s}
 
 	return s, nil
 }
@@ -75,6 +77,7 @@ func (s *Store) VerificationTokens() store.VerificationTokenRepository {
 	return s.verifTokens
 }
 func (s *Store) Groups() store.GroupRepository { return s.groups }
+func (s *Store) Audit() store.AuditRepository  { return s.audit }
 func (s *Store) Close() error                  { return nil }
 
 // Helper methods for file operations

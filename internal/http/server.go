@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httprate"
+	"github.com/tendant/simple-idp/internal/audit"
 	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/crypto"
 	"github.com/tendant/simple-idp/internal/metrics"
@@ -35,6 +36,7 @@ type Server struct {
 	metricsEnabled        bool
 	adminConfig           *AdminConfig
 	groupsClaim           string
+	audit                 *audit.Recorder
 }
 
 // Option configures the Server.
@@ -83,6 +85,13 @@ func WithAccountService(accountService *auth.AccountService, resetTTL string) Op
 	return func(s *Server) {
 		s.accountService = accountService
 		s.accountResetTTL = resetTTL
+	}
+}
+
+// WithAudit records consent decisions and admin actions.
+func WithAudit(rec *audit.Recorder) Option {
+	return func(s *Server) {
+		s.audit = rec
 	}
 }
 
@@ -252,6 +261,7 @@ func NewServer(addr string, opts ...Option) *Server {
 	// OIDC endpoints
 	if s.authorizeService != nil && s.tokenService != nil && s.userInfoService != nil && s.authService != nil {
 		oidcHandler := NewOIDCHandler(s.authService, s.authorizeService, s.consentService, s.tokenService, s.userInfoService, templates, s.logger)
+		oidcHandler.audit = s.audit
 		r.Get("/authorize", oidcHandler.Authorize)
 		r.Post("/consent", oidcHandler.Consent)
 
@@ -301,6 +311,7 @@ func NewServer(addr string, opts ...Option) *Server {
 	// Admin UI
 	if s.adminConfig != nil && s.authService != nil {
 		admin := NewAdminHandler(*s.adminConfig, templates, s.logger)
+		admin.audit = s.audit
 		r.Route("/admin", admin.Routes)
 		s.logger.Info("admin UI enabled at /admin")
 	}

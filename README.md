@@ -149,6 +149,7 @@ You can also use a `.env` file (copy from `.env.example`).
 | `/admin/groups` | List, create, edit, add/remove members, delete |
 | `/admin/clients` | List, create, edit, regenerate secret, revoke tokens, delete |
 | `/admin/keys` | List signing keys, rotate now |
+| `/admin/audit` | Audit log: sign-ins, consent, password changes, key rotations, admin actions |
 
 ### Operations
 | Endpoint | Description |
@@ -217,7 +218,9 @@ or from the Users page once you have one admin. `make seed` makes `test@example.
   regenerate the secret; revoke all tokens; delete.
 - **Signing keys**: see active / retiring keys and rotate immediately.
 
-Every form is CSRF-protected and every mutation is logged with the acting admin.
+Every form is CSRF-protected. Every mutation — along with sign-ins (including failures and
+lockouts), sign-outs, consent decisions, password resets and key rotations — is written to the
+audit log (`/admin/audit`, pruned after `IDP_AUDIT_RETENTION`, default 90 days).
 
 ## Data Storage
 

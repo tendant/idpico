@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
+	"github.com/tendant/simple-idp/internal/audit"
 	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/config"
 	"github.com/tendant/simple-idp/internal/crypto"
@@ -92,6 +93,9 @@ func main() {
 
 	csrfService := auth.NewCSRFService(cfg.CookieSecret, cfg.CookieSecure, cfg.CookieDomain)
 
+	// Audit log
+	auditRecorder := audit.NewRecorder(store.Audit(), logger)
+
 	// Initialize lockout service for account lockout after failed attempts
 	var lockoutService *auth.LockoutService
 	if cfg.LockoutMaxAttempts > 0 {
@@ -105,6 +109,7 @@ func main() {
 		csrfService,
 		auth.WithLogger(logger),
 		auth.WithLockout(lockoutService),
+		auth.WithAudit(auditRecorder),
 	)
 
 	// Outbound mail + self-service account flows
@@ -119,6 +124,7 @@ func main() {
 		auth.WithAccountLogger(logger),
 		auth.WithResetTTL(cfg.PasswordResetTTL),
 		auth.WithVerifyTTL(cfg.EmailVerifyTTL),
+		auth.WithAccountAudit(auditRecorder),
 	)
 
 	// Initialize token generator with KeyService for key rotation support
@@ -156,6 +162,7 @@ func main() {
 		idphttp.WithAccountService(accountService, cfg.PasswordResetTTL.String()),
 		idphttp.WithOIDCServices(authorizeService, tokenService, userInfoService),
 		idphttp.WithGroupsClaim(groupClaims.ClaimName()),
+		idphttp.WithAudit(auditRecorder),
 		idphttp.WithLoginRateLimit(cfg.LoginRateLimit),
 	}
 
@@ -214,6 +221,8 @@ func main() {
 			maintenance.WithLogger(logger),
 			maintenance.WithInterval(cfg.MaintenanceInterval),
 			maintenance.WithKeyRotation(cfg.SigningKeyMaxAge(), cfg.SigningKeyGracePeriod),
+			maintenance.WithAuditRetention(cfg.AuditRetention),
+			maintenance.WithAudit(auditRecorder),
 		)
 		go runner.Run(maintCtx)
 		logger.Info("maintenance enabled",

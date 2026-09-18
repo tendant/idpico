@@ -103,6 +103,19 @@ CREATE TABLE user_groups (
 );
 CREATE INDEX user_groups_group_id_idx ON user_groups (group_id);
 
+CREATE TABLE audit_events (
+    id          TEXT PRIMARY KEY,
+    at          TIMESTAMP NOT NULL,
+    actor_id    TEXT NOT NULL DEFAULT '',
+    actor_email TEXT NOT NULL DEFAULT '',
+    action      TEXT NOT NULL,
+    target_type TEXT NOT NULL DEFAULT '',
+    target_id   TEXT NOT NULL DEFAULT '',
+    detail      TEXT NOT NULL DEFAULT '',
+    ip          TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX audit_events_at_idx ON audit_events (at);
+
 -- Serves both store.SigningKeyRepository (domain.SigningKey) and
 -- crypto.KeyRepository (crypto.KeyPair); keys are stored PEM-encoded.
 CREATE TABLE signing_keys (
@@ -119,6 +132,7 @@ CREATE UNIQUE INDEX signing_keys_active_idx ON signing_keys (active) WHERE activ
 
 -- +goose Down
 DROP TABLE signing_keys;
+DROP TABLE audit_events;
 DROP TABLE user_groups;
 DROP TABLE groups;
 DROP TABLE verification_tokens;

@@ -510,3 +510,68 @@ func TestAdmin_UserSessionsAndTokens(t *testing.T) {
 		}
 	})
 }
+
+func TestAdmin_AuditLog(t *testing.T) {
+	forEachDriver(t, func(t *testing.T, driver string) {
+		env := setupTestEnv(t, driver)
+		defer env.cleanup()
+		base := env.server.URL
+		ctx := context.Background()
+
+		// Produce a spread of events: failed + successful login, consent, admin change, logout
+		bad := newClientWithCookies()
+		resp, _ := bad.Get(base + "/login")
+		resp.Body.Close()
+		resp, _ = bad.PostForm(base+"/login", url.Values{"email": {"test@example.com"}, "password": {"wrong"}, "csrf_token": {csrfCookie(bad, base)}})
+		resp.Body.Close()
+
+		user := newClientWithCookies()
+		loginAs(t, user, base, "test@example.com", "password123")
+		params := url.Values{"client_id": {"test-client"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"code"}, "scope": {"openid"}}
+		resp, _ = user.Get(base + "/authorize?" + params.Encode())
+		resp.Body.Close()
+		submitConsent(t, user, base, params.Encode(), "allow").Body.Close()
+		resp, _ = user.Get(base + "/logout")
+		resp.Body.Close()
+
+		admin := adminClient(t, env)
+		get(t, admin, base+"/admin/groups/new")
+		postAndFollow(t, admin, base, "/admin/groups", url.Values{"name": {"audited"}})
+
+		events, _ := env.store.Audit().List(ctx, 50)
+		seen := map[string]*domain.AuditEvent{}
+		for _, e := range events {
+			if _, ok := seen[e.Action]; !ok {
+				seen[e.Action] = e
+			}
+		}
+		for _, want := range []string{"login.failure", "login.success", "consent.granted", "logout", "group.created"} {
+			if seen[want] == nil {
+				t.Errorf("expected an audit event %q, have %v", want, actions(events))
+			}
+		}
+		if e := seen["login.failure"]; e != nil && (e.ActorID != "" || e.ActorEmail != "test@example.com" || e.IP == "") {
+			t.Errorf("failed login should record the attempted email and IP without an actor ID: %+v", e)
+		}
+		if e := seen["group.created"]; e != nil && (e.ActorEmail != "admin@example.com" || e.TargetType != "group" || e.Detail != "audited") {
+			t.Errorf("admin event should carry the acting admin and target: %+v", e)
+		}
+		if e := seen["consent.granted"]; e != nil && (e.TargetID != "test-client" || e.Detail != "openid") {
+			t.Errorf("consent event should name the client and scope: %+v", e)
+		}
+
+		// The page renders them
+		status, body := get(t, admin, base+"/admin/audit")
+		if status != http.StatusOK || !strings.Contains(body, "login.failure") || !strings.Contains(body, "group.created") {
+			t.Errorf("audit page should list events, got %d", status)
+		}
+	})
+}
+
+func actions(events []*domain.AuditEvent) []string {
+	out := make([]string, len(events))
+	for i, e := range events {
+		out[i] = e.Action
+	}
+	return out
+}

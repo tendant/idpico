@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/tendant/simple-idp/internal/audit"
 	"github.com/tendant/simple-idp/internal/domain"
 	idperrors "github.com/tendant/simple-idp/internal/errors"
 	"github.com/tendant/simple-idp/internal/store"
@@ -18,6 +19,7 @@ type Service struct {
 	csrf     *CSRFService
 	lockout  *LockoutService
 	logger   *slog.Logger
+	audit    *audit.Recorder
 }
 
 // ServiceOption configures the Service.
@@ -34,6 +36,13 @@ func WithLogger(logger *slog.Logger) ServiceOption {
 func WithLockout(lockout *LockoutService) ServiceOption {
 	return func(s *Service) {
 		s.lockout = lockout
+	}
+}
+
+// WithAudit records sign-in, sign-out and lockout events.
+func WithAudit(rec *audit.Recorder) ServiceOption {
+	return func(s *Service) {
+		s.audit = rec
 	}
 }
 
@@ -102,6 +111,7 @@ func (s *Service) Login(ctx context.Context, w http.ResponseWriter, r *http.Requ
 	if s.lockout != nil && s.lockout.IsLocked(email) {
 		remaining := s.lockout.GetLockoutRemaining(email)
 		s.logger.Warn("login attempt on locked account", "email", email, "unlock_in", remaining)
+		s.audit.Record(ctx, audit.Event{ActorEmail: email, Action: audit.LoginLocked, TargetType: "user", IP: audit.ClientIP(r)})
 		return nil, idperrors.New(idperrors.CodeForbidden, "account is temporarily locked")
 	}
 
@@ -114,6 +124,7 @@ func (s *Service) Login(ctx context.Context, w http.ResponseWriter, r *http.Requ
 				s.logger.Warn("account locked due to failed attempts", "email", email)
 			}
 		}
+		s.audit.Record(ctx, audit.Event{ActorEmail: email, Action: audit.LoginFailure, TargetType: "user", IP: audit.ClientIP(r)})
 		return nil, err
 	}
 
@@ -141,6 +152,7 @@ func (s *Service) Login(ctx context.Context, w http.ResponseWriter, r *http.Requ
 	s.csrf.ClearToken(w)
 
 	s.logger.Info("user logged in", "user_id", user.ID, "email", user.Email)
+	s.audit.Record(ctx, audit.Event{Actor: user, Action: audit.LoginSuccess, TargetType: "user", TargetID: user.ID, IP: audit.ClientIP(r)})
 
 	return user, nil
 }
@@ -150,6 +162,11 @@ func (s *Service) Logout(ctx context.Context, w http.ResponseWriter, r *http.Req
 	// Get session from cookie
 	cookie, err := r.Cookie(SessionCookieName)
 	if err == nil && cookie.Value != "" {
+		if s.audit != nil {
+			if user, err := s.GetCurrentUser(ctx, r); err == nil {
+				s.audit.Record(ctx, audit.Event{Actor: user, Action: audit.Logout, TargetType: "user", TargetID: user.ID, IP: audit.ClientIP(r)})
+			}
+		}
 		// Delete session
 		if err := s.sessions.DeleteSession(ctx, cookie.Value); err != nil {
 			s.logger.Warn("failed to delete session", "error", err)

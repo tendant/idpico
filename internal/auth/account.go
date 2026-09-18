@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/tendant/simple-idp/internal/audit"
 	"github.com/tendant/simple-idp/internal/domain"
 	idperrors "github.com/tendant/simple-idp/internal/errors"
 	"github.com/tendant/simple-idp/internal/mail"
@@ -36,6 +37,12 @@ type AccountService struct {
 
 	resetTTL  time.Duration
 	verifyTTL time.Duration
+	audit     *audit.Recorder
+}
+
+// WithAccountAudit records reset, password-change and verification events.
+func WithAccountAudit(rec *audit.Recorder) AccountOption {
+	return func(s *AccountService) { s.audit = rec }
 }
 
 // AccountOption configures the AccountService.
@@ -130,6 +137,7 @@ func (s *AccountService) SendPasswordReset(ctx context.Context, user *domain.Use
 		return fmt.Errorf("failed to send password reset email: %w", err)
 	}
 	s.logger.Info("password reset email sent", "user_id", user.ID)
+	s.audit.Record(ctx, audit.Event{ActorEmail: user.Email, Action: audit.PasswordResetRequested, TargetType: "user", TargetID: user.ID})
 	return nil
 }
 
@@ -154,6 +162,7 @@ func (s *AccountService) ResetPassword(ctx context.Context, token, newPassword s
 	}
 
 	s.logger.Info("password reset completed", "user_id", user.ID)
+	s.audit.Record(ctx, audit.Event{Actor: user, Action: audit.PasswordReset, TargetType: "user", TargetID: user.ID})
 	return user, nil
 }
 
@@ -224,6 +233,7 @@ func (s *AccountService) VerifyEmail(ctx context.Context, token string) (*domain
 	_ = s.tokens.DeleteByUserID(ctx, user.ID, domain.PurposeEmailVerify)
 
 	s.logger.Info("email verified", "user_id", user.ID)
+	s.audit.Record(ctx, audit.Event{Actor: user, Action: audit.EmailVerified, TargetType: "user", TargetID: user.ID})
 	return user, nil
 }
 

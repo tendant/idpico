@@ -110,6 +110,7 @@
                 <a href="/admin/groups"{{if eq .Section "groups"}} class="active"{{end}}>Groups</a>
                 <a href="/admin/clients"{{if eq .Section "clients"}} class="active"{{end}}>Clients</a>
                 <a href="/admin/keys"{{if eq .Section "keys"}} class="active"{{end}}>Signing Keys</a>
+                <a href="/admin/audit"{{if eq .Section "audit"}} class="active"{{end}}>Audit</a>
             </nav>
         </div>
         <div class="user">{{.CurrentUser.Email}} <a href="/logout">Sign out</a></div>

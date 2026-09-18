@@ -33,6 +33,7 @@ type Store struct {
 	consents    *consentRepository
 	verifTokens *verificationTokenRepository
 	groups      *groupRepository
+	audit       *auditRepository
 	keys        *KeyRepository
 }
 
@@ -84,6 +85,7 @@ func NewStore(ctx context.Context, path string) (*Store, error) {
 	s.consents = &consentRepository{db: db}
 	s.verifTokens = &verificationTokenRepository{db: db}
 	s.groups = &groupRepository{db: db}
+	s.audit = &auditRepository{db: db}
 	s.keys = &KeyRepository{db: db}
 
 	return s, nil
@@ -100,6 +102,7 @@ func (s *Store) VerificationTokens() store.VerificationTokenRepository {
 	return s.verifTokens
 }
 func (s *Store) Groups() store.GroupRepository { return s.groups }
+func (s *Store) Audit() store.AuditRepository  { return s.audit }
 func (s *Store) Close() error                  { return s.db.Close() }
 
 // Keys returns the crypto.KeyRepository backed by this store's signing_keys table.

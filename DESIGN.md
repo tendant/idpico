@@ -374,6 +374,7 @@ Two strategies:
 - ✅ Password reset + email verification (log or SMTP mailer)
 - ✅ Admin web UI (/admin): users, groups, clients, signing keys
 - ✅ Groups with `groups` scope/claim (configurable claim name)
+- ✅ Audit log with retention; client secrets hashed at rest
 - PostgreSQL storage backend (reuses the SQLite schema/migration layout)
 - Rate limiting improvements
 

@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tendant/simple-idp/internal/audit"
 	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/crypto"
 	"github.com/tendant/simple-idp/internal/domain"
@@ -169,6 +170,9 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 	// Cookie secret
 	cookieSecret := "test-cookie-secret-32-bytes-long!"
 
+	// Audit log
+	auditRecorder := audit.NewRecorder(store.Audit(), logger)
+
 	// Create auth services
 	sessionService := auth.NewSessionService(store.Sessions(), cookieSecret)
 	csrfService := auth.NewCSRFService(cookieSecret, false, "")
@@ -176,12 +180,13 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 	authService := auth.NewService(store.Users(), sessionService, csrfService,
 		auth.WithLogger(logger),
 		auth.WithLockout(lockoutService),
+		auth.WithAudit(auditRecorder),
 	)
 
 	// Self-service account flows with an in-memory mailer
 	mailer := &mail.MemoryMailer{}
 	accountService := auth.NewAccountService(store.Users(), store.VerificationTokens(), store.Sessions(), store.Tokens(),
-		mailer, "http://localhost:8080", auth.WithAccountLogger(logger))
+		mailer, "http://localhost:8080", auth.WithAccountLogger(logger), auth.WithAccountAudit(auditRecorder))
 
 	// Create OIDC services
 	authorizeService := oidc.NewAuthorizeService(store.Clients(), store.AuthCodes(), 10*time.Minute)
@@ -209,6 +214,7 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		WithOIDCServices(authorizeService, tokenService, userInfoService),
 		WithConsentService(consentService),
 		WithGroupsClaim(groupClaims.ClaimName()),
+		WithAudit(auditRecorder),
 		WithAdmin(AdminConfig{
 			Store:          store,
 			AuthService:    authService,

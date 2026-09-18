@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/tendant/simple-idp/internal/audit"
 	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/domain"
 	idperrors "github.com/tendant/simple-idp/internal/errors"
@@ -22,6 +23,7 @@ type OIDCHandler struct {
 	userInfoService  *oidc.UserInfoService
 	templates        *Templates
 	logger           *slog.Logger
+	audit            *audit.Recorder
 }
 
 // NewOIDCHandler creates a new OIDCHandler. consentService may be nil, in
@@ -158,6 +160,7 @@ func (h *OIDCHandler) Consent(w http.ResponseWriter, r *http.Request) {
 
 	if r.FormValue("action") != "allow" {
 		h.logger.Info("consent denied", "client_id", client.ID, "user_id", user.ID)
+		h.audit.Record(ctx, audit.Event{Actor: user, Action: audit.ConsentDenied, TargetType: "client", TargetID: client.ID, Detail: authReq.Scope, IP: audit.ClientIP(r)})
 		h.redirectError(w, r, authReq, "access_denied", "user denied the request")
 		return
 	}
@@ -170,6 +173,7 @@ func (h *OIDCHandler) Consent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.logger.Info("consent granted", "client_id", client.ID, "user_id", user.ID, "scope", authReq.Scope)
+	h.audit.Record(ctx, audit.Event{Actor: user, Action: audit.ConsentGranted, TargetType: "client", TargetID: client.ID, Detail: authReq.Scope, IP: audit.ClientIP(r)})
 
 	h.issueCode(w, r, authReq, user.ID)
 }

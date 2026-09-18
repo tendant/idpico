@@ -162,3 +162,17 @@ type SigningKey struct {
 func (k *SigningKey) IsExpired() bool {
 	return time.Now().After(k.ExpiresAt)
 }
+
+// AuditEvent records who did what to which object. Actor fields are empty
+// for anonymous actions (e.g. a failed login).
+type AuditEvent struct {
+	ID         string    `json:"id"`
+	At         time.Time `json:"at"`
+	ActorID    string    `json:"actor_id,omitempty"`
+	ActorEmail string    `json:"actor_email,omitempty"`
+	Action     string    `json:"action"`      // e.g. "user.created", "login.failure"
+	TargetType string    `json:"target_type"` // e.g. "user", "client", "group", "key"
+	TargetID   string    `json:"target_id"`
+	Detail     string    `json:"detail,omitempty"`
+	IP         string    `json:"ip,omitempty"`
+}

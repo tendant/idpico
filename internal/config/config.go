@@ -63,6 +63,9 @@ type Config struct {
 	// Maintenance (expired session/code/token purge + key rotation)
 	MaintenanceInterval time.Duration `env:"IDP_MAINTENANCE_INTERVAL" env-default:"10m"` // 0 = disabled
 
+	// Audit log retention (0 = keep forever)
+	AuditRetention time.Duration `env:"IDP_AUDIT_RETENTION" env-default:"2160h"` // 90 days
+
 	// Rate limiting
 	LoginRateLimit int `env:"IDP_LOGIN_RATE_LIMIT" env-default:"5"` // attempts per minute
 

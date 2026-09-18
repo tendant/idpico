@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/tendant/simple-idp/internal/audit"
 	"github.com/tendant/simple-idp/internal/auth"
 	"github.com/tendant/simple-idp/internal/crypto"
 	"github.com/tendant/simple-idp/internal/domain"
@@ -39,6 +40,16 @@ type AdminHandler struct {
 	cfg       AdminConfig
 	templates *Templates
 	logger    *slog.Logger
+	audit     *audit.Recorder
+}
+
+// record logs an admin action and appends it to the audit log.
+func (h *AdminHandler) record(r *http.Request, action, targetType, targetID, detail string) {
+	actor := currentAdmin(r)
+	h.logger.Info("admin action", "action", action, "admin", actor.Email, targetType, targetID, "detail", detail)
+	h.audit.Record(r.Context(), audit.Event{
+		Actor: actor, Action: action, TargetType: targetType, TargetID: targetID, Detail: detail, IP: audit.ClientIP(r),
+	})
 }
 
 // NewAdminHandler creates an AdminHandler.
@@ -94,6 +105,8 @@ func (h *AdminHandler) Routes(r chi.Router) {
 
 	r.Get("/keys", h.Keys)
 	r.Post("/keys/rotate", h.RotateKey)
+
+	r.Get("/audit", h.Audit)
 }
 
 // Authorization
@@ -323,7 +336,7 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		renderErr("Failed to create user")
 		return
 	}
-	h.logger.Info("admin created user", "admin", currentAdmin(r).Email, "user_id", user.ID, "email", user.Email)
+	h.record(r, audit.UserCreated, "user", user.ID, user.Email)
 
 	flash := "User created"
 	if invite {
@@ -331,6 +344,7 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("failed to send invite", "user_id", user.ID, "error", err)
 			flash += ", but the invite email could not be sent"
 		} else {
+			h.record(r, audit.UserInvited, "user", user.ID, user.Email)
 			flash += " and invite email sent"
 		}
 	}
@@ -397,7 +411,7 @@ func (h *AdminHandler) RevokeUserSession(w http.ResponseWriter, r *http.Request)
 		h.redirect(w, r, "/admin/users/"+user.ID, "Failed to revoke session")
 		return
 	}
-	h.logger.Info("admin revoked session", "admin", currentAdmin(r).Email, "user_id", user.ID, "session_id", sessionID)
+	h.record(r, audit.UserSessionRevoked, "user", user.ID, "session "+sessionID)
 	h.redirect(w, r, "/admin/users/"+user.ID, "Session revoked")
 }
 
@@ -420,7 +434,7 @@ func (h *AdminHandler) RevokeUserToken(w http.ResponseWriter, r *http.Request) {
 		h.redirect(w, r, "/admin/users/"+user.ID, "Failed to revoke token")
 		return
 	}
-	h.logger.Info("admin revoked token", "admin", currentAdmin(r).Email, "user_id", user.ID, "token_id", tokenID)
+	h.record(r, audit.UserTokenRevoked, "user", user.ID, "token "+tokenID)
 	h.redirect(w, r, "/admin/users/"+user.ID, "Token revoked")
 }
 
@@ -469,7 +483,7 @@ func (h *AdminHandler) SetUserGroups(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	h.logger.Info("admin updated user groups", "admin", currentAdmin(r).Email, "user_id", user.ID)
+	h.record(r, audit.UserGroupsUpdated, "user", user.ID, user.Email)
 	h.redirect(w, r, "/admin/users/"+user.ID, "Groups updated")
 }
 
@@ -527,7 +541,7 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		h.renderUserForm(w, r, http.StatusBadRequest, data)
 		return
 	}
-	h.logger.Info("admin updated user", "admin", currentAdmin(r).Email, "user_id", user.ID)
+	h.record(r, audit.UserUpdated, "user", user.ID, user.Email)
 	h.redirect(w, r, "/admin/users/"+user.ID, "User updated")
 }
 
@@ -550,7 +564,7 @@ func (h *AdminHandler) SetUserPassword(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, http.StatusInternalServerError, "Failed to set password")
 		return
 	}
-	h.logger.Info("admin set user password", "admin", currentAdmin(r).Email, "user_id", user.ID)
+	h.record(r, audit.PasswordChanged, "user", user.ID, user.Email)
 	h.redirect(w, r, "/admin/users/"+user.ID, "Password updated; the user has been signed out everywhere")
 }
 
@@ -601,7 +615,7 @@ func (h *AdminHandler) RevokeUserSessions(w http.ResponseWriter, r *http.Request
 	if err := h.cfg.Store.Tokens().RevokeByUserID(ctx, user.ID); err != nil {
 		h.logger.Error("failed to revoke tokens", "error", err)
 	}
-	h.logger.Info("admin revoked user sessions", "admin", currentAdmin(r).Email, "user_id", user.ID)
+	h.record(r, audit.UserSessionsRevoked, "user", user.ID, user.Email)
 	h.redirect(w, r, "/admin/users/"+user.ID, "Sessions and tokens revoked")
 }
 
@@ -619,6 +633,7 @@ func (h *AdminHandler) RevokeUserConsent(w http.ResponseWriter, r *http.Request)
 		h.redirect(w, r, "/admin/users/"+user.ID, "Failed to revoke consent")
 		return
 	}
+	h.record(r, audit.UserConsentRevoked, "user", user.ID, "client "+clientID)
 	h.redirect(w, r, "/admin/users/"+user.ID, "Consent for "+clientID+" revoked")
 }
 
@@ -646,7 +661,7 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, http.StatusInternalServerError, "Failed to delete user")
 		return
 	}
-	h.logger.Info("admin deleted user", "admin", currentAdmin(r).Email, "user_id", user.ID, "email", user.Email)
+	h.record(r, audit.UserDeleted, "user", user.ID, user.Email)
 	h.redirect(w, r, "/admin/users", "User "+user.Email+" deleted")
 }
 
@@ -725,7 +740,7 @@ func (h *AdminHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		h.renderGroupForm(w, r, http.StatusBadRequest, data)
 		return
 	}
-	h.logger.Info("admin created group", "admin", currentAdmin(r).Email, "group", group.Name)
+	h.record(r, audit.GroupCreated, "group", group.ID, group.Name)
 	h.redirect(w, r, "/admin/groups/"+group.ID, "Group created")
 }
 
@@ -789,7 +804,7 @@ func (h *AdminHandler) UpdateGroup(w http.ResponseWriter, r *http.Request) {
 		h.renderGroupForm(w, r, http.StatusBadRequest, data)
 		return
 	}
-	h.logger.Info("admin updated group", "admin", currentAdmin(r).Email, "group_id", group.ID)
+	h.record(r, audit.GroupUpdated, "group", group.ID, group.Name)
 	h.redirect(w, r, "/admin/groups/"+group.ID, "Group updated")
 }
 
@@ -812,7 +827,7 @@ func (h *AdminHandler) AddGroupMember(w http.ResponseWriter, r *http.Request) {
 		h.redirect(w, r, "/admin/groups/"+group.ID, "Failed to add member")
 		return
 	}
-	h.logger.Info("admin added group member", "admin", currentAdmin(r).Email, "group", group.Name, "user_id", user.ID)
+	h.record(r, audit.GroupMemberAdded, "group", group.ID, group.Name+" += "+user.Email)
 	h.redirect(w, r, "/admin/groups/"+group.ID, user.Email+" added to "+group.Name)
 }
 
@@ -830,7 +845,7 @@ func (h *AdminHandler) RemoveGroupMember(w http.ResponseWriter, r *http.Request)
 		h.redirect(w, r, "/admin/groups/"+group.ID, "Failed to remove member")
 		return
 	}
-	h.logger.Info("admin removed group member", "admin", currentAdmin(r).Email, "group", group.Name, "user_id", userID)
+	h.record(r, audit.GroupMemberRemoved, "group", group.ID, group.Name+" -= "+userID)
 	h.redirect(w, r, "/admin/groups/"+group.ID, "Member removed")
 }
 
@@ -847,7 +862,7 @@ func (h *AdminHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, http.StatusInternalServerError, "Failed to delete group")
 		return
 	}
-	h.logger.Info("admin deleted group", "admin", currentAdmin(r).Email, "group", group.Name)
+	h.record(r, audit.GroupDeleted, "group", group.ID, group.Name)
 	h.redirect(w, r, "/admin/groups", "Group "+group.Name+" deleted")
 }
 
@@ -965,7 +980,7 @@ func (h *AdminHandler) CreateClient(w http.ResponseWriter, r *http.Request) {
 		renderErr("Failed to create client")
 		return
 	}
-	h.logger.Info("admin created client", "admin", currentAdmin(r).Email, "client_id", client.ID, "public", client.Public)
+	h.record(r, audit.ClientCreated, "client", client.ID, client.Name)
 
 	// Render directly (no redirect) so the secret is shown exactly once and
 	// never appears in a URL.
@@ -1029,7 +1044,7 @@ func (h *AdminHandler) UpdateClient(w http.ResponseWriter, r *http.Request) {
 		h.renderClientForm(w, r, http.StatusBadRequest, data)
 		return
 	}
-	h.logger.Info("admin updated client", "admin", currentAdmin(r).Email, "client_id", client.ID)
+	h.record(r, audit.ClientUpdated, "client", client.ID, client.Name)
 
 	if newSecret != "" {
 		data := clientFormData{Client: client, NewSecret: newSecret}
@@ -1062,7 +1077,7 @@ func (h *AdminHandler) RegenerateClientSecret(w http.ResponseWriter, r *http.Req
 		h.fail(w, r, http.StatusInternalServerError, "Failed to update client")
 		return
 	}
-	h.logger.Info("admin regenerated client secret", "admin", currentAdmin(r).Email, "client_id", client.ID)
+	h.record(r, audit.ClientSecretRotated, "client", client.ID, client.Name)
 
 	data := clientFormData{Client: client, NewSecret: secret}
 	data.Flash = "Secret regenerated; the previous secret no longer works"
@@ -1082,7 +1097,7 @@ func (h *AdminHandler) RevokeClientTokens(w http.ResponseWriter, r *http.Request
 		h.redirect(w, r, "/admin/clients/"+client.ID, "Failed to revoke tokens")
 		return
 	}
-	h.logger.Info("admin revoked client tokens", "admin", currentAdmin(r).Email, "client_id", client.ID)
+	h.record(r, audit.ClientTokensRevoked, "client", client.ID, client.Name)
 	h.redirect(w, r, "/admin/clients/"+client.ID, "All tokens for "+client.ID+" revoked")
 }
 
@@ -1101,8 +1116,30 @@ func (h *AdminHandler) DeleteClient(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, http.StatusInternalServerError, "Failed to delete client")
 		return
 	}
-	h.logger.Info("admin deleted client", "admin", currentAdmin(r).Email, "client_id", client.ID)
+	h.record(r, audit.ClientDeleted, "client", client.ID, client.Name)
 	h.redirect(w, r, "/admin/clients", "Client "+client.ID+" deleted")
+}
+
+// Audit log
+
+type auditData struct {
+	adminBase
+	Events []*domain.AuditEvent
+	Limit  int
+}
+
+func (h *AdminHandler) Audit(w http.ResponseWriter, r *http.Request) {
+	const limit = 200
+	events, err := h.cfg.Store.Audit().List(r.Context(), limit)
+	if err != nil {
+		h.fail(w, r, http.StatusInternalServerError, "Failed to load audit log")
+		return
+	}
+	h.templates.Render(w, http.StatusOK, "admin/audit", auditData{
+		adminBase: h.base(w, r, "audit"),
+		Events:    events,
+		Limit:     limit,
+	})
 }
 
 // Signing keys
@@ -1144,7 +1181,7 @@ func (h *AdminHandler) RotateKey(w http.ResponseWriter, r *http.Request) {
 		h.redirect(w, r, "/admin/keys", "Failed to rotate key")
 		return
 	}
-	h.logger.Info("admin rotated signing key", "admin", currentAdmin(r).Email, "kid", key.Kid)
+	h.record(r, audit.KeyRotated, "key", key.Kid, "rotated from admin UI")
 	h.redirect(w, r, "/admin/keys", "New signing key "+key.Kid+" is active")
 }
 

@@ -1,0 +1,27 @@
+{{define "title"}}Audit Log{{end}}
+{{define "content"}}
+<h1>Audit Log</h1>
+<p class="muted">Most recent {{.Limit}} events. Sign-ins, consent decisions, password changes, key rotations and every administrative change are recorded.</p>
+<table>
+    <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th><th>Detail</th><th>IP</th></tr></thead>
+    <tbody>
+    {{range .Events}}
+    <tr>
+        <td class="muted" style="white-space:nowrap">{{date .At}}</td>
+        <td>{{if .ActorID}}<a href="/admin/users/{{.ActorID}}">{{.ActorEmail}}</a>{{else}}{{.ActorEmail}}{{end}}</td>
+        <td><code>{{.Action}}</code></td>
+        <td>
+            {{if eq .TargetType "user"}}<a href="/admin/users/{{.TargetID}}">user</a>
+            {{else if eq .TargetType "client"}}<a href="/admin/clients/{{.TargetID}}">client {{.TargetID}}</a>
+            {{else if eq .TargetType "group"}}<a href="/admin/groups/{{.TargetID}}">group</a>
+            {{else}}{{.TargetType}} {{.TargetID}}{{end}}
+        </td>
+        <td class="muted">{{.Detail}}</td>
+        <td class="muted"><code>{{.IP}}</code></td>
+    </tr>
+    {{else}}
+    <tr><td colspan="6" class="muted">Nothing recorded yet.</td></tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}

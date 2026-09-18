@@ -3,6 +3,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/tendant/simple-idp/internal/domain"
 )
@@ -108,6 +109,14 @@ type GroupRepository interface {
 	RemoveUser(ctx context.Context, userID string) error
 }
 
+// AuditRepository is an append-only log of security-relevant actions.
+type AuditRepository interface {
+	Append(ctx context.Context, event *domain.AuditEvent) error
+	// List returns the newest events, at most limit.
+	List(ctx context.Context, limit int) ([]*domain.AuditEvent, error)
+	DeleteBefore(ctx context.Context, cutoff time.Time) error
+}
+
 // Store aggregates all repositories.
 type Store interface {
 	Users() UserRepository
@@ -119,5 +128,6 @@ type Store interface {
 	Consents() ConsentRepository
 	VerificationTokens() VerificationTokenRepository
 	Groups() GroupRepository
+	Audit() AuditRepository
 	Close() error
 }
