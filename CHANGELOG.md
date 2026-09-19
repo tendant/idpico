@@ -10,7 +10,7 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ### Added
 
-- Icon: the IDPico shield as favicon (`/favicon.ico`, `/static/icon.png`), in the admin and playground header, and above the sign-in, consent and password pages.
+- Icon: the IDPico shield as favicon (`/favicon.ico`, `/static/icon.png`), in the admin and playground header, and above the sign-in, consent and password pages. Shipped as a 128px quantized PNG (6 KB) and a favicon with PNG-compressed 48/32/16 frames (5 KB); `scripts/icons.sh <source.png>` regenerates both.
 - Admin → Clients: each client page now has an **Endpoints** card listing the issuer, discovery, authorization, token, userinfo, JWKS, end-session and revocation URLs plus the client ID, auth method and scopes — everything to paste into a relying party, whether it does OIDC discovery or takes each URL by hand.
 - `scripts/test-client.sh`: curl-only external relying party that runs the full Authorization Code + PKCE flow (login, consent, token, userinfo, refresh rotation, replay/bad-secret rejection) against any running IDPico. `make test-flow` now starts a throwaway server and runs it for both a confidential (`test-app`) and a public PKCE-only (`test-spa`) client; `make ci` and GitHub Actions run it.
 
