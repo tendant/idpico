@@ -878,6 +878,7 @@ type clientFormData struct {
 	IsNew     bool
 	Client    *domain.Client
 	NewSecret string
+	IssuerURL string // for the endpoints card: what to paste into a relying party
 }
 
 var (
@@ -904,6 +905,7 @@ func (h *AdminHandler) NewClient(w http.ResponseWriter, r *http.Request) {
 
 func (h *AdminHandler) renderClientForm(w http.ResponseWriter, r *http.Request, status int, data clientFormData) {
 	data.adminBase = h.base(w, r, "clients")
+	data.IssuerURL = h.cfg.IssuerURL
 	h.templates.Render(w, status, "admin/client_form", data)
 }
 

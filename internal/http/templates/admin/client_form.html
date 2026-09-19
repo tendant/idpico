@@ -57,6 +57,24 @@
 </div>
 
 {{if not .IsNew}}
+<h2>Endpoints</h2>
+<div class="card">
+    <p class="muted">What to configure in the relying party. OIDC-aware clients only need the issuer; the rest is for clients that take each URL by hand.</p>
+    <table class="kv">
+        <tr><th>Issuer</th><td><code>{{.IssuerURL}}</code></td></tr>
+        <tr><th>Discovery</th><td><code>{{.IssuerURL}}/.well-known/openid-configuration</code></td></tr>
+        <tr><th>Authorization URL</th><td><code>{{.IssuerURL}}/authorize</code></td></tr>
+        <tr><th>Token URL</th><td><code>{{.IssuerURL}}/token</code></td></tr>
+        <tr><th>Userinfo URL</th><td><code>{{.IssuerURL}}/userinfo</code></td></tr>
+        <tr><th>JWKS</th><td><code>{{.IssuerURL}}/.well-known/jwks.json</code></td></tr>
+        <tr><th>End session</th><td><code>{{.IssuerURL}}/logout</code></td></tr>
+        <tr><th>Revocation</th><td><code>{{.IssuerURL}}/revoke</code></td></tr>
+        <tr><th>Client ID</th><td><code>{{.Client.ID}}</code></td></tr>
+        <tr><th>Client auth</th><td>{{if .Client.Public}}Public client: no secret; PKCE (S256) is required{{else}}Client secret via HTTP Basic or <code>client_secret</code> form field; PKCE optional{{end}}</td></tr>
+        <tr><th>Scopes</th><td><code>{{join .Client.Scopes " "}}</code></td></tr>
+    </table>
+</div>
+
 {{if not .Client.Public}}
 <h2>Client Secret</h2>
 <div class="card">

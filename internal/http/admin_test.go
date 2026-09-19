@@ -288,6 +288,11 @@ func TestAdmin_Clients(t *testing.T) {
 		if _, body := get(t, admin, base+"/admin/clients/my-app"); strings.Contains(body, secret) {
 			t.Error("secret must not be shown on later visits")
 		}
+		// The page lists the endpoints a relying party needs, built from the issuer
+		if _, body := get(t, admin, base+"/admin/clients/my-app"); !strings.Contains(body, "/.well-known/openid-configuration</code>") ||
+			!strings.Contains(body, "/authorize</code>") || !strings.Contains(body, "/token</code>") || !strings.Contains(body, "/userinfo</code>") {
+			t.Error("client page should list the OIDC endpoints")
+		}
 
 		// Update: make first-party, change redirect URIs
 		postAndFollow(t, admin, base, "/admin/clients/my-app", url.Values{
