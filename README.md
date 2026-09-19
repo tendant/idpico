@@ -550,7 +550,7 @@ make test         # Run tests
 make ci           # gofmt check, vet, race tests, OIDC flow, static build (same as GitHub Actions)
 make test-flow    # Full OIDC flow as an external client against a throwaway server
 make docker-build # Build wang/idpico:<git tag> and :latest (IMAGE=/TAG= to override)
-make docker-push  # Build and push both tags
+make docker-push  # Build linux/amd64 + linux/arm64 and push both tags as one manifest
 make fmt          # Format code
 make vet          # Run go vet
 make clean        # Clean build artifacts

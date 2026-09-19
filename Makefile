@@ -30,15 +30,17 @@ test-cover: ## Run tests with coverage
 	go tool cover -html=coverage.out -o coverage.html
 
 ## Container
-IMAGE ?= wang/idpico
-TAG   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+IMAGE     ?= wang/idpico
+TAG       ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+PLATFORMS ?= linux/amd64,linux/arm64
 
-docker-build: ## Build the container image as $(IMAGE):$(TAG) and :latest
+docker-build: ## Build the container image for this machine as $(IMAGE):$(TAG) and :latest
 	docker build -t $(IMAGE):$(TAG) -t $(IMAGE):latest .
 
-docker-push: docker-build ## Build and push $(IMAGE):$(TAG) and :latest to the registry
-	docker push $(IMAGE):$(TAG)
-	docker push $(IMAGE):latest
+# A multi-platform build cannot be loaded into the local daemon, so it goes
+# straight to the registry as one manifest list.
+docker-push: ## Build $(IMAGE):$(TAG) and :latest for $(PLATFORMS) and push the manifest list
+	docker buildx build --platform $(PLATFORMS) -t $(IMAGE):$(TAG) -t $(IMAGE):latest --push .
 
 docker-run: docker-build ## Run the image locally on :8080
 	docker run --rm -p 8080:8080 -e IDPICO_BOOTSTRAP_USERS="admin@example.com:password123:Admin" -e IDPICO_ADMIN_EMAILS=admin@example.com $(IMAGE):$(TAG)

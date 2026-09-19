@@ -1,10 +1,13 @@
-FROM golang:1.24-alpine AS builder
+# Build on the host platform and cross-compile for the target (pure Go, no
+# cgo), so multi-platform builds do not emulate the Go toolchain.
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /idpico ./cmd/idpico \
- && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /idpicoctl ./cmd/idpicoctl
+ARG TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /idpico ./cmd/idpico \
+ && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /idpicoctl ./cmd/idpicoctl
 
 FROM alpine:3.19
 RUN apk --no-cache add ca-certificates \

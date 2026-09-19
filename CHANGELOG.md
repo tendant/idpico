@@ -4,6 +4,10 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Fixed
+
+- `make docker-push` builds a linux/amd64 + linux/arm64 manifest list with `docker buildx` (the Dockerfile cross-compiles from the build host). Images pushed before this were built with plain `docker build` and only ran on the architecture of the machine that built them.
+
 ### Added
 
 - Icon: the IDPico shield as favicon (`/favicon.ico`, `/static/icon.png`), in the admin and playground header, and above the sign-in, consent and password pages.

@@ -64,7 +64,7 @@ make test               # Run all tests
 make ci                 # Exactly what GitHub Actions runs: gofmt, vet, -race tests, test-flow, static build
 make test-flow          # scripts/test-client.sh: curl-only external-client OIDC flow against a throwaway server
 make docker-build       # Container image wang/idpico:<git tag> and :latest (IMAGE=/TAG= to override)
-make docker-push        # docker-build, then push both tags to Docker Hub
+make docker-push        # buildx linux/amd64 + linux/arm64 manifest for both tags, pushed to Docker Hub
 make compose-up         # docker compose up --build
 ```
 
