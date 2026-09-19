@@ -19,8 +19,17 @@ var templateFS embed.FS
 //go:embed static/*
 var staticFS embed.FS
 
-// StaticHandler serves the embedded stylesheet (and any future assets)
-// under /static/ with long-lived caching; the files only change with the binary.
+// FaviconHandler answers /favicon.ico, which browsers request from the site
+// root regardless of any <link rel="icon"> on the page.
+func FaviconHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = "/favicon.ico"
+		StaticHandler().ServeHTTP(w, r)
+	})
+}
+
+// StaticHandler serves the embedded stylesheet and icons under /static/ with
+// long-lived caching; the files only change with the binary.
 func StaticHandler() http.Handler {
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {

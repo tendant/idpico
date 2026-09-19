@@ -5,10 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     <title>{{template "title" .}} - IDPico</title>
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+    <link rel="icon" type="image/png" sizes="256x256" href="/static/icon.png">
+    <link rel="apple-touch-icon" href="/static/icon.png">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="centered">
     <div class="card">
+        <img class="logo" src="/static/icon.png" alt="IDPico" width="64" height="64">
         {{template "content" .}}
     </div>
 </body>

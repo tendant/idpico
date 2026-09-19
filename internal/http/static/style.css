@@ -118,7 +118,8 @@ header.site {
   justify-content: space-between;
   height: 56px;
 }
-header.site .brand { font-weight: 600; font-size: 17px; color: var(--header-text-strong); }
+header.site .brand { font-weight: 600; font-size: 17px; color: var(--header-text-strong); display: inline-flex; align-items: center; gap: 8px; }
+header.site .brand img { height: 24px; width: 24px; }
 header.site nav { display: inline; }
 header.site nav a { color: var(--header-text); margin-left: 20px; font-size: 14px; }
 header.site nav a:hover, header.site nav a.active { color: var(--header-text-strong); text-decoration: none; }
@@ -136,6 +137,7 @@ header.site .user a { color: var(--header-text); margin-left: 12px; }
 .card > h2:first-child, .card > h1:first-child { margin-top: 0; }
 body.centered .card { width: 100%; max-width: 400px; padding: 40px; margin: 0; }
 body.centered h1 { text-align: center; margin-bottom: 28px; }
+body.centered .logo { display: block; margin: 0 auto 12px; }
 .card.danger-zone { border: 1px solid var(--danger-border); }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
 .stat { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
