@@ -202,6 +202,37 @@ func TestSecurityHeadersMiddleware_DefaultHeaders(t *testing.T) {
 	}
 }
 
+func TestSecurityHeadersMiddleware_HSTSBehindProxy(t *testing.T) {
+	config := DefaultSecurityHeadersConfig()
+	config.StrictTransportSecurity = "max-age=31536000; includeSubDomains"
+	handler := SecurityHeadersMiddleware(config)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for _, tc := range []struct {
+		name  string
+		proto string
+		want  bool
+	}{
+		{"proxy terminated TLS", "https", true},
+		{"proxy chain, first hop https", "https, http", true},
+		{"proxy says http", "http", false},
+		{"no proxy header, no TLS", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			if tc.proto != "" {
+				req.Header.Set("X-Forwarded-Proto", tc.proto)
+			}
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+			if got := w.Header().Get("Strict-Transport-Security") != ""; got != tc.want {
+				t.Errorf("HSTS sent = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSecurityHeadersMiddleware_CustomConfig(t *testing.T) {
 	config := &SecurityHeadersConfig{
 		ContentSecurityPolicy: "default-src 'none'",

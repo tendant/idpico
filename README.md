@@ -332,6 +332,23 @@ re-created from the environment).
 
 ## Security
 
+### Running it on a shared host
+
+The defaults suit a laptop. For anything reachable by other people, set:
+
+```bash
+IDPICO_ISSUER_URL=https://idp.example.com   # https: cookies become Secure automatically
+IDPICO_COOKIE_SECRET=<random 32+ bytes>      # otherwise sessions die on every restart
+IDPICO_HSTS_MAX_AGE=31536000                 # once the host is https-only
+IDPICO_PLAYGROUND_ENABLED=false              # the built-in test client is one more signed-in surface
+IDPICO_TRUSTED_PROXIES=private               # or your load balancer's CIDRs; "none" if reached directly
+IDPICO_ADMIN_EMAILS=you@example.com          # keep the admin list short
+```
+
+`deploy/k8s/deployment.yaml` sets all of these. Also check the startup log: it warns about an
+auto-generated cookie secret, an https issuer with `IDPICO_COOKIE_SECURE=false`, and an empty
+trusted-proxy list.
+
 ### Rate Limiting
 
 Per-IP limits guard every endpoint that accepts a guessable secret. `IDPICO_LOGIN_RATE_LIMIT`
@@ -388,7 +405,7 @@ Security headers are enabled by default and include:
 | Referrer-Policy | `strict-origin-when-cross-origin` |
 | X-XSS-Protection | `0` (the legacy auditor is disabled; CSP is the defence) |
 | Permissions-Policy | `geolocation=(), microphone=(), camera=()` |
-| Strict-Transport-Security | Disabled by default (set `IDPICO_HSTS_MAX_AGE` to enable) |
+| Strict-Transport-Security | Disabled by default (set `IDPICO_HSTS_MAX_AGE` to enable). Sent when TLS terminates here or a proxy reports `X-Forwarded-Proto: https` |
 
 Configure via environment variables:
 

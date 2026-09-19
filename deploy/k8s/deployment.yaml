@@ -39,6 +39,13 @@ spec:
               value: "/app/data"
             - name: IDPICO_COOKIE_SECURE
               value: "true"
+            # Only once idp.example.com is https-only: browsers remember it for a year
+            - name: IDPICO_HSTS_MAX_AGE
+              value: "31536000"
+            # Peers whose X-Forwarded-For names the client (rate limits, audit log).
+            # "private" covers an in-cluster ingress; use the LB's CIDRs if it has a public IP.
+            - name: IDPICO_TRUSTED_PROXIES
+              value: "private"
             - name: IDPICO_LOG_FORMAT
               value: "json"
             - name: IDPICO_COOKIE_SECRET

@@ -11,6 +11,7 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 - `IDPICO_COOKIE_SECURE` defaults to `true` when the issuer is `https://`; a startup warning is logged if it is explicitly turned off there.
 - `return_url` accepts only absolute paths on this origin; `/\evil.com` (which browsers treat as `//evil.com`) and CR/LF are rejected.
 - Headers: CSP adds `base-uri 'none'; object-src 'none'`; `X-XSS-Protection` is `0` per current guidance.
+- HSTS (`IDPICO_HSTS_MAX_AGE`) is now actually sent behind a TLS-terminating proxy (`X-Forwarded-Proto: https`); before, it was only emitted when the Go listener itself did TLS, i.e. never in a typical ingress deployment. The Kubernetes manifest enables it and sets `IDPICO_TRUSTED_PROXIES`.
 
 ### Fixed
 

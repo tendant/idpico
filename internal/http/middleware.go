@@ -121,7 +121,9 @@ type SecurityHeadersConfig struct {
 
 	// StrictTransportSecurity sets the Strict-Transport-Security header.
 	// Example: "max-age=31536000; includeSubDomains"
-	// Only sent over HTTPS connections.
+	// Sent on HTTPS requests: TLS terminated here, or by a proxy that says so
+	// with X-Forwarded-Proto. Browsers ignore the header over plain http, so
+	// trusting that header costs nothing.
 	StrictTransportSecurity string
 
 	// PermissionsPolicy sets the Permissions-Policy header.
@@ -168,6 +170,19 @@ func RealIPFromTrustedProxies(trusted []netip.Prefix) func(http.Handler) http.Ha
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// isHTTPS reports whether the request reached the user over TLS, either on
+// this listener or on a proxy in front of it.
+func isHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	proto := r.Header.Get("X-Forwarded-Proto")
+	if i := strings.IndexByte(proto, ','); i >= 0 {
+		proto = proto[:i]
+	}
+	return strings.EqualFold(strings.TrimSpace(proto), "https")
 }
 
 func peerIsTrusted(remoteAddr string, trusted []netip.Prefix) bool {
@@ -217,7 +232,7 @@ func SecurityHeadersMiddleware(config *SecurityHeadersConfig) func(http.Handler)
 			}
 
 			// HSTS only on HTTPS
-			if config.StrictTransportSecurity != "" && r.TLS != nil {
+			if config.StrictTransportSecurity != "" && isHTTPS(r) {
 				w.Header().Set("Strict-Transport-Security", config.StrictTransportSecurity)
 			}
 
