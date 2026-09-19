@@ -4,6 +4,12 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-09-19
+
+Hardening and operability: refresh-token reuse detection, trusted-proxy handling, secure
+cookie and HSTS defaults that work behind an ingress, multi-arch images, cache-safe static
+assets, and a curl-only client test that CI runs.
+
 ### Security
 
 - Refresh tokens: a replayed (already rotated) refresh token now revokes every token the user holds for that client, since a replay means the token leaked; the grant can only be narrowed on refresh (`scope` wider than the original is `invalid_request`), and a disabled user can no longer refresh.
@@ -85,6 +91,7 @@ client, and an audit trail.
 - Initial file-backed IdP: Authorization Code + PKCE, RS256 JWTs, refresh token rotation,
   revocation, introspection, RP-initiated logout, rate limiting, lockout, CORS, metrics.
 
-[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/tendant/idpico/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/tendant/idpico/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/tendant/idpico/releases/tag/v0.0.1

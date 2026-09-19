@@ -149,39 +149,14 @@ You can also use a `.env` file (copy from `.env.example`).
 | `GET/POST /reset-password` | Choose a new password from an emailed link |
 | `GET /verify-email` | Confirm an email address from an emailed link |
 
-### OIDC Playground
+### Playground
 
-Open `http://localhost:8080/playground` to try the whole flow without writing a client. It is a
-built-in relying party (client id `playground`, registered automatically with a fresh secret
-on every start) that runs Authorization Code + PKCE against this IdP through the same HTTP
-endpoints an external app would use, then shows:
+| Endpoint | Description |
+|----------|-------------|
+| `GET /playground` | Built-in relying party that runs the full flow against this IdP (see [OIDC Playground](#oidc-playground)) |
 
-- the decoded ID token and access token claims (with nonce verification)
-- the `/userinfo` response
-- buttons to call `/userinfo`, `/introspect`, refresh, `/revoke`, and RP-initiated logout
+### Admin UI
 
-Pick scopes (`groups`, `offline_access`, …) and `prompt`/`max_age` values to see how the IdP
-reacts. Open it at the configured `IDPICO_ISSUER_URL` host, since the callback is an absolute
-URL under the issuer. Disable with `IDPICO_PLAYGROUND_ENABLED=false`.
-
-## idpicoctl
-
-`idpicoctl` manages the same store from the shell, for Makefiles, CI and scripts:
-
-```bash
-make build                          # builds ./idpico and ./idpicoctl
-./idpicoctl user add alice@example.com -name Alice -password s3cret-pass -admin -verified
-./idpicoctl group add admins && ./idpicoctl group add-member admins alice@example.com
-./idpicoctl client add my-app -redirect http://localhost:3000/callback   # prints the secret once
-./idpicoctl client add spa -public -redirect http://localhost:5173/callback
-./idpicoctl key rotate -grace 24h
-./idpicoctl user list | group list | client list | key list
-```
-
-It takes `-driver`, `-data-dir` and `-dsn` like the server. With the SQLite driver it can run
-while the server is up; with the JSON file driver stop the server first.
-
-## Admin UI
 | Endpoint | Description |
 |----------|-------------|
 | `GET /admin` | Dashboard (requires a signed-in user with the admin flag) |
@@ -192,6 +167,7 @@ while the server is up; with the JSON file driver stop the server first.
 | `/admin/audit` | Audit log: sign-ins, consent, password changes, key rotations, admin actions |
 
 ### Operations
+
 | Endpoint | Description |
 |----------|-------------|
 | `GET /healthz` | Liveness check |
