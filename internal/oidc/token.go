@@ -162,43 +162,42 @@ func (s *TokenService) HandleAuthorizationCode(ctx context.Context, req *TokenRe
 		return nil, idperrors.InvalidInput("redirect_uri is required")
 	}
 
+	// Authenticate the client before looking at the grant, so an
+	// unauthenticated caller learns nothing about codes.
+	client, err := s.clients.GetByID(ctx, req.ClientID)
+	if err != nil {
+		return nil, idperrors.Unauthorized("invalid client")
+	}
+	if !authenticateClient(ctx, s.clients, client, req.ClientSecret) {
+		return nil, idperrors.Unauthorized("invalid client credentials")
+	}
+
 	// Get the authorization code
 	authCode, err := s.authCodes.GetByCode(ctx, req.Code)
 	if err != nil {
 		if idperrors.IsCode(err, idperrors.CodeNotFound) {
-			return nil, idperrors.InvalidInput("invalid code")
+			return nil, idperrors.InvalidGrant("invalid code")
 		}
 		return nil, err
 	}
 
 	// Validate code
 	if authCode.Used {
-		return nil, idperrors.InvalidInput("code already used")
+		return nil, idperrors.InvalidGrant("code already used")
 	}
 	if authCode.IsExpired() {
-		return nil, idperrors.InvalidInput("code expired")
+		return nil, idperrors.InvalidGrant("code expired")
 	}
 	if authCode.ClientID != req.ClientID {
-		return nil, idperrors.InvalidInput("client_id mismatch")
+		return nil, idperrors.InvalidGrant("client_id mismatch")
 	}
 	if authCode.RedirectURI != req.RedirectURI {
-		return nil, idperrors.InvalidInput("redirect_uri mismatch")
+		return nil, idperrors.InvalidGrant("redirect_uri mismatch")
 	}
 
 	// Validate PKCE
 	if !ValidateCodeVerifier(req.CodeVerifier, authCode.CodeChallenge, authCode.CodeChallengeMethod) {
-		return nil, idperrors.InvalidInput("invalid code_verifier")
-	}
-
-	// Validate client
-	client, err := s.clients.GetByID(ctx, req.ClientID)
-	if err != nil {
-		return nil, idperrors.InvalidInput("invalid client")
-	}
-
-	// Validate client secret for confidential clients (constant-time comparison)
-	if !authenticateClient(ctx, s.clients, client, req.ClientSecret) {
-		return nil, idperrors.Unauthorized("invalid client credentials")
+		return nil, idperrors.InvalidGrant("invalid code_verifier")
 	}
 
 	// Mark code as used
@@ -226,18 +225,18 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 	token, err := s.tokens.GetByID(ctx, req.RefreshToken)
 	if err != nil {
 		if idperrors.IsCode(err, idperrors.CodeNotFound) {
-			return nil, idperrors.InvalidInput("invalid refresh_token")
+			return nil, idperrors.InvalidGrant("invalid refresh_token")
 		}
 		return nil, err
 	}
 	if token.ClientID != req.ClientID {
-		return nil, idperrors.InvalidInput("client_id mismatch")
+		return nil, idperrors.InvalidGrant("client_id mismatch")
 	}
 
 	// Validate client
 	client, err := s.clients.GetByID(ctx, req.ClientID)
 	if err != nil {
-		return nil, idperrors.InvalidInput("invalid client")
+		return nil, idperrors.Unauthorized("invalid client")
 	}
 
 	// Validate client secret for confidential clients (constant-time comparison)
@@ -252,10 +251,10 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 		if err := s.revokeGrant(ctx, token.UserID, token.ClientID); err != nil {
 			return nil, fmt.Errorf("failed to revoke tokens after refresh token reuse: %w", err)
 		}
-		return nil, idperrors.InvalidInput("refresh_token has already been used; all tokens for this client were revoked")
+		return nil, idperrors.InvalidGrant("refresh_token has already been used; all tokens for this client were revoked")
 	}
 	if !token.IsValid() {
-		return nil, idperrors.InvalidInput("refresh_token is invalid or expired")
+		return nil, idperrors.InvalidGrant("refresh_token is invalid or expired")
 	}
 
 	// Get user; a disabled account must not keep minting tokens
@@ -264,14 +263,14 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 	if !user.Active {
-		return nil, idperrors.InvalidInput("user account is disabled")
+		return nil, idperrors.InvalidGrant("user account is disabled")
 	}
 
 	// The requested scope may narrow the original grant, never widen it
 	scope := token.Scope
 	if req.Scope != "" {
 		if !scopeSubset(req.Scope, token.Scope) {
-			return nil, idperrors.InvalidInput("requested scope exceeds the scope of the refresh token")
+			return nil, idperrors.InvalidScope("requested scope exceeds the scope of the refresh token")
 		}
 		scope = req.Scope
 	}

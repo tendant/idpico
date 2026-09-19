@@ -344,12 +344,21 @@ func TestHandleAuthorizationCode(t *testing.T) {
 		{
 			name: "invalid code",
 			setupFn: func(clientRepo *mockClientRepository, authCodeRepo *mockAuthCodeRepository, userRepo *mockUserRepository) {
+				clientRepo.Create(ctx, &domain.Client{
+					ID:           "confidential-app",
+					Name:         "Confidential App",
+					Secret:       "super-secret",
+					Public:       false,
+					RedirectURIs: []string{"https://app.example.com/callback"},
+					Scopes:       []string{"openid", "profile"},
+				})
 			},
 			request: &TokenRequest{
-				GrantType:   "authorization_code",
-				Code:        "nonexistent-code",
-				RedirectURI: "http://localhost:3000/callback",
-				ClientID:    "test-app",
+				GrantType:    "authorization_code",
+				Code:         "nonexistent-code",
+				RedirectURI:  "https://app.example.com/callback",
+				ClientID:     "confidential-app",
+				ClientSecret: "super-secret",
 			},
 			wantErr:     true,
 			errContains: "invalid code",
@@ -419,6 +428,14 @@ func TestHandleAuthorizationCode(t *testing.T) {
 		{
 			name: "client_id mismatch",
 			setupFn: func(clientRepo *mockClientRepository, authCodeRepo *mockAuthCodeRepository, userRepo *mockUserRepository) {
+				clientRepo.Create(ctx, &domain.Client{
+					ID:           "confidential-app",
+					Name:         "Confidential App",
+					Secret:       "super-secret",
+					Public:       false,
+					RedirectURIs: []string{"https://app.example.com/callback"},
+					Scopes:       []string{"openid", "profile"},
+				})
 				authCodeRepo.Create(ctx, &domain.AuthCode{
 					Code:        "mismatch-code",
 					ClientID:    "correct-client",
@@ -433,15 +450,45 @@ func TestHandleAuthorizationCode(t *testing.T) {
 				GrantType:    "authorization_code",
 				Code:         "mismatch-code",
 				RedirectURI:  "https://app.example.com/callback",
-				ClientID:     "wrong-client",
+				ClientID:     "confidential-app",
 				ClientSecret: "super-secret",
 			},
 			wantErr:     true,
 			errContains: "client_id mismatch",
 		},
 		{
+			name: "bad secret is reported before the code is examined",
+			setupFn: func(clientRepo *mockClientRepository, authCodeRepo *mockAuthCodeRepository, userRepo *mockUserRepository) {
+				clientRepo.Create(ctx, &domain.Client{
+					ID:           "confidential-app",
+					Name:         "Confidential App",
+					Secret:       "super-secret",
+					Public:       false,
+					RedirectURIs: []string{"https://app.example.com/callback"},
+					Scopes:       []string{"openid", "profile"},
+				})
+			},
+			request: &TokenRequest{
+				GrantType:    "authorization_code",
+				Code:         "nonexistent-code",
+				RedirectURI:  "https://app.example.com/callback",
+				ClientID:     "confidential-app",
+				ClientSecret: "wrong-secret",
+			},
+			wantErr:     true,
+			errContains: "invalid client credentials",
+		},
+		{
 			name: "redirect_uri mismatch",
 			setupFn: func(clientRepo *mockClientRepository, authCodeRepo *mockAuthCodeRepository, userRepo *mockUserRepository) {
+				clientRepo.Create(ctx, &domain.Client{
+					ID:           "confidential-app",
+					Name:         "Confidential App",
+					Secret:       "super-secret",
+					Public:       false,
+					RedirectURIs: []string{"https://app.example.com/callback"},
+					Scopes:       []string{"openid", "profile"},
+				})
 				authCodeRepo.Create(ctx, &domain.AuthCode{
 					Code:        "redirect-code",
 					ClientID:    "confidential-app",

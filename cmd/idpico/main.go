@@ -192,6 +192,8 @@ func main() {
 	// OIDC playground
 	if cfg.PlaygroundEnabled {
 		serverOpts = append(serverOpts, idphttp.WithPlayground(store.Clients()))
+	} else {
+		logger.Info("OIDC playground disabled (IDPICO_PLAYGROUND_ENABLED, off by default for an https issuer)")
 	}
 
 	// Consent screen (per-client skip_consent still applies)

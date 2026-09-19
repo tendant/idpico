@@ -57,7 +57,7 @@ type Config struct {
 	SMTPImplicitTLS bool   `env:"IDPICO_SMTP_IMPLICIT_TLS" env-default:"false"` // TLS from the first byte (port 465)
 
 	// Built-in OIDC relying party at /playground for trying the flow
-	PlaygroundEnabled bool `env:"IDPICO_PLAYGROUND_ENABLED" env-default:"true"`
+	PlaygroundEnabled bool `env:"IDPICO_PLAYGROUND_ENABLED" env-default:"true"` // unset: on for an http issuer, off for https
 
 	// Consent
 	RequireConsent bool `env:"IDPICO_REQUIRE_CONSENT" env-default:"true"` // Show the consent screen for clients without skip_consent
@@ -148,10 +148,15 @@ func Load() (*Config, error) {
 		cfg.CookieSecretGenerated = true
 	}
 
-	// Cookies carry the session; over an https issuer they must be Secure
-	// unless the operator deliberately says otherwise.
-	if _, set := os.LookupEnv("IDPICO_COOKIE_SECURE"); !set && strings.HasPrefix(strings.ToLower(cfg.IssuerURL), "https://") {
+	// An https issuer means a shared host rather than a laptop: cookies must
+	// be Secure, and the built-in test client (one more signed-in surface)
+	// stays off, unless the operator deliberately says otherwise.
+	httpsIssuer := strings.HasPrefix(strings.ToLower(cfg.IssuerURL), "https://")
+	if _, set := os.LookupEnv("IDPICO_COOKIE_SECURE"); !set && httpsIssuer {
 		cfg.CookieSecure = true
+	}
+	if _, set := os.LookupEnv("IDPICO_PLAYGROUND_ENABLED"); !set && httpsIssuer {
+		cfg.PlaygroundEnabled = false
 	}
 
 	if err := cfg.validateStore(); err != nil {

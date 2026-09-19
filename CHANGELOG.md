@@ -4,6 +4,11 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Changed
+
+- `/token` errors follow RFC 6749 §5.2: a used, expired, revoked or mismatched code or refresh token is `invalid_grant`; a widened refresh scope is `invalid_scope`; an unknown client id or bad secret is `invalid_client` with HTTP 401. Malformed requests stay `invalid_request`. Client libraries use these codes to decide between retrying and re-authenticating.
+- The playground is off by default when the issuer is `https://` (a shared host) and on for `http://`; `IDPICO_PLAYGROUND_ENABLED` still overrides either way.
+
 ## [0.0.3] - 2026-09-19
 
 Hardening and operability: refresh-token reuse detection, trusted-proxy handling, secure

@@ -160,7 +160,8 @@ request "$WORK/noverifier.json" "${auth[@]}" -X POST "$TOKEN" \
 	-d grant_type=authorization_code -d "client_id=$CLIENT_ID" \
 	--data-urlencode "code=$CODE" --data-urlencode "redirect_uri=$REDIRECT_URI"
 [ "$STATUS" = 400 ] || fail "exchange without code_verifier returned HTTP $STATUS, expected 400"
-ok "rejected: $(json_get "$WORK/noverifier.json" error_description)"
+[ "$(json_get "$WORK/noverifier.json" error)" = invalid_grant ] || fail "expected error=invalid_grant, got $(cat "$WORK/noverifier.json")"
+ok "rejected (invalid_grant): $(json_get "$WORK/noverifier.json" error_description)"
 
 step "POST /token (authorization_code + code_verifier)"
 request "$WORK/token.json" "${auth[@]}" -X POST "$TOKEN" \
@@ -208,14 +209,16 @@ request "$WORK/replay.json" "${auth[@]}" -X POST "$TOKEN" \
 	--data-urlencode "code=$CODE" --data-urlencode "redirect_uri=$REDIRECT_URI" \
 	--data-urlencode "code_verifier=$VERIFIER"
 [ "$STATUS" = 400 ] || fail "code replay returned HTTP $STATUS, expected 400"
-ok "rejected: $(json_get "$WORK/replay.json" error_description)"
+[ "$(json_get "$WORK/replay.json" error)" = invalid_grant ] || fail "expected error=invalid_grant, got $(cat "$WORK/replay.json")"
+ok "rejected (invalid_grant): $(json_get "$WORK/replay.json" error_description)"
 
 if [ -n "$CLIENT_SECRET" ]; then
 	step "Wrong client secret (must be rejected)"
 	request "$WORK/badsecret.json" -u "$CLIENT_ID:not-the-secret" -X POST "$TOKEN" \
 		-d grant_type=authorization_code -d "code=x" --data-urlencode "redirect_uri=$REDIRECT_URI"
-	[ "$STATUS" = 400 ] || [ "$STATUS" = 401 ] || fail "bad secret returned HTTP $STATUS"
-	ok "rejected with HTTP $STATUS"
+	[ "$STATUS" = 401 ] || fail "bad secret returned HTTP $STATUS, expected 401"
+	[ "$(json_get "$WORK/badsecret.json" error)" = invalid_client ] || fail "expected error=invalid_client, got $(cat "$WORK/badsecret.json")"
+	ok "rejected (invalid_client, HTTP 401)"
 fi
 
 # --- 8. Refresh --------------------------------------------------------------
@@ -230,12 +233,23 @@ if [ -n "$REFRESH_TOKEN" ]; then
 	[ "$NEW_REFRESH" != "$REFRESH_TOKEN" ] || fail "refresh token was not rotated"
 	ok "new access token issued, refresh token rotated"
 
+	step "Refresh with a wider scope than granted (must be rejected)"
+	request "$WORK/refresh3.json" "${auth[@]}" -X POST "$TOKEN" \
+		-d grant_type=refresh_token -d "client_id=$CLIENT_ID" \
+		--data-urlencode "refresh_token=$NEW_REFRESH" \
+		--data-urlencode "scope=$SCOPE admin:everything"
+	[ "$STATUS" = 400 ] || fail "widened refresh returned HTTP $STATUS, expected 400"
+	[ "$(json_get "$WORK/refresh3.json" error)" = invalid_scope ] || fail "expected error=invalid_scope, got $(cat "$WORK/refresh3.json")"
+	ok "rejected (invalid_scope)"
+
 	step "Reuse the old refresh token (must be rejected)"
 	request "$WORK/refresh2.json" "${auth[@]}" -X POST "$TOKEN" \
 		-d grant_type=refresh_token -d "client_id=$CLIENT_ID" \
 		--data-urlencode "refresh_token=$REFRESH_TOKEN"
 	[ "$STATUS" = 400 ] || fail "old refresh token returned HTTP $STATUS, expected 400"
-	ok "rejected: $(json_get "$WORK/refresh2.json" error_description)"
+	[ "$(json_get "$WORK/refresh2.json" error)" = invalid_grant ] || fail "expected error=invalid_grant, got $(cat "$WORK/refresh2.json")"
+	ok "rejected (invalid_grant): $(json_get "$WORK/refresh2.json" error_description)"
+
 else
 	step "No refresh_token issued (scope lacks offline_access); skipping refresh checks"
 fi

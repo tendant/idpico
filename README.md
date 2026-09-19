@@ -77,7 +77,7 @@ IDPICO_BOOTSTRAP_GROUPS=              # "admins:alice@x.com bob@x.com,devs:carol
 
 # Admin UI & playground
 IDPICO_ADMIN_EMAILS=admin@example.com # who may open /admin (comma-separated)
-IDPICO_PLAYGROUND_ENABLED=true        # built-in test client at /playground
+IDPICO_PLAYGROUND_ENABLED=            # built-in test client at /playground; unset: on for http://, off for https:// issuers
 
 # Consent
 IDPICO_REQUIRE_CONSENT=true           # consent screen for third-party clients
@@ -229,7 +229,7 @@ endpoints an external app would use, then shows:
 
 Pick scopes (`groups`, `offline_access`, …) and `prompt`/`max_age` values to see how the IdP
 reacts. Open it at the configured `IDPICO_ISSUER_URL` host, since the callback is an absolute
-URL under the issuer. Disable with `IDPICO_PLAYGROUND_ENABLED=false`.
+URL under the issuer. It is on by default for an `http://` issuer and off for `https://` (a shared host); `IDPICO_PLAYGROUND_ENABLED` overrides either way.
 
 ## idpicoctl
 
@@ -316,7 +316,7 @@ The defaults suit a laptop. For anything reachable by other people, set:
 IDPICO_ISSUER_URL=https://idp.example.com   # https: cookies become Secure automatically
 IDPICO_COOKIE_SECRET=<random 32+ bytes>      # otherwise sessions die on every restart
 IDPICO_HSTS_MAX_AGE=31536000                 # once the host is https-only
-IDPICO_PLAYGROUND_ENABLED=false              # the built-in test client is one more signed-in surface
+IDPICO_PLAYGROUND_ENABLED=false              # already the default for an https issuer; the test client is one more signed-in surface
 IDPICO_TRUSTED_PROXIES=private               # or your load balancer's CIDRs; "none" if reached directly
 IDPICO_ADMIN_EMAILS=you@example.com          # keep the admin list short
 ```

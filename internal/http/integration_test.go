@@ -768,8 +768,8 @@ func TestIntegration_TokenEndpoint_InvalidGrant(t *testing.T) {
 		var errResp map[string]string
 		json.NewDecoder(resp.Body).Decode(&errResp)
 
-		if errResp["error"] != "invalid_request" {
-			t.Errorf("Expected error 'invalid_request', got '%s'", errResp["error"])
+		if errResp["error"] != "invalid_grant" {
+			t.Errorf("Expected error 'invalid_grant', got '%s'", errResp["error"])
 		}
 	})
 }

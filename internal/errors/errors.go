@@ -18,6 +18,11 @@ const (
 	CodeTokenExpired   = "token_expired"
 	CodeTokenInvalid   = "token_invalid"
 	CodeSessionExpired = "session_expired"
+
+	// OAuth 2.0 token endpoint errors (RFC 6749 §5.2) that are not simply
+	// malformed requests: the grant itself is bad, or the scope is.
+	CodeInvalidGrant = "invalid_grant"
+	CodeInvalidScope = "invalid_scope"
 )
 
 // Error represents a structured error with a code and message.
@@ -88,6 +93,17 @@ func InvalidInput(message string) *Error {
 		Code:    CodeInvalidInput,
 		Message: message,
 	}
+}
+
+// InvalidGrant creates an error for an authorization code or refresh token
+// that is invalid, expired, revoked, or does not match the request.
+func InvalidGrant(message string) *Error {
+	return &Error{Code: CodeInvalidGrant, Message: message}
+}
+
+// InvalidScope creates an error for a scope the grant does not allow.
+func InvalidScope(message string) *Error {
+	return &Error{Code: CodeInvalidScope, Message: message}
 }
 
 // Unauthorized creates an unauthorized error.

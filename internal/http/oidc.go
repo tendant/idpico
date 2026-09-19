@@ -316,12 +316,18 @@ func (h *OIDCHandler) Token(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.Info("token request failed", "grant_type", tokenReq.GrantType, "error", err)
 
+		// RFC 6749 §5.2: malformed request vs. bad grant vs. bad scope vs.
+		// failed client authentication. Clients key re-auth logic on these.
 		errorCode := "invalid_request"
 		status := http.StatusBadRequest
-
-		if idperrors.IsCode(err, idperrors.CodeUnauthorized) {
+		switch {
+		case idperrors.IsCode(err, idperrors.CodeUnauthorized):
 			errorCode = "invalid_client"
 			status = http.StatusUnauthorized
+		case idperrors.IsCode(err, idperrors.CodeInvalidGrant):
+			errorCode = "invalid_grant"
+		case idperrors.IsCode(err, idperrors.CodeInvalidScope):
+			errorCode = "invalid_scope"
 		}
 
 		errMsg := "request failed"

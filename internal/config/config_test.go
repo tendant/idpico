@@ -122,6 +122,33 @@ func TestCookieSecureFollowsIssuerScheme(t *testing.T) {
 	clearIDPEnvVars()
 }
 
+func TestPlaygroundFollowsIssuerScheme(t *testing.T) {
+	cases := []struct {
+		issuer, explicit string
+		want             bool
+	}{
+		{"http://localhost:8080", "", true},
+		{"https://idp.example.com", "", false},
+		{"https://idp.example.com", "true", true},
+		{"http://localhost:8080", "false", false},
+	}
+	for _, tc := range cases {
+		clearIDPEnvVars()
+		os.Setenv("IDPICO_ISSUER_URL", tc.issuer)
+		if tc.explicit != "" {
+			os.Setenv("IDPICO_PLAYGROUND_ENABLED", tc.explicit)
+		}
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+		if cfg.PlaygroundEnabled != tc.want {
+			t.Errorf("issuer=%s IDPICO_PLAYGROUND_ENABLED=%q: PlaygroundEnabled=%v, want %v", tc.issuer, tc.explicit, cfg.PlaygroundEnabled, tc.want)
+		}
+	}
+	clearIDPEnvVars()
+}
+
 func TestTrustedProxies(t *testing.T) {
 	for _, tc := range []struct {
 		value   string
@@ -531,7 +558,7 @@ func clearIDPEnvVars() {
 		"IDPICO_SESSION_DURATION", "IDPICO_COOKIE_SECRET", "IDPICO_COOKIE_SECURE", "IDPICO_COOKIE_DOMAIN",
 		"IDPICO_ACCESS_TOKEN_TTL", "IDPICO_REFRESH_TOKEN_TTL", "IDPICO_AUTH_CODE_TTL",
 		"IDPICO_SIGNING_KEY_ROTATION_DAYS", "IDPICO_LOGIN_RATE_LIMIT",
-		"IDPICO_LOCKOUT_MAX_ATTEMPTS", "IDPICO_LOCKOUT_DURATION", "IDPICO_TRUSTED_PROXIES",
+		"IDPICO_LOCKOUT_MAX_ATTEMPTS", "IDPICO_LOCKOUT_DURATION", "IDPICO_TRUSTED_PROXIES", "IDPICO_PLAYGROUND_ENABLED",
 		"IDPICO_LOG_LEVEL", "IDPICO_LOG_FORMAT",
 		"IDPICO_BOOTSTRAP_USERS", "IDPICO_BOOTSTRAP_CLIENTS",
 		"IDPICO_CLIENT_ID", "IDPICO_CLIENT_SECRET", "IDPICO_CLIENT_REDIRECT_URI",
