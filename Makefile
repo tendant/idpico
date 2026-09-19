@@ -1,4 +1,4 @@
-.PHONY: build run test clean fmt vet lint help seed docker-build docker-run compose-up ci
+.PHONY: build run test test-flow clean fmt vet lint help seed docker-build docker-push docker-run compose-up ci
 
 # Binary name
 BINARY := idpico
@@ -30,11 +30,15 @@ test-cover: ## Run tests with coverage
 	go tool cover -html=coverage.out -o coverage.html
 
 ## Container
-IMAGE ?= idpico
+IMAGE ?= wang/idpico
 TAG   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
-docker-build: ## Build the container image
+docker-build: ## Build the container image as $(IMAGE):$(TAG) and :latest
 	docker build -t $(IMAGE):$(TAG) -t $(IMAGE):latest .
+
+docker-push: docker-build ## Build and push $(IMAGE):$(TAG) and :latest to the registry
+	docker push $(IMAGE):$(TAG)
+	docker push $(IMAGE):latest
 
 docker-run: docker-build ## Run the image locally on :8080
 	docker run --rm -p 8080:8080 -e IDPICO_BOOTSTRAP_USERS="admin@example.com:password123:Admin" -e IDPICO_ADMIN_EMAILS=admin@example.com $(IMAGE):$(TAG)
@@ -51,10 +55,11 @@ vet: ## Run go vet
 
 lint: fmt vet ## Run all linters
 
-ci: ## What CI runs: gofmt check, vet, race tests, static build
+ci: ## What CI runs: gofmt check, vet, race tests, OIDC flow, static build
 	@test -z "$$(gofmt -l .)" || (echo "gofmt needed:"; gofmt -l .; exit 1)
 	go vet ./...
 	go test -race -count=1 ./...
+	$(MAKE) test-flow
 	CGO_ENABLED=0 GOOS=linux go build -o /dev/null ./cmd/idpico
 	CGO_ENABLED=0 GOOS=linux go build -o /dev/null ./cmd/idpicoctl
 
@@ -63,23 +68,22 @@ clean: ## Clean build artifacts
 	rm -f $(BINARY) idpicoctl coverage.out coverage.html
 
 ## Example: full OIDC flow test
-test-flow: build ## Test the full OIDC authorization code flow
-	@echo "Starting server in background..."
-	@IDPICO_CLIENT_ID=test-app IDPICO_CLIENT_SECRET=test-secret \
-		IDPICO_CLIENT_REDIRECT_URI="http://localhost:3000/callback" \
-		IDPICO_BOOTSTRAP_USERS="test@example.com:password123:Test User" \
-		./$(BINARY) &
-	@sleep 1
-	@echo "\n=== Testing OIDC Discovery ==="
-	@curl -s http://localhost:8080/.well-known/openid-configuration | head -20
-	@echo "\n\n=== Testing JWKS ==="
-	@curl -s http://localhost:8080/.well-known/jwks.json
-	@echo "\n\n=== Testing Health ==="
-	@curl -s http://localhost:8080/healthz
-	@echo "\n\nServer running at http://localhost:8080"
-	@echo "Login at http://localhost:8080/login"
-	@echo "Press Ctrl+C to stop"
-	@wait
+TEST_FLOW_PORT ?= 28080
+test-flow: build ## Start a throwaway server and run scripts/test-client.sh (full Authorization Code + PKCE flow as an external client)
+	@tmp=$$(mktemp -d); \
+	IDPICO_HOST=127.0.0.1 IDPICO_PORT=$(TEST_FLOW_PORT) IDPICO_ISSUER_URL=http://localhost:$(TEST_FLOW_PORT) \
+	IDPICO_DATA_DIR=$$tmp IDPICO_LOG_FORMAT=text IDPICO_LOG_LEVEL=warn \
+	IDPICO_CLIENT_ID=test-app IDPICO_CLIENT_SECRET=test-secret \
+	IDPICO_CLIENT_REDIRECT_URI="http://localhost:3000/callback" \
+	IDPICO_BOOTSTRAP_CLIENTS="test-spa||http://localhost:3000/callback" \
+	IDPICO_BOOTSTRAP_USERS="test@example.com:password123:Test User" \
+	./$(BINARY) & pid=$$!; \
+	trap "kill $$pid 2>/dev/null; rm -rf $$tmp" EXIT; \
+	for i in $$(seq 1 50); do curl -sf -o /dev/null http://localhost:$(TEST_FLOW_PORT)/healthz && break; sleep 0.1; done; \
+	echo "### confidential client (test-app)"; \
+	IDPICO_URL=http://localhost:$(TEST_FLOW_PORT) ./scripts/test-client.sh && \
+	echo && echo "### public client (test-spa, PKCE only)"; \
+	IDPICO_URL=http://localhost:$(TEST_FLOW_PORT) CLIENT_ID=test-spa CLIENT_SECRET= ./scripts/test-client.sh
 
 ## Help
 help: ## Show this help

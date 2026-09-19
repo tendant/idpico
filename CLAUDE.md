@@ -61,9 +61,10 @@ make run                # Build and run the server
 make run-dev            # Run with debug logging
 make seed               # Dev users/groups/clients in ./data
 make test               # Run all tests
-make ci                 # Exactly what GitHub Actions runs: gofmt, vet, -race tests, static build
-make test-flow          # Test full OIDC flow
-make docker-build       # Container image (local; push to your own registry)
+make ci                 # Exactly what GitHub Actions runs: gofmt, vet, -race tests, test-flow, static build
+make test-flow          # scripts/test-client.sh: curl-only external-client OIDC flow against a throwaway server
+make docker-build       # Container image wang/idpico:<git tag> and :latest (IMAGE=/TAG= to override)
+make docker-push        # docker-build, then push both tags to Docker Hub
 make compose-up         # docker compose up --build
 ```
 

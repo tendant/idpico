@@ -23,7 +23,7 @@ spec:
         fsGroup: 10001      # so the volume is writable by that user
       containers:
         - name: idpico
-          image: idpico:latest   # build with `make docker-build` and push to your own registry
+          image: wang/idpico:latest   # `make docker-push` publishes this; pin a vX.Y.Z tag for real deployments
           ports:
             - containerPort: 8080
               name: http

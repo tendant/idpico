@@ -547,12 +547,24 @@ make run          # Build and run
 make run-dev      # Run with debug logging
 make seed         # Dev users, groups and clients
 make test         # Run tests
-make ci           # gofmt check, vet, race tests, static build (same as GitHub Actions)
-make test-flow    # Test full OIDC flow
-make docker-build # Build the container image
+make ci           # gofmt check, vet, race tests, OIDC flow, static build (same as GitHub Actions)
+make test-flow    # Full OIDC flow as an external client against a throwaway server
+make docker-build # Build wang/idpico:<git tag> and :latest (IMAGE=/TAG= to override)
+make docker-push  # Build and push both tags
 make fmt          # Format code
 make vet          # Run go vet
 make clean        # Clean build artifacts
+```
+
+`scripts/test-client.sh` is the relying party behind `make test-flow`: it walks
+discovery → `/authorize` (PKCE) → login → consent → `/token` → `/userinfo` →
+refresh with nothing but `curl`, and checks that a replayed code, a wrong client
+secret and a rotated-out refresh token are rejected. Point it at any running
+IDPico, for example a container:
+
+```bash
+IDPICO_URL=http://localhost:8090 CLIENT_ID=my-app CLIENT_SECRET=... \
+  USER_EMAIL=alice@example.com USER_PASSWORD=... scripts/test-client.sh
 ```
 
 ## License

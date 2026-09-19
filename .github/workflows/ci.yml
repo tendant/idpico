@@ -33,6 +33,9 @@ jobs:
       - name: go test
         run: go test -race -count=1 ./...
 
+      - name: OIDC flow as an external client (scripts/test-client.sh)
+        run: make test-flow
+
       - name: Build (static Linux binaries, as the Dockerfile does)
         env:
           CGO_ENABLED: "0"

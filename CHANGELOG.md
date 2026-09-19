@@ -4,6 +4,10 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/test-client.sh`: curl-only external relying party that runs the full Authorization Code + PKCE flow (login, consent, token, userinfo, refresh rotation, replay/bad-secret rejection) against any running IDPico. `make test-flow` now starts a throwaway server and runs it for both a confidential (`test-app`) and a public PKCE-only (`test-spa`) client; `make ci` and GitHub Actions run it.
+
 ## [0.0.2] - 2026-09-18
 
 This release turns the file-backed prototype into a complete development IdP: SQLite

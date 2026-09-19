@@ -54,10 +54,9 @@ EXPOSE 8080
 CMD ["./idpico"]
 ```
 
-Build and push:
+Build and push (defaults to `wang/idpico`; override with `IMAGE=your-registry/idpico`):
 ```bash
-docker build -t your-registry/idpico:latest .
-docker push your-registry/idpico:latest
+make docker-push
 ```
 
 ### 1.2 Create Kubernetes Manifests
@@ -102,7 +101,7 @@ spec:
     spec:
       containers:
       - name: idpico
-        image: your-registry/idpico:latest
+        image: wang/idpico:latest
         ports:
         - containerPort: 8080
         env:
