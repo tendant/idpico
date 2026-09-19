@@ -15,12 +15,13 @@
         <div>
             <a class="brand" href="/"><img src="{{asset "icon.png"}}" alt="">IDPico</a>
             <nav>
-                <a href="/playground" class="active">Playground</a>
+                {{if eq .Section "playground"}}<a href="/playground" class="active">Playground</a>{{end}}
+                <a href="/account"{{if eq .Section "account"}} class="active"{{end}}>Account</a>
                 <a href="/.well-known/openid-configuration">Discovery</a>
-                <a href="/admin">Admin</a>
+                {{if or (not .CurrentUser) .CurrentUser.Admin}}<a href="/admin">Admin</a>{{end}}
             </nav>
         </div>
-        <div></div>
+        <div class="user">{{if .CurrentUser}}{{.CurrentUser.Email}} <a href="/logout">Sign out</a>{{end}}</div>
     </header>
     <main>
         {{if .Flash}}<div class="flash ok">{{.Flash}}</div>{{end}}

@@ -151,9 +151,7 @@ type playgroundResult struct {
 }
 
 type playgroundData struct {
-	CSRFToken   string
-	Flash       string
-	Error       string
+	wideBase
 	ClientID    string
 	RedirectURI string
 	Issuer      string
@@ -166,9 +164,12 @@ type playgroundData struct {
 func (h *PlaygroundHandler) Page(w http.ResponseWriter, r *http.Request) {
 	token, _ := h.csrf.GenerateToken(w)
 	data := playgroundData{
-		CSRFToken:   token,
-		Flash:       r.URL.Query().Get("flash"),
-		Error:       r.URL.Query().Get("error"),
+		wideBase: wideBase{
+			Section:   "playground",
+			CSRFToken: token,
+			Flash:     r.URL.Query().Get("flash"),
+			Error:     r.URL.Query().Get("error"),
+		},
 		ClientID:    PlaygroundClientID,
 		RedirectURI: h.redirectURI(),
 		Issuer:      h.issuer,

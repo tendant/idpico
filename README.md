@@ -148,6 +148,7 @@ You can also use a `.env` file (copy from `.env.example`).
 | `GET/POST /forgot-password` | Request a password reset link by email |
 | `GET/POST /reset-password` | Choose a new password from an emailed link |
 | `GET /verify-email` | Confirm an email address from an emailed link |
+| `GET /account` | The signed-in user's own sessions, refresh tokens, consents and password change |
 
 ### Playground
 

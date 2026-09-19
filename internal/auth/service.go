@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 
 	"github.com/tendant/idpico/internal/audit"
@@ -246,11 +247,13 @@ func (s *Service) CreateUser(ctx context.Context, email, password, displayName s
 	return user, nil
 }
 
-// getClientIP extracts the client IP from the request.
-// Note: This IdP is for development use only and does not trust proxy headers
-// (X-Forwarded-For, X-Real-IP) to prevent IP spoofing attacks.
+// getClientIP returns the peer address without its port. Proxy headers are
+// not consulted here: the HTTP layer already rewrote RemoteAddr from them when
+// the connection came from a trusted proxy (IDPICO_TRUSTED_PROXIES).
 func getClientIP(r *http.Request) string {
-	// Only use direct RemoteAddr for security (no proxy header trust)
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
 	return r.RemoteAddr
 }
 

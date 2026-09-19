@@ -38,6 +38,7 @@ type Server struct {
 	securityHeadersConfig *SecurityHeadersConfig
 	metricsEnabled        bool
 	adminConfig           *AdminConfig
+	accountStore          store.Store // enables /account when set
 	groupsClaim           string
 	audit                 *audit.Recorder
 	playground            bool
@@ -120,6 +121,14 @@ func WithGroupsClaim(name string) Option {
 func WithAdmin(cfg AdminConfig) Option {
 	return func(s *Server) {
 		s.adminConfig = &cfg
+	}
+}
+
+// WithAccountPage enables /account, where a signed-in user manages their own
+// sessions, refresh tokens, consents and password.
+func WithAccountPage(st store.Store) Option {
+	return func(s *Server) {
+		s.accountStore = st
 	}
 }
 
@@ -314,6 +323,10 @@ func NewServer(addr string, opts ...Option) *Server {
 					http.Redirect(w, r, "/admin", http.StatusFound)
 					return
 				}
+				if s.accountStore != nil {
+					http.Redirect(w, r, "/account", http.StatusFound)
+					return
+				}
 				templates.Render(w, http.StatusOK, "message", messagePageData{
 					Title:     "Signed In",
 					Message:   "You are signed in as " + user.Email + ".",
@@ -344,6 +357,13 @@ func NewServer(addr string, opts ...Option) *Server {
 			r.Route("/playground", pg.Routes)
 			s.logger.Info("OIDC playground enabled at /playground")
 		}
+	}
+
+	// Self-service account page
+	if s.accountStore != nil && s.authService != nil {
+		account := NewAccountPageHandler(s.accountStore, s.authService, s.accountService, templates, s.logger, s.audit)
+		account.Routes(r)
+		s.logger.Info("account page enabled at /account")
 	}
 
 	// Admin UI

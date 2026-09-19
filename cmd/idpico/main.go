@@ -178,6 +178,9 @@ func main() {
 		idphttp.WithTrustedProxies(trustedProxies),
 	}
 
+	// Self-service account page for every signed-in user
+	serverOpts = append(serverOpts, idphttp.WithAccountPage(store))
+
 	// Admin UI
 	serverOpts = append(serverOpts, idphttp.WithAdmin(idphttp.AdminConfig{
 		Store:           store,

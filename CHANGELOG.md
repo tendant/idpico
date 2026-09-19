@@ -8,8 +8,11 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 - Per-client token lifetimes: each client can override `IDPICO_ACCESS_TOKEN_TTL` (which also bounds the ID token) and `IDPICO_REFRESH_TOKEN_TTL`. Set them on the client's admin page (`15m`, `12h`, `30d`; blank = server default) or with `idpicoctl client add -access-ttl 5m -refresh-ttl 720h`. Migration `00002` adds the two columns; existing clients keep the defaults.
 
+- `/account`: every signed-in user can see and sign out their own sessions (the current one is marked), revoke the refresh tokens apps hold for them and the consents they granted, sign out everywhere else in one click, and change their password (current password required; signs out everywhere). Linked from the admin header and the playground nav; `/` sends signed-in non-admins there.
+
 ### Changed
 
+- Session IP addresses are stored without the port.
 - `/token` errors follow RFC 6749 §5.2: a used, expired, revoked or mismatched code or refresh token is `invalid_grant`; a widened refresh scope is `invalid_scope`; an unknown client id or bad secret is `invalid_client` with HTTP 401. Malformed requests stay `invalid_request`. Client libraries use these codes to decide between retrying and re-authenticating.
 - The playground is off by default when the issuer is `https://` (a shared host) and on for `http://`; `IDPICO_PLAYGROUND_ENABLED` still overrides either way.
 

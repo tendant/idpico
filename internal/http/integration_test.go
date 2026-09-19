@@ -216,6 +216,7 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		WithConsentService(consentService),
 		WithGroupsClaim(groupClaims.ClaimName()),
 		WithAudit(auditRecorder),
+		WithAccountPage(store),
 		WithAdmin(AdminConfig{
 			Store:          store,
 			AuthService:    authService,

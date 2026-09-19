@@ -23,7 +23,7 @@
                 <a href="/playground">Playground</a>
             </nav>
         </div>
-        <div class="user">{{.CurrentUser.Email}} <a href="/logout">Sign out</a></div>
+        <div class="user"><a href="/account">{{.CurrentUser.Email}}</a> <a href="/logout">Sign out</a></div>
     </header>
     <main>
         {{if .Flash}}<div class="flash ok">{{.Flash}}</div>{{end}}

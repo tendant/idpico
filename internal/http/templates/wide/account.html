@@ -1,0 +1,116 @@
+{{define "title"}}Your Account{{end}}
+{{define "content"}}
+<h1>Your account</h1>
+<p class="muted">Signed in as <strong>{{.CurrentUser.Email}}</strong>{{if .CurrentUser.DisplayName}} ({{.CurrentUser.DisplayName}}){{end}}.
+Everything on this page is yours alone: the browsers you are signed in on, the apps holding long-lived access, and the permissions you granted them.</p>
+
+<h2>Sessions</h2>
+{{if .Sessions}}
+<table>
+    <thead><tr><th>Signed in</th><th>Expires</th><th>IP</th><th>Browser</th><th></th></tr></thead>
+    <tbody>
+    {{range .Sessions}}
+    <tr>
+        <td class="muted">{{date .CreatedAt}}{{if .Current}} <span class="badge on">this browser</span>{{end}}</td>
+        <td class="muted">{{date .ExpiresAt}}</td>
+        <td><code>{{.IPAddress}}</code></td>
+        <td class="muted" style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{.UserAgent}}">{{.UserAgent}}</td>
+        <td class="actions">
+            <form class="inline" method="POST" action="/account/sessions/{{.ID}}/revoke">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button type="submit" class="small secondary">Sign out</button>
+            </form>
+        </td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<div class="card muted">No active sessions.</div>
+{{end}}
+
+<h2>Apps with ongoing access</h2>
+<p class="muted">Refresh tokens let an app get new access tokens without asking you to sign in again. Revoke one to make that app sign you in next time.</p>
+{{if .Tokens}}
+<table>
+    <thead><tr><th>App</th><th>Scope</th><th>Issued</th><th>Expires</th><th></th></tr></thead>
+    <tbody>
+    {{range .Tokens}}
+    <tr>
+        <td><code>{{.ClientID}}</code></td>
+        <td><code>{{.Scope}}</code></td>
+        <td class="muted">{{date .CreatedAt}}</td>
+        <td class="muted">{{date .ExpiresAt}}</td>
+        <td class="actions">
+            <form class="inline" method="POST" action="/account/tokens/{{.ID}}/revoke">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button type="submit" class="small secondary">Revoke</button>
+            </form>
+        </td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<div class="card muted">No app holds a refresh token for you.</div>
+{{end}}
+
+<div class="card" style="margin-top:16px">
+    <p class="muted">Lost a device, or signed in somewhere you shouldn't have? Sign out of every other browser and revoke every app's ongoing access. This browser stays signed in.</p>
+    <form class="inline" method="POST" action="/account/sessions/revoke-others">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="secondary">Sign out everywhere else</button>
+    </form>
+</div>
+
+<h2>Apps you have approved</h2>
+{{if .Consents}}
+<table>
+    <thead><tr><th>App</th><th>Permissions</th><th>Approved</th><th></th></tr></thead>
+    <tbody>
+    {{range .Consents}}
+    <tr>
+        <td><code>{{.ClientID}}</code></td>
+        <td><code>{{join .Scopes " "}}</code></td>
+        <td class="muted">{{date .GrantedAt}}</td>
+        <td class="actions">
+            <form class="inline" method="POST" action="/account/consents/{{.ClientID}}/revoke">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <button type="submit" class="small secondary">Revoke</button>
+            </form>
+        </td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+<p class="help">Revoking also cancels the app's refresh tokens; it will ask for your approval again next time.</p>
+{{else}}
+<div class="card muted">You have not approved any app yet.</div>
+{{end}}
+
+{{if .CanChangePassword}}
+<h2>Change password</h2>
+<div class="card">
+    <form method="POST" action="/account/password">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="form-row">
+            <label for="current_password">Current password</label>
+            <input type="password" id="current_password" name="current_password" required autocomplete="current-password">
+        </div>
+        <div class="form-row two">
+            <div>
+                <label for="new_password">New password</label>
+                <input type="password" id="new_password" name="new_password" required minlength="{{.MinPasswordLength}}" autocomplete="new-password">
+                <div class="help">At least {{.MinPasswordLength}} characters.</div>
+            </div>
+            <div>
+                <label for="confirm_password">Confirm new password</label>
+                <input type="password" id="confirm_password" name="confirm_password" required minlength="{{.MinPasswordLength}}" autocomplete="new-password">
+            </div>
+        </div>
+        <p class="help">Changing your password signs you out everywhere, this browser included.</p>
+        <button type="submit">Change password</button>
+    </form>
+</div>
+{{end}}
+{{end}}

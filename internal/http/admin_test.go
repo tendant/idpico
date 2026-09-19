@@ -94,8 +94,10 @@ func TestAdmin_Access(t *testing.T) {
 		if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/admin" {
 			t.Errorf("admin landing should redirect to /admin, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
 		}
-		if status, body := get(t, user, base+"/"); status != http.StatusOK || !strings.Contains(body, "test@example.com") {
-			t.Errorf("user landing should show signed-in page, got %d", status)
+		resp, _ = user.Get(base + "/")
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/account" {
+			t.Errorf("user landing should redirect to /account, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
 		}
 		if status, body := get(t, anon, base+"/"); status != http.StatusOK || !strings.Contains(body, "Sign in") {
 			t.Errorf("anonymous landing should offer sign in, got %d", status)
