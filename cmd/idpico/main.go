@@ -73,7 +73,7 @@ func main() {
 	grantAdmins(context.Background(), cfg, store, logger)
 
 	// Initialize key service for JWT signing
-	keyService := crypto.NewKeyService(keyRepo)
+	keyService := crypto.NewKeyService(keyRepo, crypto.WithAlgorithm(cfg.SigningAlgorithm))
 
 	// Ensure we have an active signing key
 	activeKey, err := keyService.EnsureActiveKey(context.Background())
@@ -81,7 +81,16 @@ func main() {
 		logger.Error("failed to ensure active signing key", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("signing key ready", "kid", activeKey.Kid)
+	if activeKey.Alg != cfg.SigningAlgorithm {
+		// The operator changed algorithms: rotate now, keeping the old key
+		// for verification through the grace period like any rotation.
+		logger.Info("active signing key uses a different algorithm; rotating", "from", activeKey.Alg, "to", cfg.SigningAlgorithm)
+		if activeKey, err = keyService.RotateKey(context.Background(), cfg.SigningKeyGracePeriod); err != nil {
+			logger.Error("failed to rotate signing key", "error", err)
+			os.Exit(1)
+		}
+	}
+	logger.Info("signing key ready", "kid", activeKey.Kid, "alg", activeKey.Alg)
 
 	// Initialize auth services
 	sessionService := auth.NewSessionService(

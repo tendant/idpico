@@ -20,7 +20,7 @@ func newTestApp(t *testing.T) (*app, *sqlite.Store, *bytes.Buffer) {
 	}
 	t.Cleanup(func() { s.Close() })
 	out := &bytes.Buffer{}
-	return &app{store: s, keys: crypto.NewKeyService(s.Keys()), out: out}, s, out
+	return &app{store: s, keys: crypto.NewKeyService(s.Keys()), keyRepo: s.Keys(), out: out}, s, out
 }
 
 func run(t *testing.T, a *app, out *bytes.Buffer, line string) string {

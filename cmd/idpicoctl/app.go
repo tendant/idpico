@@ -21,9 +21,10 @@ import (
 // app holds what every command needs. Commands are plain methods so they can
 // be tested against an in-memory store without exec'ing the binary.
 type app struct {
-	store store.Store
-	keys  *crypto.KeyService
-	out   io.Writer
+	store   store.Store
+	keys    *crypto.KeyService
+	keyRepo crypto.KeyRepository // for a KeyService with a different algorithm
+	out     io.Writer
 }
 
 var errUsage = errors.New(strings.TrimSpace(usage))
@@ -395,17 +396,25 @@ func (a *app) key(ctx context.Context, cmd string, args []string) error {
 	case "rotate":
 		fs := flag.NewFlagSet("key rotate", flag.ContinueOnError)
 		grace := fs.Duration("grace", 24*time.Hour, "how long the previous key keeps verifying tokens")
+		alg := fs.String("alg", a.keys.Algorithm(), "algorithm for the new key: RS256 or EdDSA (default: the server's IDPICO_SIGNING_ALGORITHM, else RS256)")
 		if err := fs.Parse(args); err != nil {
 			return err
 		}
-		if _, err := a.keys.EnsureActiveKey(ctx); err != nil {
+		if !crypto.ValidAlgorithm(*alg) {
+			return fmt.Errorf("unsupported -alg %q (use one of %v)", *alg, crypto.SupportedAlgorithms)
+		}
+		keys := a.keys
+		if *alg != keys.Algorithm() {
+			keys = crypto.NewKeyService(a.keyRepo, crypto.WithAlgorithm(*alg))
+		}
+		if _, err := keys.EnsureActiveKey(ctx); err != nil {
 			return err
 		}
-		k, err := a.keys.RotateKey(ctx, *grace)
+		k, err := keys.RotateKey(ctx, *grace)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(a.out, "active key is now %s (previous key valid for %s)\n", k.Kid, grace)
+		fmt.Fprintf(a.out, "active key is now %s (%s; previous key valid for %s)\n", k.Kid, k.Alg, grace)
 		return nil
 	}
 	return fmt.Errorf("unknown key command %q", cmd)

@@ -6,6 +6,7 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ### Added
 
+- EdDSA (Ed25519) signing: `IDPICO_SIGNING_ALGORITHM=EdDSA` (default stays `RS256`). Changing it rotates the key at startup with the usual grace period, so RS256 tokens already issued keep verifying; the JWKS publishes `OKP`/`Ed25519` keys alongside RSA ones and discovery lists both algorithms. `idpicoctl key rotate -alg EdDSA`. Token verification binds the token's `alg` to the key's, so a token cannot name a key of the other kind.
 - Per-client token lifetimes: each client can override `IDPICO_ACCESS_TOKEN_TTL` (which also bounds the ID token) and `IDPICO_REFRESH_TOKEN_TTL`. Set them on the client's admin page (`15m`, `12h`, `30d`; blank = server default) or with `idpicoctl client add -access-ttl 5m -refresh-ttl 720h`. Migration `00002` adds the two columns; existing clients keep the defaults.
 
 - `/account`: every signed-in user can see and sign out their own sessions (the current one is marked), revoke the refresh tokens apps hold for them and the consents they granted, sign out everywhere else in one click, and change their password (current password required; signs out everywhere). Linked from the admin header and the playground nav; `/` sends signed-in non-admins there.

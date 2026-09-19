@@ -14,7 +14,7 @@ IdP without standing up Keycloak.
 ## Features
 
 - **OIDC Authorization Code + PKCE** flow
-- **JWT tokens** (ID token and access token) with RS256 signing
+- **JWT tokens** (ID token and access token) signed with RS256 or EdDSA (Ed25519)
 - **Refresh token rotation**
 - **Token revocation** (RFC 7009)
 - **Token introspection** (RFC 7662)
@@ -67,6 +67,7 @@ IDPICO_COOKIE_SECRET=           # Auto-generated if empty
 IDPICO_COOKIE_SECURE=           # Unset: true when IDPICO_ISSUER_URL is https://, else false
 
 # Tokens (server defaults; each client can override both on its admin page)
+IDPICO_SIGNING_ALGORITHM=RS256  # or EdDSA (Ed25519); changing it rotates the key at the next start
 IDPICO_ACCESS_TOKEN_TTL=15m
 IDPICO_REFRESH_TOKEN_TTL=168h   # 7 days
 IDPICO_AUTH_CODE_TTL=10m
@@ -505,6 +506,16 @@ With the default `IDPICO_MAIL_DRIVER=log`, emails are written to the server log 
 sent — the link is right there when you're testing locally. Set `IDPICO_MAIL_DRIVER=smtp` with
 `IDPICO_SMTP_HOST`, `IDPICO_SMTP_FROM` and optional `IDPICO_SMTP_USERNAME`/`IDPICO_SMTP_PASSWORD` to
 deliver real mail (STARTTLS when offered; `IDPICO_SMTP_IMPLICIT_TLS=true` for port 465).
+
+### Signing Algorithm
+
+Keys are RSA-2048 / `RS256` by default, which every relying party understands. Set
+`IDPICO_SIGNING_ALGORITHM=EdDSA` for Ed25519: smaller keys and tokens, faster verification,
+supported by current libraries (go-oidc, jose, Auth.js, oauth2-proxy) but not by everything.
+Changing the setting rotates the signing key at the next start; the previous key keeps
+verifying tokens it issued for `IDPICO_SIGNING_KEY_GRACE_PERIOD`, and the JWKS lists both
+(`kty: RSA` and `kty: OKP, crv: Ed25519`). `idpicoctl key rotate -alg EdDSA` does the same
+by hand. Discovery advertises `id_token_signing_alg_values_supported: ["RS256", "EdDSA"]`.
 
 ### Signing Key Rotation & Maintenance
 

@@ -90,6 +90,7 @@ func (h *DiscoveryHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Re
 
 		IDTokenSigningAlgValuesSupported: []string{
 			"RS256",
+			"EdDSA",
 		},
 
 		TokenEndpointAuthMethodsSupported: []string{

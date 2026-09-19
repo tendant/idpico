@@ -41,7 +41,7 @@ Resources and commands:
           reset-secret <id>
           delete <id>
   key     list
-          rotate [-grace DURATION]
+          rotate [-grace DURATION] [-alg RS256|EdDSA]
 
 Examples:
   idpicoctl user add alice@example.com -name Alice -password s3cret-pass -admin
@@ -60,21 +60,25 @@ func main() {
 	}
 
 	ctx := context.Background()
-	st, keys, err := openStore(ctx, *driver, *dataDir, *dsn)
+	st, keyRepo, err := openStore(ctx, *driver, *dataDir, *dsn)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 	defer st.Close()
 
-	app := &app{store: st, keys: keys, out: os.Stdout}
+	alg := os.Getenv("IDPICO_SIGNING_ALGORITHM")
+	if alg == "" {
+		alg = crypto.Algorithm
+	}
+	app := &app{store: st, keys: crypto.NewKeyService(keyRepo, crypto.WithAlgorithm(alg)), keyRepo: keyRepo, out: os.Stdout}
 	if err := app.run(ctx, global.Args()); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
 
-func openStore(ctx context.Context, driver, dataDir, dsn string) (store.Store, *crypto.KeyService, error) {
+func openStore(ctx context.Context, driver, dataDir, dsn string) (store.Store, crypto.KeyRepository, error) {
 	switch driver {
 	case "sqlite":
 		if dsn == "" {
@@ -84,13 +88,13 @@ func openStore(ctx context.Context, driver, dataDir, dsn string) (store.Store, *
 		if err != nil {
 			return nil, nil, err
 		}
-		return s, crypto.NewKeyService(s.Keys()), nil
+		return s, s.Keys(), nil
 	case "file":
 		s, err := file.NewStore(dataDir)
 		if err != nil {
 			return nil, nil, err
 		}
-		return s, crypto.NewKeyService(file.NewKeyRepository(dataDir)), nil
+		return s, file.NewKeyRepository(dataDir), nil
 	default:
 		return nil, nil, fmt.Errorf("unknown driver %q (expected sqlite or file)", driver)
 	}

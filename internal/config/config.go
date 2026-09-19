@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
+	"github.com/tendant/idpico/internal/crypto"
 )
 
 // Config holds all configuration for the IdP.
@@ -63,6 +64,7 @@ type Config struct {
 	RequireConsent bool `env:"IDPICO_REQUIRE_CONSENT" env-default:"true"` // Show the consent screen for clients without skip_consent
 
 	// Key rotation
+	SigningAlgorithm       string        `env:"IDPICO_SIGNING_ALGORITHM" env-default:"RS256"`      // RS256 or EdDSA; a change rotates the key at startup
 	SigningKeyRotationDays int           `env:"IDPICO_SIGNING_KEY_ROTATION_DAYS" env-default:"30"` // 0 = disabled
 	SigningKeyGracePeriod  time.Duration `env:"IDPICO_SIGNING_KEY_GRACE_PERIOD" env-default:"24h"` // rotated keys stay valid for verification this long
 
@@ -167,6 +169,9 @@ func Load() (*Config, error) {
 	}
 	if _, err := cfg.ParseTrustedProxies(); err != nil {
 		return nil, err
+	}
+	if !crypto.ValidAlgorithm(cfg.SigningAlgorithm) {
+		return nil, fmt.Errorf("IDPICO_SIGNING_ALGORITHM: %q is not supported (use one of %v)", cfg.SigningAlgorithm, crypto.SupportedAlgorithms)
 	}
 
 	return &cfg, nil

@@ -60,7 +60,7 @@
    - Audit events (lightweight; v1 optional)
 
 4. **Crypto & Key Management**
-   - RSA (RS256) signing keys today; Ed25519 (EdDSA) is a candidate addition
+   - RSA (RS256) signing keys by default; Ed25519 (EdDSA) via `IDPICO_SIGNING_ALGORITHM`
    - Key rotation strategy and JWKS publication
 
 ### Request flows

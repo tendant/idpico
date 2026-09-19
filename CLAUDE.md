@@ -103,7 +103,7 @@ data/                     # idpico.db (SQLite) or JSON files, auto-created
 All production code goes under `internal/` to prevent accidental coupling.
 
 ### Key Technical Decisions
-- **Signing keys**: RSA 2048 / RS256 (implemented). Ed25519/EdDSA is a possible future addition; the `signing_keys.algorithm` column already carries the alg
+- **Signing keys**: RSA 2048 / RS256 (default) or Ed25519 / EdDSA (`IDPICO_SIGNING_ALGORITHM`); `signing_keys.algorithm` carries the alg per key and a change rotates at startup
 - **Tokens**: JWT for both ID and access tokens with short TTL + refresh token rotation
 - **Database**: SQLite (default) or JSON files today; Postgres planned. Tables: users, clients, sessions, auth_codes, tokens, signing_keys
 - **Migrations**: goose, embedded via `embed.FS` and applied at startup. Keep SQL portable; dialect-specific DDL lives in its own directory. **Shipped migrations are frozen** (`00001_init.sql` as of v0.0.2, `00002_client_token_ttls.sql` as of v0.0.4): every schema change is a new `0000N_<name>.sql`, never an edit of an existing file

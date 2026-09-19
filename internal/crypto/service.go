@@ -31,6 +31,9 @@ type KeyService struct {
 	activeAt time.Time
 	cacheTTL time.Duration
 	now      func() time.Time
+
+	// algorithm is what newly generated keys use; existing keys keep theirs.
+	algorithm string
 }
 
 // DefaultActiveKeyCacheTTL bounds how stale the cached signing key can be.
@@ -45,12 +48,19 @@ func WithActiveKeyCacheTTL(ttl time.Duration) KeyServiceOption {
 	return func(s *KeyService) { s.cacheTTL = ttl }
 }
 
+// WithAlgorithm sets the algorithm for keys the service generates
+// (AlgRS256, the default, or AlgEdDSA).
+func WithAlgorithm(alg string) KeyServiceOption {
+	return func(s *KeyService) { s.algorithm = alg }
+}
+
 // NewKeyService creates a new KeyService.
 func NewKeyService(repo KeyRepository, opts ...KeyServiceOption) *KeyService {
 	s := &KeyService{
-		repo:     repo,
-		cacheTTL: DefaultActiveKeyCacheTTL,
-		now:      time.Now,
+		repo:      repo,
+		cacheTTL:  DefaultActiveKeyCacheTTL,
+		now:       time.Now,
+		algorithm: Algorithm,
 	}
 
 	for _, opt := range opts {
@@ -79,7 +89,7 @@ func (s *KeyService) EnsureActiveKey(ctx context.Context) (*KeyPair, error) {
 	}
 
 	// Generate new key
-	key, err = GenerateKeyPair(DefaultKeySize)
+	key, err = GenerateKeyPairForAlg(s.algorithm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate key: %w", err)
 	}
@@ -203,7 +213,7 @@ func (s *KeyService) RotateKey(ctx context.Context, expiresIn time.Duration) (*K
 	}
 
 	// Generate new key
-	newKey, err := GenerateKeyPair(DefaultKeySize)
+	newKey, err := GenerateKeyPairForAlg(s.algorithm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate key: %w", err)
 	}
@@ -220,6 +230,9 @@ func (s *KeyService) RotateKey(ctx context.Context, expiresIn time.Duration) (*K
 	s.setActive(newKey)
 	return newKey, nil
 }
+
+// Algorithm returns the algorithm newly generated keys use.
+func (s *KeyService) Algorithm() string { return s.algorithm }
 
 // ShouldRotate reports whether the active key is older than maxAge.
 // A zero or negative maxAge disables rotation.

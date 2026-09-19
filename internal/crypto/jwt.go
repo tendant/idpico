@@ -158,7 +158,7 @@ func (g *TokenGenerator) GenerateIDToken(subject string, expiry time.Duration, c
 		return "", time.Time{}, err
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	token := jwt.NewWithClaims(signingMethodFor(signingKey.Alg), claims)
 	token.Header["kid"] = signingKey.Kid
 
 	tokenString, err := token.SignedString(signingKey.PrivateKey)
@@ -167,6 +167,14 @@ func (g *TokenGenerator) GenerateIDToken(subject string, expiry time.Duration, c
 	}
 
 	return tokenString, expiresAt, nil
+}
+
+// signingMethodFor maps a key's algorithm to the JWT signing method.
+func signingMethodFor(alg string) jwt.SigningMethod {
+	if alg == AlgEdDSA {
+		return jwt.SigningMethodEdDSA
+	}
+	return jwt.SigningMethodRS256
 }
 
 // GenerateAccessToken generates an OAuth access token (JWT).
@@ -191,8 +199,11 @@ func (g *TokenGenerator) ParseTokenWithContext(ctx context.Context, tokenString 
 	claims := &Claims{}
 
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
-		// Verify signing method
-		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+		// Only our asymmetric methods; never HMAC, so a public key can't be
+		// replayed as a shared secret.
+		switch token.Method.(type) {
+		case *jwt.SigningMethodRSA, *jwt.SigningMethodEd25519:
+		default:
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 
@@ -202,25 +213,27 @@ func (g *TokenGenerator) ParseTokenWithContext(ctx context.Context, tokenString 
 			return nil, fmt.Errorf("missing key ID in token header")
 		}
 
-		// If we have a KeyService, look up the key by kid (supports rotated keys)
+		keyPair := g.keyPair
 		if g.keyService != nil {
-			keyPair, err := g.keyService.GetKeyByID(ctx, kid)
+			// Look up the key by kid (supports rotated keys)
+			kp, err := g.keyService.GetKeyByID(ctx, kid)
 			if err != nil {
 				return nil, fmt.Errorf("unknown key ID: %s", kid)
 			}
 			// Don't verify with expired keys (unless token was issued before expiry)
-			if keyPair.IsExpired() {
+			if kp.IsExpired() {
 				return nil, fmt.Errorf("key has expired: %s", kid)
 			}
-			return keyPair.PublicKey, nil
-		}
-
-		// Fallback: verify key ID matches the current key
-		if kid != g.keyPair.Kid {
+			keyPair = kp
+		} else if kid != keyPair.Kid {
 			return nil, fmt.Errorf("unknown key ID: %s", kid)
 		}
 
-		return g.keyPair.PublicKey, nil
+		// The token's alg must be the one the key was created for.
+		if token.Method.Alg() != keyPair.Alg {
+			return nil, fmt.Errorf("token alg %s does not match key %s (%s)", token.Method.Alg(), kid, keyPair.Alg)
+		}
+		return keyPair.PublicKey, nil
 	})
 
 	if err != nil {

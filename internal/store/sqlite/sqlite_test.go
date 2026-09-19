@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"crypto/rsa"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -188,7 +189,7 @@ func TestKeyRepository_KeyServiceLifecycle(t *testing.T) {
 	if loaded.PrivateKey == nil || loaded.PublicKey == nil {
 		t.Error("key should be restored from PEM")
 	}
-	if loaded.PrivateKey.N.Cmp(key.PrivateKey.N) != 0 {
+	if !loaded.PrivateKey.(*rsa.PrivateKey).Equal(key.PrivateKey) {
 		t.Error("restored private key differs from generated key")
 	}
 
