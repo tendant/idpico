@@ -230,11 +230,6 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 		}
 		return nil, err
 	}
-
-	// Validate token
-	if !token.IsValid() {
-		return nil, idperrors.InvalidInput("refresh_token is invalid or expired")
-	}
 	if token.ClientID != req.ClientID {
 		return nil, idperrors.InvalidInput("client_id mismatch")
 	}
@@ -250,10 +245,35 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 		return nil, idperrors.Unauthorized("invalid client credentials")
 	}
 
-	// Get user
+	// A refresh token is single-use (rotation). Seeing a rotated-out one
+	// again means it leaked and both holders are racing, so cut off the
+	// whole grant for this user and client rather than just this token.
+	if token.Revoked && !token.IsExpired() {
+		if err := s.revokeGrant(ctx, token.UserID, token.ClientID); err != nil {
+			return nil, fmt.Errorf("failed to revoke tokens after refresh token reuse: %w", err)
+		}
+		return nil, idperrors.InvalidInput("refresh_token has already been used; all tokens for this client were revoked")
+	}
+	if !token.IsValid() {
+		return nil, idperrors.InvalidInput("refresh_token is invalid or expired")
+	}
+
+	// Get user; a disabled account must not keep minting tokens
 	user, err := s.users.GetByID(ctx, token.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	if !user.Active {
+		return nil, idperrors.InvalidInput("user account is disabled")
+	}
+
+	// The requested scope may narrow the original grant, never widen it
+	scope := token.Scope
+	if req.Scope != "" {
+		if !scopeSubset(req.Scope, token.Scope) {
+			return nil, idperrors.InvalidInput("requested scope exceeds the scope of the refresh token")
+		}
+		scope = req.Scope
 	}
 
 	// Revoke old refresh token (rotation)
@@ -261,14 +281,39 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 		return nil, fmt.Errorf("failed to revoke old token: %w", err)
 	}
 
-	// Use requested scope or original scope
-	scope := req.Scope
-	if scope == "" {
-		scope = token.Scope
-	}
-
 	// Generate new tokens
 	return s.generateTokens(ctx, user, client, scope, "", time.Time{})
+}
+
+// revokeGrant revokes every live token the user holds for the client.
+func (s *TokenService) revokeGrant(ctx context.Context, userID, clientID string) error {
+	tokens, err := s.tokens.ListByUserID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	for _, t := range tokens {
+		if t.ClientID != clientID || t.Revoked {
+			continue
+		}
+		if err := s.tokens.Revoke(ctx, t.ID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// scopeSubset reports whether every scope in requested is also in granted.
+func scopeSubset(requested, granted string) bool {
+	have := map[string]bool{}
+	for _, sc := range strings.Fields(granted) {
+		have[sc] = true
+	}
+	for _, sc := range strings.Fields(requested) {
+		if !have[sc] {
+			return false
+		}
+	}
+	return true
 }
 
 // ParseRevocationRequest parses a token revocation request.

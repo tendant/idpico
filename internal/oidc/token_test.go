@@ -569,29 +569,37 @@ func TestHandleAuthorizationCode(t *testing.T) {
 func TestHandleRefreshToken(t *testing.T) {
 	ctx := context.Background()
 
+	// The client is authenticated before the token is judged, so every case
+	// registers it; the user is active unless the case says otherwise.
+	seed := func(clientRepo *mockClientRepository, userRepo *mockUserRepository, active bool) {
+		clientRepo.Create(ctx, &domain.Client{
+			ID:           "test-app",
+			Name:         "Test App",
+			Secret:       "test-secret",
+			Public:       false,
+			RedirectURIs: []string{"http://localhost:3000/callback"},
+			Scopes:       []string{"openid", "profile", "offline_access"},
+		})
+		userRepo.Create(ctx, &domain.User{
+			ID:          "user-123",
+			Email:       "test@example.com",
+			DisplayName: "Test User",
+			Active:      active,
+		})
+	}
+
 	tests := []struct {
 		name        string
 		setupFn     func(*mockClientRepository, *mockTokenRepository, *mockUserRepository)
 		request     *TokenRequest
 		wantErr     bool
 		errContains string
+		wantScope   string
 	}{
 		{
 			name: "valid refresh token",
 			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
-				clientRepo.Create(ctx, &domain.Client{
-					ID:           "test-app",
-					Name:         "Test App",
-					Secret:       "test-secret",
-					Public:       false,
-					RedirectURIs: []string{"http://localhost:3000/callback"},
-					Scopes:       []string{"openid", "profile", "offline_access"},
-				})
-				userRepo.Create(ctx, &domain.User{
-					ID:          "user-123",
-					Email:       "test@example.com",
-					DisplayName: "Test User",
-				})
+				seed(clientRepo, userRepo, true)
 				tokenRepo.Create(ctx, &domain.Token{
 					ID:        "valid-refresh-token",
 					UserID:    "user-123",
@@ -637,6 +645,7 @@ func TestHandleRefreshToken(t *testing.T) {
 		{
 			name: "expired refresh token",
 			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
+				seed(clientRepo, userRepo, true)
 				tokenRepo.Create(ctx, &domain.Token{
 					ID:        "expired-refresh-token",
 					UserID:    "user-123",
@@ -656,8 +665,9 @@ func TestHandleRefreshToken(t *testing.T) {
 			errContains: "invalid or expired",
 		},
 		{
-			name: "revoked refresh token",
+			name: "revoked refresh token is treated as reuse",
 			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
+				seed(clientRepo, userRepo, true)
 				tokenRepo.Create(ctx, &domain.Token{
 					ID:        "revoked-refresh-token",
 					UserID:    "user-123",
@@ -674,7 +684,71 @@ func TestHandleRefreshToken(t *testing.T) {
 				ClientSecret: "test-secret",
 			},
 			wantErr:     true,
-			errContains: "invalid or expired",
+			errContains: "already been used",
+		},
+		{
+			name: "disabled user cannot refresh",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
+				seed(clientRepo, userRepo, false)
+				tokenRepo.Create(ctx, &domain.Token{
+					ID:        "disabled-user-token",
+					UserID:    "user-123",
+					ClientID:  "test-app",
+					Scope:     "openid offline_access",
+					ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+				})
+			},
+			request: &TokenRequest{
+				GrantType:    "refresh_token",
+				RefreshToken: "disabled-user-token",
+				ClientID:     "test-app",
+				ClientSecret: "test-secret",
+			},
+			wantErr:     true,
+			errContains: "disabled",
+		},
+		{
+			name: "scope may be narrowed",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
+				seed(clientRepo, userRepo, true)
+				tokenRepo.Create(ctx, &domain.Token{
+					ID:        "narrow-token",
+					UserID:    "user-123",
+					ClientID:  "test-app",
+					Scope:     "openid profile offline_access",
+					ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+				})
+			},
+			request: &TokenRequest{
+				GrantType:    "refresh_token",
+				RefreshToken: "narrow-token",
+				ClientID:     "test-app",
+				ClientSecret: "test-secret",
+				Scope:        "openid offline_access",
+			},
+			wantScope: "openid offline_access",
+		},
+		{
+			name: "scope cannot be widened",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
+				seed(clientRepo, userRepo, true)
+				tokenRepo.Create(ctx, &domain.Token{
+					ID:        "widen-token",
+					UserID:    "user-123",
+					ClientID:  "test-app",
+					Scope:     "openid offline_access",
+					ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+				})
+			},
+			request: &TokenRequest{
+				GrantType:    "refresh_token",
+				RefreshToken: "widen-token",
+				ClientID:     "test-app",
+				ClientSecret: "test-secret",
+				Scope:        "openid profile email offline_access",
+			},
+			wantErr:     true,
+			errContains: "exceeds",
 		},
 		{
 			name: "wrong client_id",
@@ -726,6 +800,9 @@ func TestHandleRefreshToken(t *testing.T) {
 				if response.AccessToken == "" {
 					t.Error("AccessToken should not be empty")
 				}
+				if tt.wantScope != "" && response.Scope != tt.wantScope {
+					t.Errorf("scope = %q, want %q", response.Scope, tt.wantScope)
+				}
 			}
 		})
 	}
@@ -751,6 +828,7 @@ func TestRefreshTokenRotation(t *testing.T) {
 		ID:          "user-123",
 		Email:       "test@example.com",
 		DisplayName: "Test User",
+		Active:      true,
 	}
 	userRepo.Create(ctx, testUser)
 
@@ -792,6 +870,28 @@ func TestRefreshTokenRotation(t *testing.T) {
 	// New token should be different
 	if response.RefreshToken == "rotation-test-token" {
 		t.Error("New refresh token should be different from old one")
+	}
+
+	// Replaying the rotated-out token is a leak signal: the new token, and
+	// every other token this user holds for the client, must be revoked.
+	other := &domain.Token{ID: "other-grant", UserID: "user-123", ClientID: "test-app", Scope: "openid offline_access", ExpiresAt: time.Now().Add(time.Hour)}
+	tokenRepo.Create(ctx, other)
+	elsewhere := &domain.Token{ID: "other-client", UserID: "user-123", ClientID: "another-app", Scope: "openid offline_access", ExpiresAt: time.Now().Add(time.Hour)}
+	tokenRepo.Create(ctx, elsewhere)
+
+	if _, err := svc.HandleRefreshToken(ctx, request); err == nil || !strings.Contains(err.Error(), "already been used") {
+		t.Fatalf("replayed refresh token should be rejected as reuse, got %v", err)
+	}
+	for _, id := range []string{response.RefreshToken, "other-grant"} {
+		if tok, _ := tokenRepo.GetByID(ctx, id); tok == nil || !tok.Revoked {
+			t.Errorf("token %s should be revoked after refresh token reuse", id)
+		}
+	}
+	if tok, _ := tokenRepo.GetByID(ctx, "other-client"); tok == nil || tok.Revoked {
+		t.Error("tokens for other clients must be untouched")
+	}
+	if _, err := svc.HandleRefreshToken(ctx, &TokenRequest{GrantType: "refresh_token", RefreshToken: response.RefreshToken, ClientID: "test-app", ClientSecret: "test-secret"}); err == nil {
+		t.Error("the rotated-in token must no longer work after reuse was detected")
 	}
 }
 

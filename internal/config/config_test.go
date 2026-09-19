@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/netip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -91,6 +92,62 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.LoginRateLimit != 10 {
 		t.Errorf("Expected login rate limit 10, got %d", cfg.LoginRateLimit)
+	}
+}
+
+func TestCookieSecureFollowsIssuerScheme(t *testing.T) {
+	cases := []struct {
+		issuer, explicit string
+		want             bool
+	}{
+		{"https://idp.example.com", "", true},
+		{"http://localhost:8080", "", false},
+		{"https://idp.example.com", "false", false},
+		{"http://localhost:8080", "true", true},
+	}
+	for _, tc := range cases {
+		clearIDPEnvVars()
+		os.Setenv("IDPICO_ISSUER_URL", tc.issuer)
+		if tc.explicit != "" {
+			os.Setenv("IDPICO_COOKIE_SECURE", tc.explicit)
+		}
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+		if cfg.CookieSecure != tc.want {
+			t.Errorf("issuer=%s IDPICO_COOKIE_SECURE=%q: CookieSecure=%v, want %v", tc.issuer, tc.explicit, cfg.CookieSecure, tc.want)
+		}
+	}
+	clearIDPEnvVars()
+}
+
+func TestTrustedProxies(t *testing.T) {
+	for _, tc := range []struct {
+		value   string
+		wantN   int
+		wantErr bool
+	}{
+		{"", 0, false},
+		{"none", 0, false},
+		{"private", len(privateProxyPrefixes), false},
+		{"10.0.0.0/8, 192.168.1.5", 2, false},
+		{"not-an-ip", 0, true},
+	} {
+		cfg := &Config{TrustedProxies: tc.value}
+		got, err := cfg.ParseTrustedProxies()
+		if (err != nil) != tc.wantErr {
+			t.Errorf("%q: err=%v, wantErr=%v", tc.value, err, tc.wantErr)
+			continue
+		}
+		if len(got) != tc.wantN {
+			t.Errorf("%q: %d prefixes, want %d", tc.value, len(got), tc.wantN)
+		}
+	}
+	cfg := &Config{TrustedProxies: "192.168.1.5"}
+	got, _ := cfg.ParseTrustedProxies()
+	if !got[0].Contains(netip.MustParseAddr("192.168.1.5")) || got[0].Contains(netip.MustParseAddr("192.168.1.6")) {
+		t.Errorf("a bare IP should match only itself, got %v", got[0])
 	}
 }
 
@@ -474,7 +531,7 @@ func clearIDPEnvVars() {
 		"IDPICO_SESSION_DURATION", "IDPICO_COOKIE_SECRET", "IDPICO_COOKIE_SECURE", "IDPICO_COOKIE_DOMAIN",
 		"IDPICO_ACCESS_TOKEN_TTL", "IDPICO_REFRESH_TOKEN_TTL", "IDPICO_AUTH_CODE_TTL",
 		"IDPICO_SIGNING_KEY_ROTATION_DAYS", "IDPICO_LOGIN_RATE_LIMIT",
-		"IDPICO_LOCKOUT_MAX_ATTEMPTS", "IDPICO_LOCKOUT_DURATION",
+		"IDPICO_LOCKOUT_MAX_ATTEMPTS", "IDPICO_LOCKOUT_DURATION", "IDPICO_TRUSTED_PROXIES",
 		"IDPICO_LOG_LEVEL", "IDPICO_LOG_FORMAT",
 		"IDPICO_BOOTSTRAP_USERS", "IDPICO_BOOTSTRAP_CLIENTS",
 		"IDPICO_CLIENT_ID", "IDPICO_CLIENT_SECRET", "IDPICO_CLIENT_REDIRECT_URI",

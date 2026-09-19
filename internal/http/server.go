@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -32,6 +33,7 @@ type Server struct {
 	userInfoService       *oidc.UserInfoService
 	issuerURL             string
 	loginRateLimit        int // requests per minute, 0 = disabled
+	trustedProxies        []netip.Prefix
 	corsConfig            *CORSConfig
 	securityHeadersConfig *SecurityHeadersConfig
 	metricsEnabled        bool
@@ -135,6 +137,16 @@ func WithLoginRateLimit(limit int) Option {
 	}
 }
 
+// WithTrustedProxies names the peers whose X-Forwarded-For / X-Real-IP
+// headers identify the client. Requests from anyone else are attributed to
+// the connecting address, so a direct client cannot spoof its way past the
+// per-IP rate limits or forge audit-log addresses.
+func WithTrustedProxies(prefixes []netip.Prefix) Option {
+	return func(s *Server) {
+		s.trustedProxies = prefixes
+	}
+}
+
 // WithCORS sets the CORS configuration.
 func WithCORS(config *CORSConfig) Option {
 	return func(s *Server) {
@@ -171,7 +183,7 @@ func NewServer(addr string, opts ...Option) *Server {
 
 	// Default middleware
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	r.Use(RealIPFromTrustedProxies(s.trustedProxies))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
 

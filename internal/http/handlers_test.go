@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
+
+	"github.com/tendant/idpico/internal/config"
 )
 
 func TestHealthHandler_Healthz(t *testing.T) {
@@ -188,6 +191,31 @@ func TestIsValidReturnURL(t *testing.T) {
 			url:      "/a/b/c/d",
 			expected: true,
 		},
+		{
+			name:     "backslash scheme-relative (browsers treat as //evil.com)",
+			url:      `/\evil.com/x`,
+			expected: false,
+		},
+		{
+			name:     "percent-encoded backslash decodes to a scheme-relative URL",
+			url:      "/%5Cevil.com",
+			expected: true, // stays a path: the server never decodes it before redirecting
+		},
+		{
+			name:     "relative path without leading slash",
+			url:      "authorize?x=1",
+			expected: false,
+		},
+		{
+			name:     "header injection",
+			url:      "/x\r\nSet-Cookie: a=b",
+			expected: false,
+		},
+		{
+			name:     "javascript scheme",
+			url:      "javascript:alert(1)",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -208,6 +236,40 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+func TestRealIPFromTrustedProxies(t *testing.T) {
+	seen := ""
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { seen = r.RemoteAddr })
+	private, _ := (&config.Config{TrustedProxies: "private"}).ParseTrustedProxies()
+
+	cases := []struct {
+		name    string
+		trusted []netip.Prefix
+		peer    string
+		xff     string
+		want    string
+	}{
+		{"private peer: header honoured", private, "10.0.0.2:4444", "203.0.113.9", "203.0.113.9"},
+		{"loopback peer: header honoured", private, "127.0.0.1:4444", "203.0.113.9", "203.0.113.9"},
+		{"public peer: header ignored", private, "198.51.100.7:4444", "203.0.113.9", "198.51.100.7:4444"},
+		{"no trusted proxies: header ignored", nil, "10.0.0.2:4444", "203.0.113.9", "10.0.0.2:4444"},
+		{"private peer without header: unchanged", private, "10.0.0.2:4444", "", "10.0.0.2:4444"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			seen = ""
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.RemoteAddr = tc.peer
+			if tc.xff != "" {
+				req.Header.Set("X-Forwarded-For", tc.xff)
+			}
+			RealIPFromTrustedProxies(tc.trusted)(next).ServeHTTP(httptest.NewRecorder(), req)
+			if seen != tc.want {
+				t.Errorf("RemoteAddr = %q, want %q", seen, tc.want)
+			}
+		})
+	}
 }
 
 func TestStaticStylesheet(t *testing.T) {

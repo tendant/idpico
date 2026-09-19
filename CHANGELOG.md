@@ -4,6 +4,14 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Security
+
+- Refresh tokens: a replayed (already rotated) refresh token now revokes every token the user holds for that client, since a replay means the token leaked; the grant can only be narrowed on refresh (`scope` wider than the original is `invalid_request`), and a disabled user can no longer refresh.
+- Forwarding headers (`X-Forwarded-For`, `X-Real-IP`) are honoured only from trusted proxies (`IDPICO_TRUSTED_PROXIES`, default `private`), so a direct client cannot spoof its address to bypass the login rate limit or forge audit-log IPs. Previously any peer's headers were trusted.
+- `IDPICO_COOKIE_SECURE` defaults to `true` when the issuer is `https://`; a startup warning is logged if it is explicitly turned off there.
+- `return_url` accepts only absolute paths on this origin; `/\evil.com` (which browsers treat as `//evil.com`) and CR/LF are rejected.
+- Headers: CSP adds `base-uri 'none'; object-src 'none'`; `X-XSS-Protection` is `0` per current guidance.
+
 ### Fixed
 
 - Static assets are linked as `/static/<file>?v=<content hash>` and served `immutable`, so a browser that cached the previous build's stylesheet never applies it to the new build's pages (the stale-CSS symptom: an oversized header icon and a collapsed nav right after a deploy). Unversioned URLs such as `/favicon.ico` keep their one-hour cache.

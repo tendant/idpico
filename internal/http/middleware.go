@@ -1,9 +1,13 @@
 package http
 
 import (
+	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 // CORSConfig holds CORS configuration.
@@ -133,13 +137,55 @@ type SecurityHeadersConfig struct {
 func DefaultSecurityHeadersConfig() *SecurityHeadersConfig {
 	return &SecurityHeadersConfig{
 		// Default CSP allows self-origin, inline styles for the login form
-		ContentSecurityPolicy: "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
+		ContentSecurityPolicy: "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
 		XFrameOptions:         "DENY",
 		XContentTypeOptions:   "nosniff",
 		ReferrerPolicy:        "strict-origin-when-cross-origin",
-		XSSProtection:         "1; mode=block",
-		PermissionsPolicy:     "geolocation=(), microphone=(), camera=()",
+		// "0" is the current guidance: the legacy XSS auditor introduced
+		// side-channel leaks and every browser that still honours the header
+		// treats "1; mode=block" as a liability rather than a defence.
+		XSSProtection:     "0",
+		PermissionsPolicy: "geolocation=(), microphone=(), camera=()",
 	}
+}
+
+// RealIPFromTrustedProxies rewrites r.RemoteAddr from the forwarding headers
+// (as chi's RealIP does) only when the connecting peer is one of the trusted
+// proxies; otherwise the headers are ignored. With no trusted proxies every
+// request is attributed to its connecting address.
+func RealIPFromTrustedProxies(trusted []netip.Prefix) func(http.Handler) http.Handler {
+	fromProxy := middleware.RealIP
+	return func(next http.Handler) http.Handler {
+		if len(trusted) == 0 {
+			return next
+		}
+		proxied := fromProxy(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if peerIsTrusted(r.RemoteAddr, trusted) {
+				proxied.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func peerIsTrusted(remoteAddr string, trusted []netip.Prefix) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	addr = addr.Unmap()
+	for _, p := range trusted {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 // SecurityHeadersMiddleware returns a middleware that sets security headers.

@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"net/netip"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -32,7 +34,7 @@ type Config struct {
 	// Session settings
 	SessionDuration time.Duration `env:"IDPICO_SESSION_DURATION" env-default:"24h"`
 	CookieSecret    string        `env:"IDPICO_COOKIE_SECRET"`
-	CookieSecure    bool          `env:"IDPICO_COOKIE_SECURE" env-default:"false"`
+	CookieSecure    bool          `env:"IDPICO_COOKIE_SECURE" env-default:"false"` // unset: follows the issuer scheme (true for https)
 	CookieDomain    string        `env:"IDPICO_COOKIE_DOMAIN" env-default:""`
 
 	// Token settings
@@ -85,9 +87,15 @@ type Config struct {
 	CORSAllowedOrigins   string `env:"IDPICO_CORS_ALLOWED_ORIGINS" env-default:""` // Comma-separated origins, empty = disabled
 	CORSAllowCredentials bool   `env:"IDPICO_CORS_ALLOW_CREDENTIALS" env-default:"true"`
 
+	// Reverse proxies whose X-Forwarded-For / X-Real-IP headers identify the
+	// client for rate limiting and the audit log. "private" (default) trusts
+	// loopback and private-network peers, "none" trusts nobody, otherwise a
+	// comma-separated list of IPs or CIDRs.
+	TrustedProxies string `env:"IDPICO_TRUSTED_PROXIES" env-default:"private"`
+
 	// Security headers
 	SecurityHeadersEnabled bool   `env:"IDPICO_SECURITY_HEADERS_ENABLED" env-default:"true"`
-	ContentSecurityPolicy  string `env:"IDPICO_CONTENT_SECURITY_POLICY" env-default:"default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'"`
+	ContentSecurityPolicy  string `env:"IDPICO_CONTENT_SECURITY_POLICY" env-default:"default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"`
 	HSTSMaxAge             int    `env:"IDPICO_HSTS_MAX_AGE" env-default:"0"` // 0 = disabled, recommended: 31536000 (1 year)
 
 	// Metrics
@@ -140,10 +148,19 @@ func Load() (*Config, error) {
 		cfg.CookieSecretGenerated = true
 	}
 
+	// Cookies carry the session; over an https issuer they must be Secure
+	// unless the operator deliberately says otherwise.
+	if _, set := os.LookupEnv("IDPICO_COOKIE_SECURE"); !set && strings.HasPrefix(strings.ToLower(cfg.IssuerURL), "https://") {
+		cfg.CookieSecure = true
+	}
+
 	if err := cfg.validateStore(); err != nil {
 		return nil, err
 	}
 	if err := cfg.validateMail(); err != nil {
+		return nil, err
+	}
+	if _, err := cfg.ParseTrustedProxies(); err != nil {
 		return nil, err
 	}
 
@@ -301,6 +318,48 @@ func splitList(v string) []string {
 		}
 	}
 	return out
+}
+
+// privateProxyPrefixes are the peers trusted by IDPICO_TRUSTED_PROXIES=private:
+// loopback, RFC 1918, carrier-grade NAT, link-local and IPv6 ULA ranges.
+var privateProxyPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("169.254.0.0/16"),
+	netip.MustParsePrefix("::1/128"),
+	netip.MustParsePrefix("fc00::/7"),
+	netip.MustParsePrefix("fe80::/10"),
+}
+
+// ParseTrustedProxies returns the peer networks whose forwarding headers are
+// honoured. An empty result means the connecting address is always the client.
+func (c *Config) ParseTrustedProxies() ([]netip.Prefix, error) {
+	switch strings.ToLower(strings.TrimSpace(c.TrustedProxies)) {
+	case "", "none":
+		return nil, nil
+	case "private":
+		return privateProxyPrefixes, nil
+	}
+	var prefixes []netip.Prefix
+	for _, item := range strings.Split(c.TrustedProxies, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if p, err := netip.ParsePrefix(item); err == nil {
+			prefixes = append(prefixes, p)
+			continue
+		}
+		addr, err := netip.ParseAddr(item)
+		if err != nil {
+			return nil, fmt.Errorf("IDPICO_TRUSTED_PROXIES: %q is not an IP or CIDR", item)
+		}
+		prefixes = append(prefixes, netip.PrefixFrom(addr, addr.BitLen()))
+	}
+	return prefixes, nil
 }
 
 // ParseCORSAllowedOrigins parses the comma-separated CORS allowed origins.

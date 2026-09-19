@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -154,6 +155,15 @@ func main() {
 
 	userInfoService := oidc.NewUserInfoService(store.Users(), tokenGenerator, oidc.WithUserInfoGroups(groupClaims))
 
+	// Load() already validated the value; only the parsed form is needed here.
+	trustedProxies, _ := cfg.ParseTrustedProxies()
+	if len(trustedProxies) == 0 {
+		logger.Warn("no trusted proxies (IDPICO_TRUSTED_PROXIES); forwarding headers are ignored and every request is attributed to its connecting address")
+	}
+	if !cfg.CookieSecure && strings.HasPrefix(strings.ToLower(cfg.IssuerURL), "https://") {
+		logger.Warn("IDPICO_COOKIE_SECURE=false with an https issuer: session cookies can be sent over plain http")
+	}
+
 	// Build server options
 	serverOpts := []idphttp.Option{
 		idphttp.WithLogger(logger),
@@ -165,6 +175,7 @@ func main() {
 		idphttp.WithGroupsClaim(groupClaims.ClaimName()),
 		idphttp.WithAudit(auditRecorder),
 		idphttp.WithLoginRateLimit(cfg.LoginRateLimit),
+		idphttp.WithTrustedProxies(trustedProxies),
 	}
 
 	// Admin UI

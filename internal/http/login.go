@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/tendant/idpico/internal/auth"
 	idperrors "github.com/tendant/idpico/internal/errors"
@@ -169,9 +170,19 @@ func (h *LoginHandler) renderLoginError(w http.ResponseWriter, errMsg, returnURL
 	})
 }
 
-// isValidReturnURL validates the return URL to prevent open redirect.
+// isValidReturnURL validates the return URL to prevent open redirect: only
+// an absolute path on this origin is accepted.
 func isValidReturnURL(returnURL string) bool {
-	if returnURL == "" {
+	// Must be a path, and not a scheme-relative URL ("//host") or its
+	// backslash variant, which browsers also treat as leaving the origin
+	// while url.Parse leaves it as a path.
+	if len(returnURL) < 1 || returnURL[0] != '/' {
+		return false
+	}
+	if len(returnURL) > 1 && (returnURL[1] == '/' || returnURL[1] == '\\') {
+		return false
+	}
+	if strings.ContainsAny(returnURL, "\\\r\n") {
 		return false
 	}
 
@@ -179,9 +190,7 @@ func isValidReturnURL(returnURL string) bool {
 	if err != nil {
 		return false
 	}
-
-	// Only allow relative URLs (no scheme or host)
-	return u.Scheme == "" && u.Host == ""
+	return u.Scheme == "" && u.Host == "" && u.User == nil
 }
 
 type loginPageData struct {

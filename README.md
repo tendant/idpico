@@ -64,7 +64,7 @@ IDPICO_STORE_DSN=               # Optional: explicit SQLite path, overrides <IDP
 # Session
 IDPICO_SESSION_DURATION=24h
 IDPICO_COOKIE_SECRET=           # Auto-generated if empty
-IDPICO_COOKIE_SECURE=false      # Set true for HTTPS
+IDPICO_COOKIE_SECURE=           # Unset: true when IDPICO_ISSUER_URL is https://, else false
 
 # Tokens
 IDPICO_ACCESS_TOKEN_TTL=15m
@@ -99,6 +99,7 @@ IDPICO_LOG_FORMAT=json          # json or text
 
 # Rate limiting
 IDPICO_LOGIN_RATE_LIMIT=5       # requests per minute per IP (0 = disabled)
+IDPICO_TRUSTED_PROXIES=private  # peers whose X-Forwarded-For/X-Real-IP name the client: private | none | IPs/CIDRs
 
 # Account lockout
 IDPICO_LOCKOUT_MAX_ATTEMPTS=5   # failed attempts before lockout (0 = disabled)
@@ -110,7 +111,7 @@ IDPICO_CORS_ALLOW_CREDENTIALS=true
 
 # Security headers
 IDPICO_SECURITY_HEADERS_ENABLED=true
-IDPICO_CONTENT_SECURITY_POLICY=default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'
+IDPICO_CONTENT_SECURITY_POLICY=default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'
 IDPICO_HSTS_MAX_AGE=31536000    # 1 year, 0 = disabled
 
 # Bootstrap a single client
@@ -336,6 +337,12 @@ re-created from the environment).
 Per-IP limits guard every endpoint that accepts a guessable secret. `IDPICO_LOGIN_RATE_LIMIT`
 (default 5) sets the interactive limit; API endpoints get 10× that. Set to `0` to disable.
 
+The client IP is taken from `X-Forwarded-For` / `X-Real-IP` only when the connection comes from
+a trusted proxy (`IDPICO_TRUSTED_PROXIES`, default `private`: loopback and private-network
+peers, which covers an ingress or sidecar in front of the pod). Set it to your load balancer's
+addresses or CIDRs when it has a public IP, or `none` when IDPico is reached directly; otherwise
+a client could spoof a fresh address on every request and sidestep the limit.
+
 | Endpoints | Default Limit | Window |
 |-----------|---------------|--------|
 | `POST /login`, `POST /consent`, `POST /forgot-password`, `POST /reset-password`, `GET /verify-email` | 5 requests | 1 minute |
@@ -375,11 +382,11 @@ Security headers are enabled by default and include:
 
 | Header | Default Value |
 |--------|---------------|
-| Content-Security-Policy | `default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'` |
+| Content-Security-Policy | `default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'` |
 | X-Frame-Options | `DENY` |
 | X-Content-Type-Options | `nosniff` |
 | Referrer-Policy | `strict-origin-when-cross-origin` |
-| X-XSS-Protection | `1; mode=block` |
+| X-XSS-Protection | `0` (the legacy auditor is disabled; CSP is the defence) |
 | Permissions-Policy | `geolocation=(), microphone=(), camera=()` |
 | Strict-Transport-Security | Disabled by default (set `IDPICO_HSTS_MAX_AGE` to enable) |
 

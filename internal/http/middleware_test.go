@@ -182,11 +182,11 @@ func TestSecurityHeadersMiddleware_DefaultHeaders(t *testing.T) {
 
 	// Check all security headers are set
 	expectedHeaders := map[string]string{
-		"Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
+		"Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
 		"X-Frame-Options":         "DENY",
 		"X-Content-Type-Options":  "nosniff",
 		"Referrer-Policy":         "strict-origin-when-cross-origin",
-		"X-XSS-Protection":        "1; mode=block",
+		"X-XSS-Protection":        "0",
 		"Permissions-Policy":      "geolocation=(), microphone=(), camera=()",
 	}
 
