@@ -20,16 +20,19 @@ type User struct {
 
 // Client represents an OAuth 2.0 / OIDC client application.
 type Client struct {
-	ID           string    `json:"id"`
-	Secret       string    `json:"secret,omitempty"` // Empty for public clients
-	Name         string    `json:"name"`
-	RedirectURIs []string  `json:"redirect_uris"`
-	GrantTypes   []string  `json:"grant_types"`  // e.g., authorization_code, refresh_token
-	Scopes       []string  `json:"scopes"`       // Allowed scopes
-	Public       bool      `json:"public"`       // True for public clients (PKCE required)
-	SkipConsent  bool      `json:"skip_consent"` // First-party client: never show the consent screen
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           string   `json:"id"`
+	Secret       string   `json:"secret,omitempty"` // Empty for public clients
+	Name         string   `json:"name"`
+	RedirectURIs []string `json:"redirect_uris"`
+	GrantTypes   []string `json:"grant_types"`  // e.g., authorization_code, refresh_token
+	Scopes       []string `json:"scopes"`       // Allowed scopes
+	Public       bool     `json:"public"`       // True for public clients (PKCE required)
+	SkipConsent  bool     `json:"skip_consent"` // First-party client: never show the consent screen
+	// Token lifetimes for this client; zero means the server default applies.
+	AccessTokenTTL  time.Duration `json:"access_token_ttl,omitempty"`
+	RefreshTokenTTL time.Duration `json:"refresh_token_ttl,omitempty"`
+	CreatedAt       time.Time     `json:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at"`
 }
 
 // Group is a named set of users, exposed to clients through the "groups"

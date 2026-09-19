@@ -818,12 +818,24 @@ func ClientRepository_SkipConsentRoundTrip(t *testing.T, newStore Factory) {
 	store := newStore(t)
 	ctx := context.Background()
 
-	if err := store.Clients().Create(ctx, &domain.Client{ID: "c1", Name: "c1", SkipConsent: true}); err != nil {
+	if err := store.Clients().Create(ctx, &domain.Client{ID: "c1", Name: "c1", SkipConsent: true, AccessTokenTTL: 5 * time.Minute, RefreshTokenTTL: 36 * time.Hour}); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 	got, _ := store.Clients().GetByID(ctx, "c1")
 	if !got.SkipConsent {
 		t.Error("SkipConsent not round-tripped")
+	}
+	if got.AccessTokenTTL != 5*time.Minute || got.RefreshTokenTTL != 36*time.Hour {
+		t.Errorf("token TTLs not round-tripped: access=%v refresh=%v", got.AccessTokenTTL, got.RefreshTokenTTL)
+	}
+
+	got.AccessTokenTTL, got.RefreshTokenTTL = 0, time.Hour
+	if err := store.Clients().Update(ctx, got); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	got, _ = store.Clients().GetByID(ctx, "c1")
+	if got.AccessTokenTTL != 0 || got.RefreshTokenTTL != time.Hour {
+		t.Errorf("token TTLs not round-tripped on update: access=%v refresh=%v", got.AccessTokenTTL, got.RefreshTokenTTL)
 	}
 }
 

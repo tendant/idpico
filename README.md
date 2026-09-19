@@ -66,7 +66,7 @@ IDPICO_SESSION_DURATION=24h
 IDPICO_COOKIE_SECRET=           # Auto-generated if empty
 IDPICO_COOKIE_SECURE=           # Unset: true when IDPICO_ISSUER_URL is https://, else false
 
-# Tokens
+# Tokens (server defaults; each client can override both on its admin page)
 IDPICO_ACCESS_TOKEN_TTL=15m
 IDPICO_REFRESH_TOKEN_TTL=168h   # 7 days
 IDPICO_AUTH_CODE_TTL=10m
@@ -241,6 +241,7 @@ make build                          # builds ./idpico and ./idpicoctl
 ./idpicoctl group add admins && ./idpicoctl group add-member admins alice@example.com
 ./idpicoctl client add my-app -redirect http://localhost:3000/callback   # prints the secret once
 ./idpicoctl client add spa -public -redirect http://localhost:5173/callback
+./idpicoctl client add cli -redirect http://127.0.0.1/cb -access-ttl 5m -refresh-ttl 720h   # per-client lifetimes
 ./idpicoctl key rotate -grace 24h
 ./idpicoctl user list | group list | client list | key list
 ```

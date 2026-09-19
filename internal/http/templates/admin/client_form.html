@@ -44,6 +44,18 @@
             <div class="help">Space separated. Default: <code>authorization_code refresh_token</code></div>
         </div>
     </div>
+    <div class="form-row two">
+        <div>
+            <label for="access_token_ttl">Access token lifetime</label>
+            <input type="text" id="access_token_ttl" name="access_token_ttl" value="{{ttl .Client.AccessTokenTTL}}" placeholder="{{.DefaultAccessTTL}}">
+            <div class="help">Also the ID token lifetime. Blank = server default <code>{{.DefaultAccessTTL}}</code>. Units: <code>m</code>, <code>h</code>, <code>d</code>.</div>
+        </div>
+        <div>
+            <label for="refresh_token_ttl">Refresh token lifetime</label>
+            <input type="text" id="refresh_token_ttl" name="refresh_token_ttl" value="{{ttl .Client.RefreshTokenTTL}}" placeholder="{{.DefaultRefreshTTL}}">
+            <div class="help">Blank = server default <code>{{.DefaultRefreshTTL}}</code>. Each refresh issues a new token with a fresh lifetime.</div>
+        </div>
+    </div>
     <div class="form-row">
         <label class="check"><input type="checkbox" name="public" value="1"{{if .Client.Public}} checked{{end}}> Public client (no secret, PKCE required)</label>
         <label class="check"><input type="checkbox" name="skip_consent" value="1"{{if .Client.SkipConsent}} checked{{end}}> First-party: skip the consent screen</label>
@@ -72,6 +84,7 @@
         <tr><th>Client ID</th><td><code>{{.Client.ID}}</code></td></tr>
         <tr><th>Client auth</th><td>{{if .Client.Public}}Public client: no secret; PKCE (S256) is required{{else}}Client secret via HTTP Basic or <code>client_secret</code> form field; PKCE optional{{end}}</td></tr>
         <tr><th>Scopes</th><td><code>{{join .Client.Scopes " "}}</code></td></tr>
+        <tr><th>Token lifetimes</th><td>access/ID <code>{{.EffectiveAccessTTL}}</code> &middot; refresh <code>{{.EffectiveRefreshTTL}}</code></td></tr>
     </table>
 </div>
 

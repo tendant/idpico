@@ -304,6 +304,34 @@ func TestAdmin_Clients(t *testing.T) {
 			t.Errorf("update not applied (or secret changed): %+v", client)
 		}
 
+		// Per-client token lifetimes: "d" is accepted, blank means server default,
+		// and the form echoes the stored value back in the same unit.
+		postAndFollow(t, admin, base, "/admin/clients/my-app", url.Values{
+			"name": {"My App v2"}, "redirect_uris": {"http://localhost:6000/cb"},
+			"access_token_ttl": {"5m"}, "refresh_token_ttl": {"30d"},
+		})
+		client, _ = env.store.Clients().GetByID(ctx, "my-app")
+		if client.AccessTokenTTL != 5*time.Minute || client.RefreshTokenTTL != 30*24*time.Hour {
+			t.Errorf("token TTLs not stored: access=%v refresh=%v", client.AccessTokenTTL, client.RefreshTokenTTL)
+		}
+		if _, body := get(t, admin, base+"/admin/clients/my-app"); !strings.Contains(body, `value="5m"`) || !strings.Contains(body, `value="30d"`) {
+			t.Error("client form should echo the stored lifetimes")
+		}
+		resp = postForm(t, admin, base, "/admin/clients/my-app", url.Values{
+			"name": {"My App v2"}, "redirect_uris": {"http://localhost:6000/cb"}, "access_token_ttl": {"soon"},
+		})
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("invalid lifetime should be rejected, got %d", resp.StatusCode)
+		}
+		postAndFollow(t, admin, base, "/admin/clients/my-app", url.Values{
+			"name": {"My App v2"}, "redirect_uris": {"http://localhost:6000/cb"}, "access_token_ttl": {""}, "refresh_token_ttl": {""},
+		})
+		client, _ = env.store.Clients().GetByID(ctx, "my-app")
+		if client.AccessTokenTTL != 0 || client.RefreshTokenTTL != 0 {
+			t.Errorf("blank lifetimes should reset to server default: %+v", client)
+		}
+
 		// Regenerate secret
 		get(t, admin, base+"/admin/clients/my-app")
 		resp = postForm(t, admin, base, "/admin/clients/my-app/secret", nil)

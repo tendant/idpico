@@ -15,7 +15,7 @@ type clientRepository struct {
 	db *sql.DB
 }
 
-const clientColumns = "id, secret, name, redirect_uris, grant_types, scopes, public, skip_consent, created_at, updated_at"
+const clientColumns = "id, secret, name, redirect_uris, grant_types, scopes, public, skip_consent, access_token_ttl, refresh_token_ttl, created_at, updated_at"
 
 // String slices on Client are stored as JSON arrays; nobody queries by element.
 
@@ -48,10 +48,13 @@ func scanClient(row interface{ Scan(...any) error }) (*domain.Client, error) {
 	var (
 		c                                domain.Client
 		redirectURIs, grantTypes, scopes string
+		accessTTL, refreshTTL            int64 // seconds
 	)
-	if err := row.Scan(&c.ID, &c.Secret, &c.Name, &redirectURIs, &grantTypes, &scopes, &c.Public, &c.SkipConsent, &c.CreatedAt, &c.UpdatedAt); err != nil {
+	if err := row.Scan(&c.ID, &c.Secret, &c.Name, &redirectURIs, &grantTypes, &scopes, &c.Public, &c.SkipConsent, &accessTTL, &refreshTTL, &c.CreatedAt, &c.UpdatedAt); err != nil {
 		return nil, err
 	}
+	c.AccessTokenTTL = time.Duration(accessTTL) * time.Second
+	c.RefreshTokenTTL = time.Duration(refreshTTL) * time.Second
 
 	var err error
 	if c.RedirectURIs, err = unmarshalStrings(redirectURIs); err != nil {
@@ -77,8 +80,9 @@ func (r *clientRepository) Create(ctx context.Context, client *domain.Client) er
 	client.UpdatedAt = now
 
 	_, err = r.db.ExecContext(ctx,
-		`INSERT INTO clients (`+clientColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		client.ID, client.Secret, client.Name, redirectURIs, grantTypes, scopes, client.Public, client.SkipConsent, utc(client.CreatedAt), utc(client.UpdatedAt),
+		`INSERT INTO clients (`+clientColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		client.ID, client.Secret, client.Name, redirectURIs, grantTypes, scopes, client.Public, client.SkipConsent,
+		int64(client.AccessTokenTTL/time.Second), int64(client.RefreshTokenTTL/time.Second), utc(client.CreatedAt), utc(client.UpdatedAt),
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -120,8 +124,9 @@ func (r *clientRepository) Update(ctx context.Context, client *domain.Client) er
 	client.UpdatedAt = time.Now()
 
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE clients SET secret = ?, name = ?, redirect_uris = ?, grant_types = ?, scopes = ?, public = ?, skip_consent = ?, updated_at = ? WHERE id = ?`,
-		client.Secret, client.Name, redirectURIs, grantTypes, scopes, client.Public, client.SkipConsent, utc(client.UpdatedAt), client.ID,
+		`UPDATE clients SET secret = ?, name = ?, redirect_uris = ?, grant_types = ?, scopes = ?, public = ?, skip_consent = ?, access_token_ttl = ?, refresh_token_ttl = ?, updated_at = ? WHERE id = ?`,
+		client.Secret, client.Name, redirectURIs, grantTypes, scopes, client.Public, client.SkipConsent,
+		int64(client.AccessTokenTTL/time.Second), int64(client.RefreshTokenTTL/time.Second), utc(client.UpdatedAt), client.ID,
 	)
 	if err != nil {
 		return idperrors.Internal("failed to update client", err)

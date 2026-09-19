@@ -180,13 +180,15 @@ func main() {
 
 	// Admin UI
 	serverOpts = append(serverOpts, idphttp.WithAdmin(idphttp.AdminConfig{
-		Store:          store,
-		AuthService:    authService,
-		AccountService: accountService,
-		KeyService:     keyService,
-		IssuerURL:      cfg.IssuerURL,
-		KeyGracePeriod: cfg.SigningKeyGracePeriod,
-		GroupsClaim:    groupClaims.ClaimName(),
+		Store:           store,
+		AuthService:     authService,
+		AccountService:  accountService,
+		KeyService:      keyService,
+		IssuerURL:       cfg.IssuerURL,
+		KeyGracePeriod:  cfg.SigningKeyGracePeriod,
+		AccessTokenTTL:  cfg.AccessTokenTTL,
+		RefreshTokenTTL: cfg.RefreshTokenTTL,
+		GroupsClaim:     groupClaims.ClaimName(),
 	}))
 
 	// OIDC playground

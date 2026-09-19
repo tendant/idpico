@@ -37,7 +37,7 @@ Resources and commands:
           add-member <name> <email>
           remove-member <name> <email>
   client  list
-          add <id> -redirect URI [-redirect URI ...] [-name NAME] [-public] [-skip-consent] [-scopes "a b"]
+          add <id> -redirect URI [-redirect URI ...] [-name NAME] [-public] [-skip-consent] [-scopes "a b"] [-access-ttl 5m] [-refresh-ttl 720h]
           reset-secret <id>
           delete <id>
   key     list

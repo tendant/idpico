@@ -284,6 +284,19 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 	return s.generateTokens(ctx, user, client, scope, "", time.Time{})
 }
 
+// ttlsFor returns the access and refresh token lifetimes for a client: its
+// own settings when set, otherwise the server defaults.
+func (s *TokenService) ttlsFor(client *domain.Client) (access, refresh time.Duration) {
+	access, refresh = s.accessTTL, s.refreshTTL
+	if client.AccessTokenTTL > 0 {
+		access = client.AccessTokenTTL
+	}
+	if client.RefreshTokenTTL > 0 {
+		refresh = client.RefreshTokenTTL
+	}
+	return access, refresh
+}
+
 // revokeGrant revokes every live token the user holds for the client.
 func (s *TokenService) revokeGrant(ctx context.Context, userID, clientID string) error {
 	tokens, err := s.tokens.ListByUserID(ctx, userID)
@@ -501,14 +514,16 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 		return nil, err
 	}
 
+	accessTTL, refreshTTL := s.ttlsFor(client)
+
 	// Generate ID token
-	idToken, _, err := s.tokenGenerator.GenerateIDToken(user.ID, s.accessTTL, idTokenClaims)
+	idToken, _, err := s.tokenGenerator.GenerateIDToken(user.ID, accessTTL, idTokenClaims)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate ID token: %w", err)
 	}
 
 	// Generate access token
-	accessToken, _, err := s.tokenGenerator.GenerateAccessTokenWithClaims(user.ID, s.accessTTL, accessTokenClaims)
+	accessToken, _, err := s.tokenGenerator.GenerateAccessTokenWithClaims(user.ID, accessTTL, accessTokenClaims)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -516,7 +531,7 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 	response := &TokenResponse{
 		AccessToken: accessToken,
 		TokenType:   "Bearer",
-		ExpiresIn:   int(s.accessTTL.Seconds()),
+		ExpiresIn:   int(accessTTL.Seconds()),
 		IDToken:     idToken,
 		Scope:       scope,
 	}
@@ -528,7 +543,7 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 			UserID:    user.ID,
 			ClientID:  client.ID,
 			Scope:     scope,
-			ExpiresAt: time.Now().Add(s.refreshTTL),
+			ExpiresAt: time.Now().Add(refreshTTL),
 			Revoked:   false,
 		}
 

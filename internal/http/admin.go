@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,10 @@ type AdminConfig struct {
 	IssuerURL      string
 	KeyGracePeriod time.Duration
 	GroupsClaim    string // claim name shown on the groups page
+	// Server-wide token lifetimes, shown on the client form as the defaults
+	// a per-client override replaces.
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
 }
 
 // AdminHandler serves the server-rendered administration UI under /admin.
@@ -879,6 +884,9 @@ type clientFormData struct {
 	Client    *domain.Client
 	NewSecret string
 	IssuerURL string // for the endpoints card: what to paste into a relying party
+	// Server defaults and the values in effect for this client.
+	DefaultAccessTTL, DefaultRefreshTTL     string
+	EffectiveAccessTTL, EffectiveRefreshTTL string
 }
 
 var (
@@ -906,7 +914,57 @@ func (h *AdminHandler) NewClient(w http.ResponseWriter, r *http.Request) {
 func (h *AdminHandler) renderClientForm(w http.ResponseWriter, r *http.Request, status int, data clientFormData) {
 	data.adminBase = h.base(w, r, "clients")
 	data.IssuerURL = h.cfg.IssuerURL
+	data.DefaultAccessTTL = ttlForm(h.cfg.AccessTokenTTL)
+	data.DefaultRefreshTTL = ttlForm(h.cfg.RefreshTokenTTL)
+	data.EffectiveAccessTTL, data.EffectiveRefreshTTL = data.DefaultAccessTTL, data.DefaultRefreshTTL
+	if data.Client != nil {
+		if data.Client.AccessTokenTTL > 0 {
+			data.EffectiveAccessTTL = ttlForm(data.Client.AccessTokenTTL)
+		}
+		if data.Client.RefreshTokenTTL > 0 {
+			data.EffectiveRefreshTTL = ttlForm(data.Client.RefreshTokenTTL)
+		}
+	}
 	h.templates.Render(w, status, "admin/client_form", data)
+}
+
+// parseTTLField reads an optional duration form field ("15m", "24h", "7d");
+// blank means "use the server default" and is stored as zero.
+func parseTTLField(value string) (time.Duration, string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, ""
+	}
+	// Go's parser has no day unit, and days are the natural unit for refresh tokens.
+	if strings.HasSuffix(value, "d") {
+		n, err := strconv.Atoi(strings.TrimSuffix(value, "d"))
+		if err != nil || n <= 0 {
+			return 0, "Invalid duration: " + value
+		}
+		return time.Duration(n) * 24 * time.Hour, ""
+	}
+	d, err := time.ParseDuration(value)
+	if err != nil || d <= 0 {
+		return 0, "Invalid duration: " + value + " (use e.g. 15m, 12h, 7d)"
+	}
+	return d, ""
+}
+
+// ttlForm formats a lifetime the way people type it ("7d", "12h", "15m"),
+// falling back to Go's form for odd values; blank when zero (default applies).
+func ttlForm(d time.Duration) string {
+	if d <= 0 {
+		return ""
+	}
+	for _, u := range []struct {
+		unit   time.Duration
+		suffix string
+	}{{24 * time.Hour, "d"}, {time.Hour, "h"}, {time.Minute, "m"}} {
+		if d%u.unit == 0 {
+			return strconv.Itoa(int(d/u.unit)) + u.suffix
+		}
+	}
+	return d.String()
 }
 
 // applyClientForm copies the editable fields from the form onto client and
@@ -939,6 +997,13 @@ func applyClientForm(r *http.Request, client *domain.Client) string {
 	}
 	if client.Public {
 		client.Secret = ""
+	}
+	var msg string
+	if client.AccessTokenTTL, msg = parseTTLField(r.FormValue("access_token_ttl")); msg != "" {
+		return "Access token lifetime: " + msg
+	}
+	if client.RefreshTokenTTL, msg = parseTTLField(r.FormValue("refresh_token_ttl")); msg != "" {
+		return "Refresh token lifetime: " + msg
 	}
 	return ""
 }

@@ -107,6 +107,7 @@ func LoadTemplates(logger *slog.Logger) *Templates {
 var templateFuncs = template.FuncMap{
 	"join":  strings.Join,
 	"asset": assetURL,
+	"ttl":   ttlForm,
 	"date": func(t time.Time) string {
 		if t.IsZero() {
 			return "-"

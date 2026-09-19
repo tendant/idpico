@@ -297,6 +297,8 @@ func (a *app) client(ctx context.Context, cmd string, args []string) error {
 		public := fs.Bool("public", false, "public client (PKCE, no secret)")
 		skipConsent := fs.Bool("skip-consent", false, "first-party: skip the consent screen")
 		scopes := fs.String("scopes", "openid profile email offline_access groups", "allowed scopes")
+		accessTTL := fs.Duration("access-ttl", 0, "access/ID token lifetime (e.g. 5m); 0 = server default")
+		refreshTTL := fs.Duration("refresh-ttl", 0, "refresh token lifetime (e.g. 720h); 0 = server default")
 		id, err := parseOne(fs, args, "id")
 		if err != nil {
 			return err
@@ -306,8 +308,10 @@ func (a *app) client(ctx context.Context, cmd string, args []string) error {
 		}
 		c := &domain.Client{
 			ID: id, Name: *name, RedirectURIs: redirects, Public: *public, SkipConsent: *skipConsent,
-			Scopes:     strings.Fields(*scopes),
-			GrantTypes: []string{"authorization_code", "refresh_token"},
+			Scopes:          strings.Fields(*scopes),
+			GrantTypes:      []string{"authorization_code", "refresh_token"},
+			AccessTokenTTL:  *accessTTL,
+			RefreshTokenTTL: *refreshTTL,
 		}
 		if c.Name == "" {
 			c.Name = id

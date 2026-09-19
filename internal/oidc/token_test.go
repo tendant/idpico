@@ -855,6 +855,38 @@ func TestHandleRefreshToken(t *testing.T) {
 	}
 }
 
+func TestPerClientTokenTTLs(t *testing.T) {
+	svc, clientRepo, _, tokenRepo, userRepo := setupTokenService()
+	ctx := context.Background()
+	userRepo.Create(ctx, &domain.User{ID: "user-123", Email: "test@example.com", Active: true})
+
+	clientRepo.Create(ctx, &domain.Client{ID: "short", Secret: "s", RedirectURIs: []string{"http://x/cb"}, Scopes: []string{"openid", "offline_access"},
+		AccessTokenTTL: 2 * time.Minute, RefreshTokenTTL: 3 * time.Hour})
+	clientRepo.Create(ctx, &domain.Client{ID: "default", Secret: "s", RedirectURIs: []string{"http://x/cb"}, Scopes: []string{"openid", "offline_access"}})
+
+	for _, tc := range []struct {
+		client        string
+		wantExpiresIn int
+		wantRefresh   time.Duration
+	}{
+		{"short", 120, 3 * time.Hour},
+		{"default", int(svc.accessTTL.Seconds()), svc.refreshTTL},
+	} {
+		tokenRepo.Create(ctx, &domain.Token{ID: "rt-" + tc.client, UserID: "user-123", ClientID: tc.client, Scope: "openid offline_access", ExpiresAt: time.Now().Add(time.Hour)})
+		resp, err := svc.HandleRefreshToken(ctx, &TokenRequest{GrantType: "refresh_token", RefreshToken: "rt-" + tc.client, ClientID: tc.client, ClientSecret: "s"})
+		if err != nil {
+			t.Fatalf("%s: %v", tc.client, err)
+		}
+		if resp.ExpiresIn != tc.wantExpiresIn {
+			t.Errorf("%s: expires_in = %d, want %d", tc.client, resp.ExpiresIn, tc.wantExpiresIn)
+		}
+		newRT, _ := tokenRepo.GetByID(ctx, resp.RefreshToken)
+		if got := time.Until(newRT.ExpiresAt); got < tc.wantRefresh-time.Minute || got > tc.wantRefresh {
+			t.Errorf("%s: refresh token expires in %v, want ~%v", tc.client, got, tc.wantRefresh)
+		}
+	}
+}
+
 func TestRefreshTokenRotation(t *testing.T) {
 	svc, clientRepo, _, tokenRepo, userRepo := setupTokenService()
 
