@@ -223,6 +223,29 @@ func TestStaticStylesheet(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "prefers-color-scheme: dark") {
 		t.Error("stylesheet should include the dark mode override")
 	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "public, max-age=3600" {
+		t.Errorf("unversioned asset should be cached briefly, got %q", cc)
+	}
+
+	// Pages link assets with a content hash so a new build is never paired with
+	// a stylesheet cached from the old one, and such URLs cache indefinitely.
+	css := assetURL("style.css")
+	if !strings.HasPrefix(css, "/static/style.css?v=") || len(css) != len("/static/style.css?v=")+8 {
+		t.Fatalf("unexpected asset url %q", css)
+	}
+	env := setupTestEnv(t, "sqlite")
+	defer env.cleanup()
+	if _, body := get(t, env.server.Client(), env.server.URL+"/login"); !strings.Contains(body, `href="`+css+`"`) {
+		t.Errorf("login page should link the versioned stylesheet %q", css)
+	}
+	rec = httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, css, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("versioned stylesheet: expected 200, got %d", rec.Code)
+	}
+	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Errorf("versioned asset should be immutable, got %q", cc)
+	}
 	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "max-age") {
 		t.Errorf("stylesheet should be cacheable, got %q", cc)
 	}

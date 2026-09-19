@@ -2,7 +2,9 @@ package http
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -28,8 +30,40 @@ func FaviconHandler() http.Handler {
 	})
 }
 
-// StaticHandler serves the embedded stylesheet and icons under /static/ with
-// long-lived caching; the files only change with the binary.
+// staticVersions maps each embedded static file to a short content hash, so
+// templates can link it as /static/<name>?v=<hash>: the URL changes whenever
+// the file does, and a new binary can never be paired with a stylesheet a
+// browser cached from the previous one.
+var staticVersions = func() map[string]string {
+	v := map[string]string{}
+	if err := fs.WalkDir(staticFS, "static", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := staticFS.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(b)
+		v[strings.TrimPrefix(p, "static/")] = hex.EncodeToString(sum[:4])
+		return nil
+	}); err != nil {
+		panic(err)
+	}
+	return v
+}()
+
+// assetURL returns the versioned URL for an embedded static file.
+func assetURL(name string) string {
+	if v, ok := staticVersions[name]; ok {
+		return "/static/" + name + "?v=" + v
+	}
+	return "/static/" + name
+}
+
+// StaticHandler serves the embedded stylesheet and icons under /static/.
+// Versioned URLs (?v=<hash>, as the templates emit) may be cached
+// indefinitely; bare ones get an hour so /favicon.ico still picks up changes.
 func StaticHandler() http.Handler {
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {
@@ -37,7 +71,11 @@ func StaticHandler() http.Handler {
 	}
 	files := http.FileServer(http.FS(sub))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=3600")
+		if r.URL.Query().Get("v") != "" {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+		}
 		files.ServeHTTP(w, r)
 	})
 }
@@ -67,7 +105,8 @@ func LoadTemplates(logger *slog.Logger) *Templates {
 
 // templateFuncs are available to every page.
 var templateFuncs = template.FuncMap{
-	"join": strings.Join,
+	"join":  strings.Join,
+	"asset": assetURL,
 	"date": func(t time.Time) string {
 		if t.IsZero() {
 			return "-"

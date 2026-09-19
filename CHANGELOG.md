@@ -6,6 +6,7 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ### Fixed
 
+- Static assets are linked as `/static/<file>?v=<content hash>` and served `immutable`, so a browser that cached the previous build's stylesheet never applies it to the new build's pages (the stale-CSS symptom: an oversized header icon and a collapsed nav right after a deploy). Unversioned URLs such as `/favicon.ico` keep their one-hour cache.
 - `make docker-push` builds a linux/amd64 + linux/arm64 manifest list with `docker buildx` (the Dockerfile cross-compiles from the build host). Images pushed before this were built with plain `docker build` and only ran on the architecture of the machine that built them.
 
 ### Added
