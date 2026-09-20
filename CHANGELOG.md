@@ -4,6 +4,16 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+## [0.0.6] - 2026-09-20
+
+Tighter tokens. ID-token claims are released only for the scopes a client was granted (an
+`openid`-only client no longer receives the user's email), clients that need spec-pure ID tokens
+can ask for them, PKCE is S256-only for everyone, and the metrics finally count. Verified with
+oauth2-proxy as a second real relying party; the OpenID Foundation Basic OP run is down to 5
+warnings, all documented choices. **Adds migration `00004`** (applied at startup, no rollback: copy
+the data directory first). Relying parties that request `openid` without `email`/`profile` and
+still expected those claims in the ID token must add the scopes.
+
 ### Added
 
 - `given_name` and `family_name` on users (admin console, `idpicoctl user add -given-name -family-name`), released with the `profile` scope in the ID token and at `/userinfo`. Migration `00004`.
@@ -163,7 +173,8 @@ client, and an audit trail.
 - Initial file-backed IdP: Authorization Code + PKCE, RS256 JWTs, refresh token rotation,
   revocation, introspection, RP-initiated logout, rate limiting, lockout, CORS, metrics.
 
-[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.5...HEAD
+[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.6...HEAD
+[0.0.6]: https://github.com/tendant/idpico/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/tendant/idpico/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/tendant/idpico/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/tendant/idpico/compare/v0.0.2...v0.0.3
