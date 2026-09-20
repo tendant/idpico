@@ -12,8 +12,8 @@ not with the `golang-jwt` library IDPico signs with. It cannot import `internal/
 
 | | |
 |---|---|
-| **Required, tested** | Discovery, Authorization Code flow, PKCE `S256`, JWKS, signed ID tokens (`RS256`, `EdDSA`), UserInfo, `state`, `nonce`, client authentication `client_secret_basic` / `client_secret_post` / `none` |
-| **Implemented, not yet in the conformance contract** | Refresh tokens (rotation, reuse detection — covered by `scripts/test-client.sh` and unit tests), RP-initiated logout (`end_session_endpoint`), token revocation, token introspection, `prompt`, `max_age` / `auth_time`, `groups` claim |
+| **Required, tested** | Discovery, Authorization Code flow, PKCE `S256`, JWKS, signed ID tokens (`RS256`, `EdDSA`), UserInfo, `state`, `nonce`, client authentication `client_secret_basic` / `client_secret_post` / `none`, refresh tokens (rotation, reuse detection, scope narrowing), token revocation (RFC 7009, access and refresh tokens) |
+| **Implemented, not yet in the conformance contract** | RP-initiated logout (`end_session_endpoint`), token introspection, `prompt`, `max_age` / `auth_time`, `groups` claim |
 | **Not supported** | Implicit and hybrid flows, Resource Owner Password Credentials, client credentials, device authorization, dynamic client registration, request objects, encrypted tokens, federation, SAML, SCIM |
 
 Unsupported response types and grant types are refused with `unsupported_response_type` /
@@ -24,8 +24,8 @@ Unsupported response types and grant types are refused with `unsupported_respons
 | Level | What | Status |
 |---|---|---|
 | 0 Development | `go test ./...`, `go vet`, gofmt | ✅ CI |
-| 1 Functional | discovery, JWKS, authorization code, token exchange, independent ID token validation, UserInfo | ✅ `make validate-conformance`, CI |
-| 2 Security | PKCE S256, redirect URI enforcement, code replay, client/code binding, state/nonce, forged and damaged JWTs | ✅ `make validate-security`, CI |
+| 1 Functional | discovery, JWKS, authorization code, token exchange, independent ID token validation, UserInfo, refresh tokens | ✅ `make validate-conformance`, CI |
+| 2 Security | PKCE S256, redirect URI enforcement, code and refresh-token replay, client/code binding, state/nonce, forged and damaged JWTs, revocation | ✅ `make validate-security`, CI |
 | 3 Interoperability | independent go-oidc client (`examples/oidc-client`) | ✅ `make validate-interop`, CI · other real applications: see below |
 | 4 Standards | OpenID Foundation conformance suite, Basic OP profile | ✅ `make validate-oidf`: 36 modules, 0 failures (results below) |
 | Operational | restart, key rotation, backup/restore, upgrade, reverse proxy | ✅ `make validate-operational`, CI (section below) |
@@ -102,6 +102,7 @@ and anything that looks like a JWT become `[redacted]`. The throwaway server's o
 | `TestUserInfo` | claims by scope, GET and POST, `sub` consistency, 401 + `WWW-Authenticate: Bearer` for missing / Basic / empty / junk / altered tokens |
 | `TestSecurityRedirectURI` | exact matching: trailing slash, sub-path, suffix domain, other host, scheme, port, case, query, userinfo — none redirect; exchange `redirect_uri` must match |
 | `TestSecurityToken` | code bound to client (other confidential client, public client), to `redirect_uri`, single use, expiry; wrong / missing / unknown client credentials are 401 `invalid_client`; other grant types `unsupported_grant_type`; error bodies are JSON, `no-store`, leak nothing |
+| `TestRefreshToken` | issued only for `offline_access`; every use rotates (old token `invalid_grant`, access token from before still valid); replaying a rotated-out token kills the current refresh token and every access token of the grant; scope may narrow but not widen (`invalid_scope`); wrong secret 401 `invalid_client`, another client `invalid_grant`, neither consumes the token |
 | `TestSecurityJWT` | `/userinfo` refuses: altered payload, altered signature, tokens signed by unknown RSA/Ed25519 keys (even with the real `kid`), unknown `kid`, `alg=none`, HMAC, truncated, garbage, expired. The independent verifier refuses wrong `iss`, `aud`, `nonce`, alg |
 | `TestSecurityAuthorize` | before client + `redirect_uri` are validated: error page, never a redirect; after: `unsupported_response_type` / `invalid_scope` redirected with `state`; `scope=openidx` is not `openid`; `prompt=none` → `login_required`; login form requires its CSRF token |
 | `TestNoInternalImports` | the suite imports nothing from this module |
@@ -146,8 +147,8 @@ Found while writing the suite; none affects the declared profile.
   introspection there, or keep `IDPICO_ACCESS_TOKEN_TTL` short.
 - **`grant_types` on a client is stored but not enforced** at `/token`; every client can use both
   `authorization_code` and `refresh_token`.
-- **Refresh tokens, logout, revocation and introspection** have unit, `scripts/test-client.sh` and (for
-  refresh) OIDF coverage but are not yet part of the black-box conformance contract.
+- **Logout and introspection** have unit and `scripts/test-client.sh` coverage but are not yet part of
+  the black-box conformance contract.
 
 Fixed while writing the suite and running the OIDF tests (v0.0.4):
 
