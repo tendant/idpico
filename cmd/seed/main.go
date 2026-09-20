@@ -138,7 +138,8 @@ func main() {
 	fmt.Println("\nSeed data created successfully!")
 	fmt.Println("\nTest with:")
 	fmt.Println("  1. Start server: IDPICO_COOKIE_SECRET=your-secret-here go run ./cmd/idpico")
-	fmt.Println("  2. Open browser: http://localhost:8080/authorize?client_id=test-client&redirect_uri=http://localhost:3000/callback&response_type=code&scope=openid%20profile%20email&state=test123")
+	// Not fmt: the URL's %20 trips vet's printf check.
+	os.Stdout.WriteString("  2. Open browser: http://localhost:8080/authorize?client_id=test-client&redirect_uri=http://localhost:3000/callback&response_type=code&scope=openid%20profile%20email&state=test123\n")
 	fmt.Println("  3. Login with: test@example.com / password123 (admin, groups: admins devs)")
 	fmt.Println("                 alice@example.com / password123 (groups: devs)")
 	fmt.Println("  4. Or use the playground: http://localhost:8080/playground and the admin UI: http://localhost:8080/admin")
