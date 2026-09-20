@@ -5,13 +5,13 @@
 
 <h2>A file next to the binary</h2>
 <p>Create <code>.env</code> in the directory you start <code>idpico</code> from, then restart it:</p>
-<pre>IDPICO_BOOTSTRAP_USERS={{.Email}}:change-me:Your Name
+<pre class="nowrap">IDPICO_BOOTSTRAP_USERS={{.Email}}:change-me:Your Name
 IDPICO_ADMIN_EMAILS={{.Email}}
 IDPICO_BOOTSTRAP_CLIENTS=my-app|my-app-secret|http://localhost:3000/callback</pre>
-<p class="help">One line each for the first user (who gets the admin console), and your application as an OIDC client with its redirect URI. The same three lines work as environment variables, in <code>docker compose</code> or in a Kubernetes manifest.</p>
+<p class="help">One line each for the first user (who gets the admin console), and your application as an OIDC client with its redirect URI. The same three lines work as environment variables — <code>docker run --env-file .env</code>, a <code>docker compose</code> <code>environment:</code> block, or a Kubernetes manifest.</p>
 
 <h2>Or the command line</h2>
-<pre>idpicoctl user add {{.Email}} -admin
+<pre class="nowrap">idpicoctl user add {{.Email}} -admin
 idpicoctl client add my-app -redirect http://localhost:3000/callback</pre>
 <p class="help">Both print what they created; <code>client add</code> shows the secret once. No restart needed.</p>
 

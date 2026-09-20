@@ -3,5 +3,5 @@
 <h1>{{.Title}}</h1>
 {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
 {{if .Message}}<div class="success">{{.Message}}</div>{{end}}
-{{if .BackURL}}<div class="links"><a href="{{.BackURL}}">{{.BackLabel}}</a></div>{{end}}
+{{if .BackURL}}<div class="links"><a href="{{.BackURL}}">{{.BackLabel}}</a>{{if .SecondURL}} · <a href="{{.SecondURL}}">{{.SecondLabel}}</a>{{end}}</div>{{end}}
 {{end}}

@@ -51,6 +51,9 @@ type messagePageData struct {
 	Error     string
 	BackURL   string
 	BackLabel string
+
+	SecondURL   string // optional second link
+	SecondLabel string
 }
 
 // ForgotPasswordPage handles GET /forgot-password.

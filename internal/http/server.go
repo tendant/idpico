@@ -365,7 +365,7 @@ func NewServer(addr string, opts ...Option) *Server {
 			BackLabel: "Sign in",
 		}
 		if s.playground {
-			landing.BackURL, landing.BackLabel = "/playground", "Try the OIDC playground"
+			landing.SecondURL, landing.SecondLabel = "/playground", "Try the OIDC playground"
 		}
 		templates.Render(w, http.StatusOK, "message", landing)
 	})

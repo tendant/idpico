@@ -4,6 +4,10 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Fixed
+
+- The landing page always offers **Sign in** (it showed only the playground link when the playground was on); the setup page's snippets no longer wrap mid-token and mention `docker run --env-file .env`. Found by walking the first run in a browser against the published image.
+
 ## [0.0.7] - 2026-09-20
 
 Easier first run, nothing opaque in the repository. A fresh instance now explains how to create its
