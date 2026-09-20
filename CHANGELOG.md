@@ -4,6 +4,10 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Changed
+
+- The upgrade test builds the previous releases from their git tags at test time instead of using checked-in database files; the repository holds no binary fixtures (and history was rewritten to drop the pre-rename `idp`/`idpctl` binaries that had been tracked since v0.0.2).
+
 ### Added
 
 - First run without configuration: `/` on an instance with no users shows how to create the first one (a three-line `.env`, or `idpicoctl`), and the startup log says the same. `.env.example` is now that three-line file; the full variable reference moved from the README to `docs/configuration.md`, and the README's Quick Start starts from `./idpico` with nothing set.

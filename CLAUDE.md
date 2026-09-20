@@ -114,7 +114,7 @@ All production code goes under `internal/` to prevent accidental coupling.
 
 - `conformance/` **must not import anything from this module** (`TestNoInternalImports` enforces it) and must verify tokens with go-jose, never `internal/crypto`. It starts `./cmd/idpico` as a subprocess with a from-scratch environment; `CONFORMANCE_ISSUER` targets a running instance instead.
 - Files carry `//go:build conformance`, so `go test ./...` skips them; `make vet` and CI run them with the tag. `examples/oidc-client` is its own module and takes only standard `OIDC_*` settings — a workaround it needs is an IDPico bug.
-- After tagging a release, run `scripts/upgrade-fixture.sh <that tag>` and commit `conformance/testdata/upgrade/<tag>/` so `TestOperationalUpgrade` tests the upgrade from the previous release; remove fixtures for releases no longer supported.
+- `TestOperationalUpgrade` builds the two most recent release tags from git at test time and upgrades their data directories to the current build (`UPGRADE_FROM=v0.0.5,v0.0.4` to choose). No binary fixtures are checked in — never commit database files or built binaries; CI fetches the full history for this.
 - A change to authorize, token, session, client, redirect, signing, JWKS or discovery behaviour must keep `make validate` green; add the spec citation to the test when asserting rejection behaviour. Run `make validate-oidf` before a release; a new OIDF warning or skip must be added to `conformance/oidf/expected-*.json` with a reason, or fixed.
 
 ### Key Technical Decisions

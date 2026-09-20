@@ -102,6 +102,10 @@ type instance struct {
 	env     map[string]string // overrides on top of baseEnv, kept for restart
 	logPath string
 
+	// binary overrides the current build, e.g. a previous release built
+	// from git for the upgrade test. Empty means the current build.
+	binary string
+
 	cmd    *exec.Cmd
 	exited chan error
 }
@@ -191,7 +195,11 @@ func (i *instance) start(ctx context.Context, env map[string]string) error {
 	}
 	defer logFile.Close()
 
-	cmd := exec.Command(filepath.Join(bin, "idpico"))
+	binary := i.binary
+	if binary == "" {
+		binary = filepath.Join(bin, "idpico")
+	}
+	cmd := exec.Command(binary)
 	cmd.Dir = i.workDir
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + i.workDir, "TMPDIR=" + i.workDir}
 	for k, v := range merged {

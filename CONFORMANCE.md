@@ -218,15 +218,15 @@ driver.
 | `TestOperationalBackupRestore` | A `cp -a` of the data directory taken after a clean stop, started elsewhere on the same port, has the signing key, users, clients, sessions and live tokens | **A backup is a file copy of `IDPICO_DATA_DIR` after a clean stop.** SQLite is checkpointed on close (no `-wal`/`-shm` left behind); copying a running instance is not tested and not recommended |
 | `TestOperationalKeyRotation` | `idpicoctl key rotate -grace 6s`, restart: JWKS lists old and new key (public members only), new tokens carry the new `kid`, old tokens still verify. After the grace: old tokens are refused and the old key is no longer published; after the next maintenance run it is deleted. `IDPICO_SIGNING_ALGORITHM=EdDSA` on restart rotates likewise, keeping the RS256 key verifiable | **Rotated keys verify until `IDPICO_SIGNING_KEY_GRACE_PERIOD` ends and are published only until then.** Rotate ≥ one access-token lifetime before the old key must be gone |
 | `TestOperationalReverseProxy` | Behind a simulated TLS-terminating proxy (`Host` + `X-Forwarded-Proto: https` to the loopback listener): discovery and `iss` are the configured `https://` issuer whatever `Host` says; cookies are `Secure`; HSTS is sent only for requests that arrived over TLS; a login completes; `X-Forwarded-For` is believed from a trusted proxy (`IDPICO_TRUSTED_PROXIES`, default private ranges) and ignored — together with `X-Forwarded-Proto` — from anyone else | **The issuer is configuration, never the request.** Forwarding headers from untrusted peers are stripped |
-| `TestOperationalUpgrade` | The current build starts on `conformance/testdata/upgrade/<previous tag>/idpico.db`, `goose_db_version` reaches the newest migration, the previous release's `kid`, user password, client secret and recorded consent all work | **Upgrades are forward-only**: migrations apply at startup; running an older release on a migrated directory is unsupported. Restore the pre-upgrade backup instead |
+| `TestOperationalUpgrade` | For each of the two most recent release tags: that release is built from git and run first, writing a real installation (its schema, signing key, password and secret hashes, one login with consent and a refresh token); the current build then starts on the same directory. `goose_db_version` reaches the newest migration and never goes backwards; the `kid`, an access token and a refresh token the old release issued, its password hash, client secret hash and recorded consent all work | **Upgrades are forward-only**: migrations apply at startup; running an older release on a migrated directory is unsupported. Restore the pre-upgrade backup instead |
 
 Every instance start also requires `/readyz` to answer 200, which now checks the backend (a SQLite
 ping, or the data directory for the file driver).
 
-The upgrade fixture is produced by `scripts/upgrade-fixture.sh <tag>`: it builds that tag from git,
-bootstraps the conformance user and clients, performs one login + consent + token exchange, stops
-cleanly and copies the database. Re-run it for the release just cut whenever a new one is made, so
-"previous release" stays current; CI's shallow checkout has no tags and relies on the committed file.
+Nothing binary is checked in for this: the previous releases are built from their tags at test time
+(`git archive` → `go build`, about two seconds each), so what the test upgrades from is exactly what
+that release produces, reviewable in source. CI fetches the full history for it; a shallow clone
+without tags skips the test with a message, and `UPGRADE_FROM=v0.0.4` selects releases explicitly.
 
 Scope-gating the ID-token claims and dropping the non-standard `client_id` claim (after v0.0.5) took
 the warnings from 14 to 5; what remains is the deliberate `email`-in-ID-token choice and unsupported
