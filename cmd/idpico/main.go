@@ -160,9 +160,11 @@ func main() {
 		cfg.AccessTokenTTL,
 		cfg.RefreshTokenTTL,
 		oidc.WithGroupClaims(groupClaims),
+		oidc.WithRevocations(store.Revocations()),
 	)
 
-	userInfoService := oidc.NewUserInfoService(store.Users(), tokenGenerator, oidc.WithUserInfoGroups(groupClaims))
+	userInfoService := oidc.NewUserInfoService(store.Users(), tokenGenerator,
+		oidc.WithUserInfoGroups(groupClaims), oidc.WithUserInfoRevocations(store.Revocations()))
 
 	// Load() already validated the value; only the parsed form is needed here.
 	trustedProxies, _ := cfg.ParseTrustedProxies()

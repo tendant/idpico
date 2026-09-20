@@ -77,7 +77,8 @@ type TokenService struct {
 	accessTTL      time.Duration
 	refreshTTL     time.Duration
 	issuer         string
-	groupClaims    *GroupClaims // nil = never emit groups
+	groupClaims    *GroupClaims               // nil = never emit groups
+	revocations    store.RevocationRepository // nil = access tokens cannot be revoked
 }
 
 // TokenServiceOption configures the TokenService.
@@ -86,6 +87,25 @@ type TokenServiceOption func(*TokenService)
 // WithGroupClaims emits group memberships in tokens when the groups scope is granted.
 func WithGroupClaims(gc *GroupClaims) TokenServiceOption {
 	return func(s *TokenService) { s.groupClaims = gc }
+}
+
+// WithRevocations enables access-token revocation: /revoke records access
+// tokens, and introspection reports revoked ones inactive.
+func WithRevocations(r store.RevocationRepository) TokenServiceOption {
+	return func(s *TokenService) { s.revocations = r }
+}
+
+// accessTokenRevoked reports whether the access token with these claims has
+// been revoked, when revocation is enabled.
+func accessTokenRevoked(ctx context.Context, revocations store.RevocationRepository, claims *crypto.Claims) (bool, error) {
+	if revocations == nil {
+		return false, nil
+	}
+	issued := crypto.IssuedAtOf(claims)
+	if issued.IsZero() {
+		return false, nil
+	}
+	return revocations.IsRevoked(ctx, claims.ID, claims.Subject, claims.ClientID, issued)
 }
 
 // NewTokenService creates a new TokenService.
@@ -280,9 +300,10 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 		scope = req.Scope
 	}
 
-	// Revoke old refresh token (rotation)
-	if err := s.tokens.Revoke(ctx, req.RefreshToken); err != nil {
-		return nil, fmt.Errorf("failed to revoke old token: %w", err)
+	// Retire the old refresh token (rotation). Not Revoke: the access tokens
+	// of this grant — including the one issued below — stay valid.
+	if err := s.tokens.Rotate(ctx, req.RefreshToken); err != nil {
+		return nil, fmt.Errorf("failed to rotate old token: %w", err)
 	}
 
 	// Generate new tokens
@@ -302,7 +323,10 @@ func (s *TokenService) ttlsFor(client *domain.Client) (access, refresh time.Dura
 	return access, refresh
 }
 
-// revokeGrant revokes every live token the user holds for the client.
+// revokeGrant revokes every live token the user holds for the client:
+// the refresh tokens, and the access tokens issued up to now — including
+// ones from a grant without offline_access, which left no refresh token
+// behind to revoke.
 func (s *TokenService) revokeGrant(ctx context.Context, userID, clientID string) error {
 	tokens, err := s.tokens.ListByUserID(ctx, userID)
 	if err != nil {
@@ -315,6 +339,9 @@ func (s *TokenService) revokeGrant(ctx context.Context, userID, clientID string)
 		if err := s.tokens.Revoke(ctx, t.ID); err != nil {
 			return err
 		}
+	}
+	if s.revocations != nil {
+		return s.revocations.RevokeBefore(ctx, domain.RevocationUserClient, domain.UserClientKey(userID, clientID), time.Now())
 	}
 	return nil
 }
@@ -384,16 +411,35 @@ func (s *TokenService) HandleRevocation(ctx context.Context, req *RevocationRequ
 		}
 	}
 
-	// Try to revoke as refresh token
+	// A token is only revoked by the client it was issued to (RFC 7009
+	// §2.1); anything else is silently a no-op, like an unknown token.
+
+	// Refresh token: revoking it also revokes the access tokens of the same
+	// grant (the repository records that).
 	if req.TokenTypeHint == "" || req.TokenTypeHint == "refresh_token" {
-		if err := s.tokens.Revoke(ctx, req.Token); err == nil {
+		if token, err := s.tokens.GetByID(ctx, req.Token); err == nil {
+			if req.ClientID != "" && token.ClientID != req.ClientID {
+				return nil
+			}
+			if err := s.tokens.Revoke(ctx, req.Token); err != nil {
+				return err
+			}
 			return nil
 		}
 	}
 
-	// For access tokens (JWTs), we can't truly revoke them since they're
-	// stateless. The best we can do is acknowledge the request.
-	// In a production system, you might maintain a blocklist.
+	// Access token: a signed JWT of ours is recorded by jti until it would
+	// have expired anyway.
+	if s.revocations != nil && (req.TokenTypeHint == "" || req.TokenTypeHint == "access_token") {
+		claims, err := s.tokenGenerator.ValidateAccessToken(req.Token)
+		if err != nil || claims.ExpiresAt == nil {
+			return nil
+		}
+		if req.ClientID != "" && claims.ClientID != req.ClientID {
+			return nil
+		}
+		return s.revocations.RevokeAccessToken(ctx, claims.ID, claims.ExpiresAt.Time)
+	}
 
 	return nil
 }
@@ -451,6 +497,11 @@ func (s *TokenService) HandleIntrospection(ctx context.Context, req *Introspecti
 	if req.TokenTypeHint == "" || req.TokenTypeHint == "access_token" {
 		claims, err := s.tokenGenerator.ValidateAccessToken(req.Token)
 		if err == nil {
+			if revoked, err := accessTokenRevoked(ctx, s.revocations, claims); err != nil {
+				return nil, err
+			} else if revoked {
+				return &IntrospectionResponse{Active: false}, nil
+			}
 			return &IntrospectionResponse{
 				Active:    true,
 				Scope:     claims.Scope,

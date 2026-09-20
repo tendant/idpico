@@ -53,6 +53,10 @@ func Run(t *testing.T, newStore Factory) {
 		{"GroupRepository_CRUD", GroupRepository_CRUD},
 		{"GroupRepository_Membership", GroupRepository_Membership},
 		{"AuditRepository_AppendListPrune", AuditRepository_AppendListPrune},
+		{"RevocationRepository_AccessToken", RevocationRepository_AccessToken},
+		{"RevocationRepository_Watermarks", RevocationRepository_Watermarks},
+		{"RevocationRepository_TokenRevokesGrant", RevocationRepository_TokenRevokesGrant},
+		{"RevocationRepository_DeleteExpired", RevocationRepository_DeleteExpired},
 		{"NotFoundErrors", NotFoundErrors},
 	}
 
@@ -1222,5 +1226,201 @@ func AuditRepository_AppendListPrune(t *testing.T, newStore Factory) {
 	list, _ = repo.List(ctx, 10)
 	if len(list) != 1 || list[0].Action != "user.created" {
 		t.Errorf("old event should be pruned, got %v", list)
+	}
+}
+
+// isRevoked is RevocationRepository.IsRevoked with a fatal error.
+func isRevoked(t *testing.T, s store.Store, jti, userID, clientID string, issuedAt time.Time) bool {
+	t.Helper()
+	revoked, err := s.Revocations().IsRevoked(context.Background(), jti, userID, clientID, issuedAt)
+	if err != nil {
+		t.Fatalf("IsRevoked: %v", err)
+	}
+	return revoked
+}
+
+func RevocationRepository_AccessToken(t *testing.T, newStore Factory) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Now()
+
+	if isRevoked(t, s, "jti-1", "u1", "c1", now) {
+		t.Fatal("nothing revoked yet")
+	}
+	if err := s.Revocations().RevokeAccessToken(ctx, "jti-1", now.Add(time.Hour)); err != nil {
+		t.Fatalf("RevokeAccessToken: %v", err)
+	}
+	if !isRevoked(t, s, "jti-1", "u1", "c1", now) {
+		t.Error("jti-1 should be revoked")
+	}
+	if isRevoked(t, s, "jti-2", "u1", "c1", now) {
+		t.Error("another token of the same user and client is untouched")
+	}
+	// Revoking the same token again is fine.
+	if err := s.Revocations().RevokeAccessToken(ctx, "jti-1", now.Add(2*time.Hour)); err != nil {
+		t.Fatalf("second RevokeAccessToken: %v", err)
+	}
+}
+
+func RevocationRepository_Watermarks(t *testing.T, newStore Factory) {
+	s := newStore(t)
+	ctx := context.Background()
+	repo := s.Revocations()
+	// Sub-second precision matters: the issue time comes from a UUIDv7 jti
+	// with millisecond resolution, and a token minted right after a
+	// revocation must not be caught by it.
+	cut := time.Now()
+	before, after := cut.Add(-5*time.Millisecond), cut.Add(5*time.Millisecond)
+
+	// user: every client
+	if err := repo.RevokeBefore(ctx, domain.RevocationUser, "u1", cut); err != nil {
+		t.Fatalf("RevokeBefore user: %v", err)
+	}
+	if !isRevoked(t, s, "a", "u1", "c1", before) || !isRevoked(t, s, "b", "u1", "c2", cut) {
+		t.Error("u1 tokens issued at or before the cut should be revoked, for any client")
+	}
+	if isRevoked(t, s, "c", "u1", "c1", after) {
+		t.Error("u1 token issued after the cut is valid")
+	}
+	if isRevoked(t, s, "d", "u2", "c1", before) {
+		t.Error("u2 is untouched")
+	}
+
+	// user+client
+	if err := repo.RevokeBefore(ctx, domain.RevocationUserClient, domain.UserClientKey("u2", "c1"), cut); err != nil {
+		t.Fatalf("RevokeBefore user_client: %v", err)
+	}
+	if !isRevoked(t, s, "e", "u2", "c1", before) {
+		t.Error("u2/c1 token before the cut should be revoked")
+	}
+	if isRevoked(t, s, "f", "u2", "c2", before) {
+		t.Error("u2/c2 is untouched")
+	}
+
+	// client
+	if err := repo.RevokeBefore(ctx, domain.RevocationClient, "c3", cut); err != nil {
+		t.Fatalf("RevokeBefore client: %v", err)
+	}
+	if !isRevoked(t, s, "g", "u9", "c3", before) {
+		t.Error("any user's c3 token before the cut should be revoked")
+	}
+	if isRevoked(t, s, "h", "u9", "c3", after) {
+		t.Error("c3 token after the cut is valid")
+	}
+
+	// Upsert keeps the later cut: moving it back must not un-revoke.
+	if err := repo.RevokeBefore(ctx, domain.RevocationUser, "u1", cut.Add(-time.Hour)); err != nil {
+		t.Fatalf("RevokeBefore user again: %v", err)
+	}
+	if !isRevoked(t, s, "i", "u1", "c1", before) {
+		t.Error("an earlier cut must not narrow an existing revocation")
+	}
+	if err := repo.RevokeBefore(ctx, domain.RevocationUser, "u1", after); err != nil {
+		t.Fatalf("RevokeBefore user later: %v", err)
+	}
+	if !isRevoked(t, s, "j", "u1", "c1", after) {
+		t.Error("a later cut widens the revocation")
+	}
+}
+
+// Revoking refresh tokens revokes the access tokens of the same grant.
+func RevocationRepository_TokenRevokesGrant(t *testing.T, newStore Factory) {
+	s := newStore(t)
+	seedUsers(t, s, "u1", "u2")
+	seedClients(t, s, "c1", "c2")
+	ctx := context.Background()
+	tokens := s.Tokens()
+	for _, tk := range []*domain.Token{
+		{ID: "r1", UserID: "u1", ClientID: "c1"},
+		{ID: "r2", UserID: "u1", ClientID: "c2"},
+		{ID: "r3", UserID: "u2", ClientID: "c1"},
+	} {
+		tk.ExpiresAt = time.Now().Add(time.Hour)
+		if err := tokens.Create(ctx, tk); err != nil {
+			t.Fatal(err)
+		}
+	}
+	issued := time.Now().Add(-time.Second) // an access token minted just before
+
+	if err := tokens.Revoke(ctx, "r1"); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+	if !isRevoked(t, s, "x", "u1", "c1", issued) {
+		t.Error("Revoke(r1) should revoke u1's access tokens for c1")
+	}
+	if isRevoked(t, s, "x", "u1", "c2", issued) || isRevoked(t, s, "x", "u2", "c1", issued) {
+		t.Error("Revoke(r1) must not touch other clients or users")
+	}
+
+	// Rotation retires a refresh token without cutting off the grant.
+	if err := tokens.Rotate(ctx, "r2"); err != nil {
+		t.Fatalf("Rotate: %v", err)
+	}
+	if r2, _ := tokens.GetByID(ctx, "r2"); !r2.Revoked {
+		t.Error("Rotate should mark the refresh token revoked")
+	}
+	if isRevoked(t, s, "x", "u1", "c2", issued) {
+		t.Error("Rotate must not revoke the grant's access tokens")
+	}
+	if err := tokens.Rotate(ctx, "no-such"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("Rotate unknown token: %v, want NotFound", err)
+	}
+
+	if err := tokens.RevokeByClientID(ctx, "c2"); err != nil {
+		t.Fatalf("RevokeByClientID: %v", err)
+	}
+	if !isRevoked(t, s, "x", "u1", "c2", issued) || !isRevoked(t, s, "x", "u7", "c2", issued) {
+		t.Error("RevokeByClientID should revoke every user's access tokens for c2")
+	}
+
+	if err := tokens.RevokeByUserID(ctx, "u2"); err != nil {
+		t.Fatalf("RevokeByUserID: %v", err)
+	}
+	if !isRevoked(t, s, "x", "u2", "c1", issued) || !isRevoked(t, s, "x", "u2", "c9", issued) {
+		t.Error("RevokeByUserID should revoke u2's access tokens for every client")
+	}
+	// ...even when the user holds no refresh token at all (tokens issued
+	// without offline_access).
+	if err := tokens.RevokeByUserID(ctx, "u1-no-rows"); err != nil {
+		t.Fatalf("RevokeByUserID without rows: %v", err)
+	}
+	if !isRevoked(t, s, "x", "u1-no-rows", "c1", issued) {
+		t.Error("RevokeByUserID must record the revocation even with no refresh token rows")
+	}
+}
+
+func RevocationRepository_DeleteExpired(t *testing.T, newStore Factory) {
+	s := newStore(t)
+	ctx := context.Background()
+	repo := s.Revocations()
+	now := time.Now()
+
+	if err := repo.RevokeAccessToken(ctx, "gone", now.Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.RevokeAccessToken(ctx, "live", now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	// A watermark far enough in the past to have expired.
+	if err := repo.RevokeBefore(ctx, domain.RevocationUser, "old", now.Add(-domain.RevocationRetention-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.RevokeBefore(ctx, domain.RevocationUser, "recent", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.DeleteExpired(ctx); err != nil {
+		t.Fatalf("DeleteExpired: %v", err)
+	}
+	if isRevoked(t, s, "gone", "u", "c", now) {
+		t.Error("expired jti row should be purged")
+	}
+	if !isRevoked(t, s, "live", "u", "c", now) {
+		t.Error("live jti row should remain")
+	}
+	if isRevoked(t, s, "x", "old", "c", now.Add(-domain.RevocationRetention-2*time.Minute)) {
+		t.Error("expired watermark should be purged")
+	}
+	if !isRevoked(t, s, "x", "recent", "c", now) {
+		t.Error("recent watermark should remain")
 	}
 }

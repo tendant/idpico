@@ -27,6 +27,7 @@ type Store struct {
 	sessions    *sessionRepository
 	authCodes   *authCodeRepository
 	tokens      *tokenRepository
+	revocations *revocationRepository
 	signingKeys *signingKeyRepository
 	consents    *consentRepository
 	verifTokens *verificationTokenRepository
@@ -57,6 +58,7 @@ func NewStore(dataDir string, opts ...Option) (*Store, error) {
 	s.sessions = &sessionRepository{store: s}
 	s.authCodes = &authCodeRepository{store: s}
 	s.tokens = &tokenRepository{store: s}
+	s.revocations = &revocationRepository{store: s}
 	s.signingKeys = &signingKeyRepository{store: s}
 	s.consents = &consentRepository{store: s}
 	s.verifTokens = &verificationTokenRepository{store: s}
@@ -71,6 +73,7 @@ func (s *Store) Clients() store.ClientRepository         { return s.clients }
 func (s *Store) Sessions() store.SessionRepository       { return s.sessions }
 func (s *Store) AuthCodes() store.AuthCodeRepository     { return s.authCodes }
 func (s *Store) Tokens() store.TokenRepository           { return s.tokens }
+func (s *Store) Revocations() store.RevocationRepository { return s.revocations }
 func (s *Store) SigningKeys() store.SigningKeyRepository { return s.signingKeys }
 func (s *Store) Consents() store.ConsentRepository       { return s.consents }
 func (s *Store) VerificationTokens() store.VerificationTokenRepository {
@@ -601,6 +604,24 @@ func (r *tokenRepository) Revoke(ctx context.Context, id string) error {
 	for _, t := range data.Tokens {
 		if t.ID == id {
 			t.Revoked = true
+			if err := r.save(data); err != nil {
+				return err
+			}
+			// The access tokens of the same grant go with it.
+			return r.store.revocations.RevokeBefore(ctx, domain.RevocationUserClient, domain.UserClientKey(t.UserID, t.ClientID), time.Now())
+		}
+	}
+	return idperrors.NotFound("token", id)
+}
+
+func (r *tokenRepository) Rotate(ctx context.Context, id string) error {
+	data, err := r.load()
+	if err != nil {
+		return idperrors.Internal("failed to load tokens", err)
+	}
+	for _, t := range data.Tokens {
+		if t.ID == id {
+			t.Revoked = true
 			return r.save(data)
 		}
 	}
@@ -619,7 +640,10 @@ func (r *tokenRepository) RevokeByUserID(ctx context.Context, userID string) err
 		}
 	}
 
-	return r.save(data)
+	if err := r.save(data); err != nil {
+		return err
+	}
+	return r.store.revocations.RevokeBefore(ctx, domain.RevocationUser, userID, time.Now())
 }
 
 func (r *tokenRepository) RevokeByClientID(ctx context.Context, clientID string) error {
@@ -634,7 +658,10 @@ func (r *tokenRepository) RevokeByClientID(ctx context.Context, clientID string)
 		}
 	}
 
-	return r.save(data)
+	if err := r.save(data); err != nil {
+		return err
+	}
+	return r.store.revocations.RevokeBefore(ctx, domain.RevocationClient, clientID, time.Now())
 }
 
 func (r *tokenRepository) DeleteExpired(ctx context.Context) error {

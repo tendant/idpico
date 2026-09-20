@@ -48,15 +48,42 @@ type AuthCodeRepository interface {
 }
 
 // TokenRepository defines operations for refresh token persistence.
+//
+// Revoking refresh tokens also revokes the access tokens of the same grant:
+// Revoke records a user+client revocation for the token's user and client,
+// RevokeByUserID a user revocation, RevokeByClientID a client revocation
+// (see RevocationRepository). Every caller that cuts off a grant therefore
+// cuts off its access tokens too, without having to know about them.
 type TokenRepository interface {
 	Create(ctx context.Context, token *domain.Token) error
 	GetByID(ctx context.Context, id string) (*domain.Token, error)
 	Revoke(ctx context.Context, id string) error
 	RevokeByUserID(ctx context.Context, userID string) error
 	RevokeByClientID(ctx context.Context, clientID string) error
+	// Rotate retires a refresh token that has just been exchanged for a new
+	// one: it is refused from now on (and its reuse detected), but the
+	// grant's access tokens are left alone, unlike Revoke.
+	Rotate(ctx context.Context, id string) error
 	DeleteExpired(ctx context.Context) error
 	// ListByUserID returns the user's unexpired tokens (revoked included), newest first.
 	ListByUserID(ctx context.Context, userID string) ([]*domain.Token, error)
+}
+
+// RevocationRepository records which access tokens are no longer valid.
+// Access tokens are not stored, so revocation is either by jti (one token)
+// or by a watermark: every token of a user / user+client / client issued at
+// or before a point in time. Watermarks are upserted, so there is at most
+// one row per key and the table stays small.
+type RevocationRepository interface {
+	// RevokeAccessToken revokes one token until it would have expired anyway.
+	RevokeAccessToken(ctx context.Context, jti string, expiresAt time.Time) error
+	// RevokeBefore revokes every access token of kind/key (RevocationUser,
+	// RevocationUserClient or RevocationClient) issued at or before notBefore.
+	RevokeBefore(ctx context.Context, kind, key string, notBefore time.Time) error
+	// IsRevoked reports whether the access token with these claims has been
+	// revoked by any of the above.
+	IsRevoked(ctx context.Context, jti, userID, clientID string, issuedAt time.Time) (bool, error)
+	DeleteExpired(ctx context.Context) error
 }
 
 // SigningKeyRepository defines operations for signing key persistence.
@@ -124,6 +151,7 @@ type Store interface {
 	Sessions() SessionRepository
 	AuthCodes() AuthCodeRepository
 	Tokens() TokenRepository
+	Revocations() RevocationRepository
 	SigningKeys() SigningKeyRepository
 	Consents() ConsentRepository
 	VerificationTokens() VerificationTokenRepository

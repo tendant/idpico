@@ -734,3 +734,10 @@ func formValues(m map[string]string) url.Values {
 	}
 	return v
 }
+
+// afterRevocation lets a few milliseconds pass. A grant revocation covers
+// every token issued up to that instant; the issue time is taken from the
+// UUIDv7 jti (millisecond resolution), so a token minted immediately
+// afterwards for the same user and client is only safe once the clock has
+// moved on.
+func afterRevocation() { time.Sleep(5 * time.Millisecond) }

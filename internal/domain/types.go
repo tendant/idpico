@@ -129,6 +129,33 @@ func (a *AuthCode) IsExpired() bool {
 	return time.Now().After(a.ExpiresAt)
 }
 
+// Revocation kinds: what a token_revocations row applies to.
+const (
+	RevocationJTI        = "jti"         // one access token, by its jti claim
+	RevocationUser       = "user"        // every access token of a user
+	RevocationUserClient = "user_client" // every access token of a user for one client
+	RevocationClient     = "client"      // every access token for a client
+)
+
+// RevocationRetention is how long a user/user_client/client revocation row
+// is kept. It only needs to outlive the longest access-token lifetime;
+// tokens are minutes, the margin is generous.
+const RevocationRetention = 7 * 24 * time.Hour
+
+// UserClientKey is the key of a RevocationUserClient row.
+func UserClientKey(userID, clientID string) string { return userID + "\x00" + clientID }
+
+// Revocation invalidates access tokens without storing them: a RevocationJTI
+// row names one token; the other kinds reject every token of that user,
+// user+client or client whose iat is at or before NotBefore. Access tokens
+// are stateless JWTs, so this table is the only way one can be cut short.
+type Revocation struct {
+	Kind      string    `json:"kind"`
+	Key       string    `json:"key"`
+	NotBefore time.Time `json:"not_before"` // tokens issued at or before this are revoked (unused for jti)
+	ExpiresAt time.Time `json:"expires_at"` // when the row can be purged
+}
+
 // Token represents a refresh token stored in the database.
 // Access tokens and ID tokens are JWTs and not stored.
 type Token struct {

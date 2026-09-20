@@ -88,14 +88,5 @@
     "condition": "ValidateIdTokenACRClaimAgainstAcrValuesRequest",
     "expected-result": "warning",
     "comment": "No authentication context classes; acr_values is ignored and no acr claim is returned (SHOULD)."
-  },
-  {
-    "test-name": "oidcc-codereuse-30seconds",
-    "variant": "*",
-    "configuration-filename": "*idpico-oidcc.json",
-    "current-block": "Testing if access token was revoked after authorization code reuse (the AS 'should' have revoked the access token)",
-    "condition": "EnsureHttpStatusCodeIs4xx",
-    "expected-result": "warning",
-    "comment": "Access tokens are stateless JWTs; code reuse revokes the refresh tokens of the grant but an already issued access token stays valid until it expires (SHOULD)."
   }
 ]

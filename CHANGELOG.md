@@ -6,11 +6,13 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ### Added
 
+- Access-token revocation. `/revoke` accepts an access token (recorded by `jti` until it would have expired), and every way a grant is cut off — a replayed authorization code or refresh token, revoking a refresh token, `/account` **Sign out everywhere** and password change, the admin console's revoke actions, `idpicoctl user passwd` / `client delete` — now also invalidates the access tokens issued up to that moment for that user, user+client or client. `/userinfo` and `/introspect` refuse revoked tokens; nothing is stored when a token is issued. Migration `00003` adds `token_revocations`; rows are purged by maintenance. The access-token `jti` is now a UUIDv7 so the issue time is known to the millisecond. With this the OpenID Foundation Basic OP run has no remaining `SHOULD` warnings (`oidcc-codereuse-30seconds` passes).
 - Operational validation, `make validate-operational` (in CI): every test starts its own servers and restarts them on the same data directory. Covers restart (signing key, access/refresh tokens, sessions and consents survive), backup/restore from a file copy of the data directory, key rotation with `idpicoctl key rotate` and the grace period (old tokens verify until it ends, then the key is unpublished and deleted), the algorithm-change rotation, upgrade from the previous release's data directory (`conformance/testdata/upgrade/v0.0.3`, made by `scripts/upgrade-fixture.sh`), and a simulated TLS-terminating reverse proxy (issuer, Secure cookies, HSTS, forwarded-header trust). CONFORMANCE.md documents the policies these pin.
 - `/readyz` checks the backend (SQLite ping; data directory for the file driver) and answers 503 when it fails, so an instance that lost its database leaves rotation.
 
 ### Security
 
+- `/revoke` only revokes a token for the client it was issued to (RFC 7009 §2.1); before, any authenticated client could revoke any refresh token by id.
 - `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Real-IP` and `True-Client-IP` are stripped from requests that do not come from a trusted proxy (`IDPICO_TRUSTED_PROXIES`). Before, a direct client could turn on HSTS for its own response by sending `X-Forwarded-Proto: https` (the address logic already ignored the headers).
 
 ### Fixed

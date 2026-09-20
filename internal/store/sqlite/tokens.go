@@ -48,14 +48,44 @@ func (r *tokenRepository) GetByID(ctx context.Context, id string) (*domain.Token
 	return &t, nil
 }
 
+// Revoke marks the refresh token revoked and, in the same transaction,
+// revokes the user's access tokens for that client issued up to now.
 func (r *tokenRepository) Revoke(ctx context.Context, id string) error {
-	res, err := r.db.ExecContext(ctx, `UPDATE tokens SET revoked = TRUE WHERE id = ?`, id)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return idperrors.Internal("failed to revoke token", err)
 	}
-	ok, err := rowsAffected(res)
+	defer tx.Rollback()
+
+	var userID, clientID string
+	err = tx.QueryRowContext(ctx, `SELECT user_id, client_id FROM tokens WHERE id = ?`, id).Scan(&userID, &clientID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return idperrors.NotFound("token", id)
+	}
 	if err != nil {
 		return idperrors.Internal("failed to revoke token", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE tokens SET revoked = TRUE WHERE id = ?`, id); err != nil {
+		return idperrors.Internal("failed to revoke token", err)
+	}
+	if err := revokeGrantAccessTokens(ctx, tx, domain.RevocationUserClient, domain.UserClientKey(userID, clientID)); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return idperrors.Internal("failed to revoke token", err)
+	}
+	return nil
+}
+
+// Rotate marks the refresh token revoked without touching access tokens.
+func (r *tokenRepository) Rotate(ctx context.Context, id string) error {
+	res, err := r.db.ExecContext(ctx, `UPDATE tokens SET revoked = TRUE WHERE id = ?`, id)
+	if err != nil {
+		return idperrors.Internal("failed to rotate token", err)
+	}
+	ok, err := rowsAffected(res)
+	if err != nil {
+		return idperrors.Internal("failed to rotate token", err)
 	}
 	if !ok {
 		return idperrors.NotFound("token", id)
@@ -63,18 +93,41 @@ func (r *tokenRepository) Revoke(ctx context.Context, id string) error {
 	return nil
 }
 
+// RevokeByUserID revokes the user's refresh tokens and every access token
+// issued to them up to now.
 func (r *tokenRepository) RevokeByUserID(ctx context.Context, userID string) error {
-	if _, err := r.db.ExecContext(ctx, `UPDATE tokens SET revoked = TRUE WHERE user_id = ?`, userID); err != nil {
+	return r.revokeWhere(ctx, `user_id = ?`, userID, domain.RevocationUser, userID)
+}
+
+// RevokeByClientID revokes the client's refresh tokens and every access
+// token issued for it up to now.
+func (r *tokenRepository) RevokeByClientID(ctx context.Context, clientID string) error {
+	return r.revokeWhere(ctx, `client_id = ?`, clientID, domain.RevocationClient, clientID)
+}
+
+func (r *tokenRepository) revokeWhere(ctx context.Context, where, arg, kind, key string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return idperrors.Internal("failed to revoke tokens", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE tokens SET revoked = TRUE WHERE `+where, arg); err != nil {
+		return idperrors.Internal("failed to revoke tokens", err)
+	}
+	if err := revokeGrantAccessTokens(ctx, tx, kind, key); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return idperrors.Internal("failed to revoke tokens", err)
 	}
 	return nil
 }
 
-func (r *tokenRepository) RevokeByClientID(ctx context.Context, clientID string) error {
-	if _, err := r.db.ExecContext(ctx, `UPDATE tokens SET revoked = TRUE WHERE client_id = ?`, clientID); err != nil {
-		return idperrors.Internal("failed to revoke tokens", err)
-	}
-	return nil
+// revokeGrantAccessTokens writes the watermark that invalidates the access
+// tokens belonging to the refresh tokens just revoked.
+func revokeGrantAccessTokens(ctx context.Context, tx execer, kind, key string) error {
+	now := time.Now()
+	return upsertRevocation(ctx, tx, kind, key, now, now.Add(domain.RevocationRetention))
 }
 
 func (r *tokenRepository) DeleteExpired(ctx context.Context) error {

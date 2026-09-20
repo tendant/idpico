@@ -150,7 +150,10 @@ func (g *TokenGenerator) GenerateIDToken(subject string, expiry time.Duration, c
 		ExpiresAt: jwt.NewNumericDate(expiresAt),
 		IssuedAt:  jwt.NewNumericDate(now),
 		NotBefore: jwt.NewNumericDate(now.Add(-5 * time.Minute)), // Clock skew tolerance
-		ID:        uuid.New().String(),
+		// A time-ordered UUID: opaque to relying parties, but it carries the
+		// issue time to the millisecond, which revocation checks need since
+		// iat is whole seconds (see IssuedAtOf).
+		ID: uuid.Must(uuid.NewV7()).String(),
 	}
 
 	signingKey, err := g.signingKey(context.Background())
@@ -175,6 +178,20 @@ func signingMethodFor(alg string) jwt.SigningMethod {
 		return jwt.SigningMethodEdDSA
 	}
 	return jwt.SigningMethodRS256
+}
+
+// IssuedAtOf returns when the token was issued, to the millisecond when its
+// jti is a UUIDv7 (every token this server has issued since access-token
+// revocation was added), otherwise the whole-second iat claim.
+func IssuedAtOf(claims *Claims) time.Time {
+	if u, err := uuid.Parse(claims.ID); err == nil && u.Version() == 7 {
+		sec, nsec := u.Time().UnixTime()
+		return time.Unix(sec, nsec)
+	}
+	if claims.IssuedAt != nil {
+		return claims.IssuedAt.Time
+	}
+	return time.Time{}
 }
 
 // GenerateAccessToken generates an OAuth access token (JWT).

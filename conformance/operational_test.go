@@ -84,6 +84,22 @@ func expectUserinfo(t *testing.T, p *provider, access string, ok bool) {
 	}
 }
 
+// revokeAccessToken revokes the confidential client's access token at the
+// revocation endpoint.
+func revokeAccessToken(t *testing.T, p *provider, access string) {
+	t.Helper()
+	ep, _ := p.discovery(t).raw["revocation_endpoint"].(string)
+	if ep == "" {
+		t.Skip("no revocation_endpoint advertised")
+	}
+	req, _ := http.NewRequest(http.MethodPost, ep, strings.NewReader(url.Values{"token": {access}}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(cfg.ClientID, cfg.ClientSecret)
+	if resp, body := send(t, p.client, req); resp.StatusCode != http.StatusOK {
+		t.Fatalf("revoke: HTTP %d: %s", resp.StatusCode, redact(snippet(body)))
+	}
+}
+
 // refresh redeems a refresh token and returns the new refresh token.
 func refresh(t *testing.T, p *provider, token string) tokenResponse {
 	t.Helper()
@@ -128,6 +144,8 @@ func TestOperationalRestart(t *testing.T) {
 
 		before := loginAndExchange(t, p)
 		kidsBefore := jwksKIDs(t, p)
+		revoked := loginAndExchange(t, p)
+		revokeAccessToken(t, p, revoked.access)
 
 		inst.restart(t, nil)
 
@@ -140,6 +158,7 @@ func TestOperationalRestart(t *testing.T) {
 			}
 		})
 		t.Run("access_token", func(t *testing.T) { expectUserinfo(t, p, before.access, true) })
+		t.Run("revocation_survives", func(t *testing.T) { expectUserinfo(t, p, revoked.access, false) })
 		t.Run("refresh_token", func(t *testing.T) {
 			if tr := refresh(t, p, before.refresh); tr.Status != 200 {
 				t.Errorf("refresh after restart: HTTP %d: %s", tr.Status, redact(string(tr.Raw)))

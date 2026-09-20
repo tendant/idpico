@@ -44,6 +44,8 @@ func (m *mockTokenRepository) Revoke(ctx context.Context, id string) error {
 	return nil
 }
 
+func (m *mockTokenRepository) Rotate(ctx context.Context, id string) error { return m.Revoke(ctx, id) }
+
 func (m *mockTokenRepository) RevokeByUserID(ctx context.Context, userID string) error {
 	for _, token := range m.tokens {
 		if token.UserID == userID {

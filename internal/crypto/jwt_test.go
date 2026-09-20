@@ -273,3 +273,29 @@ func TestClaims_EmptyGroupsSerializedAsList(t *testing.T) {
 		t.Errorf("nil groups should be omitted, got %s", notGranted)
 	}
 }
+
+func TestIssuedAtOf(t *testing.T) {
+	keyPair, _ := GenerateKeyPair(2048)
+	g := NewTokenGenerator(keyPair, "https://idp.example.com", "https://idp.example.com")
+	before := time.Now()
+	raw, _, err := g.GenerateAccessToken("sub", time.Minute, "openid", "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, claims, err := g.ParseToken(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issued := IssuedAtOf(claims)
+	if issued.Before(before.Add(-time.Millisecond)) || issued.After(time.Now().Add(time.Millisecond)) {
+		t.Errorf("issue time from jti = %s, want about now (%s)", issued, before)
+	}
+	if issued.Nanosecond() == 0 && before.Nanosecond() > 10*int(time.Millisecond) {
+		t.Errorf("issue time should carry sub-second precision, got %s", issued)
+	}
+	// A token whose jti is not time-ordered falls back to iat.
+	claims.ID = "opaque"
+	if got := IssuedAtOf(claims); !got.Equal(claims.IssuedAt.Time) {
+		t.Errorf("fallback = %s, want iat %s", got, claims.IssuedAt.Time)
+	}
+}

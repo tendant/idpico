@@ -75,11 +75,6 @@ func TestAuthorizationCode(t *testing.T) {
 				}
 			})
 
-			t.Run("code_single_use", func(t *testing.T) {
-				again := exchange(t, q.Get("code"), verifier, tc.clientID, tc.secret, cfg.RedirectURI)
-				expectTokenError(t, again, 400, "invalid_grant")
-			})
-
 			t.Run("userinfo_matches", func(t *testing.T) {
 				resp, body := userinfo(t, "Bearer "+tr.str("access_token"))
 				if resp.StatusCode != 200 {
@@ -92,6 +87,11 @@ func TestAuthorizationCode(t *testing.T) {
 				if ui["sub"] != claims["sub"] {
 					t.Errorf("userinfo sub %v != id_token sub %v", ui["sub"], claims["sub"])
 				}
+			})
+			t.Run("code_single_use", func(t *testing.T) {
+				// Last: replaying the code also revokes the tokens it issued.
+				again := exchange(t, q.Get("code"), verifier, tc.clientID, tc.secret, cfg.RedirectURI)
+				expectTokenError(t, again, 400, "invalid_grant")
 			})
 		})
 	}

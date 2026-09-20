@@ -143,9 +143,12 @@ idpico/
 ### Access token
 Choose one for v1:
 
-**Option A (simplest): JWT access token**
+**Option A (simplest): JWT access token** — *chosen*
 - Pros: no introspection required; stateless validation for resource servers.
-- Cons: revocation is hard; shorter expiry recommended.
+- Cons: a resource server validating locally cannot see revocations; shorter expiry recommended.
+- Revocation: nothing is stored at issuance. `token_revocations` records revoked `jti`s and
+  per-user / per-user+client / per-client "issued at or before" watermarks; `/userinfo` and
+  `/introspect` consult it. The `jti` is a UUIDv7 so the issue time is known to the millisecond.
 
 **Option B: Opaque access token + introspection**
 - Pros: revocable; better control.

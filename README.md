@@ -396,16 +396,28 @@ IDPICO_HSTS_MAX_AGE=31536000  # Enable HSTS with 1-year max-age
 
 ### Token Revocation (RFC 7009)
 
-Revoke refresh tokens:
+Revoke a refresh token or an access token:
 
 ```bash
 curl -X POST http://localhost:8080/revoke \
   -u "my-app:my-secret" \
-  -d "token=<refresh-token>" \
-  -d "token_type_hint=refresh_token"
+  -d "token=<refresh-token or access-token>"
 ```
 
-Per RFC 7009, the endpoint always returns 200 OK (except for authentication errors) to prevent token enumeration.
+A token can only be revoked by the client it was issued to. Per RFC 7009 the endpoint always returns
+200 OK (except for authentication errors), so an unknown, foreign or already revoked token looks the
+same as a successful revocation.
+
+Access tokens are JWTs and nothing is stored when one is issued; revocation records what is no longer
+valid in `token_revocations` and `/userinfo` and `/introspect` check it. A resource server that only
+verifies the signature will not see a revocation — introspect, or keep `IDPICO_ACCESS_TOKEN_TTL`
+short. Revoking a refresh token also revokes the access tokens of the same user and client issued up
+to that moment (RFC 7009 §2.1), as does everything else that cuts off a grant: a replayed
+authorization code or refresh token, **Sign out everywhere** and a password change on `/account`,
+the admin console's revoke actions, `idpicoctl user passwd`. If the user has the same app open on a
+second device, that device's access token is revoked too for at most one token lifetime; its refresh
+token still works, so a well-behaved app recovers silently. Revocation rows are purged by maintenance
+seven days after they can no longer matter.
 
 ### Token Introspection (RFC 7662)
 

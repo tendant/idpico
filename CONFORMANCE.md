@@ -141,9 +141,9 @@ Found while writing the suite; none affects the declared profile.
 - **`acr_values` is ignored** and no `acr` claim is returned (a SHOULD); there are no authentication
   context classes.
 - **The `claims` request parameter is not supported** (`claims_parameter_supported: false`).
-- **Access tokens are stateless JWTs.** Reusing an authorization code revokes the grant's refresh
-  tokens, but an access token already issued from it stays valid until it expires (RFC 6749 §4.1.2
-  SHOULD); the same applies to `/revoke`. Keep `IDPICO_ACCESS_TOKEN_TTL` short.
+- **Access tokens are JWTs; revocation is checked at `/userinfo` and `/introspect` only.** A resource
+  server that validates the signature itself will not learn that a token was revoked — use
+  introspection there, or keep `IDPICO_ACCESS_TOKEN_TTL` short.
 - **`grant_types` on a client is stored but not enforced** at `/token`; every client can use both
   `authorization_code` and `refresh_token`.
 - **Refresh tokens, logout, revocation and introspection** have unit, `scripts/test-client.sh` and (for
@@ -178,16 +178,15 @@ the logs and screenshots. It is not run in CI (docker, ~1.3 GB of images, ~90 s)
 
 ### Results — 2026-09-20, suite `440eec8b`, Basic OP profile
 
-36 modules, 1711 conditions: **0 failures**, 15 warnings, 4 skips, 4 screenshots for review.
+36 modules, 1712 conditions: **0 failures**, 14 warnings, 4 skips, 4 screenshots for review.
 
 | Result | Modules | Classification |
 |---|---|---|
-| PASSED (20) | server, response-type-missing, userinfo-get/-post-header/-post-body, request-without-nonce, display-page/-popup, prompt-none-not-logged-in/-logged-in, max-age-10000, unknown-parameter, id-token-hint, login-hint, ui-locales, claims-locales, codereuse, ensure-post-request, server-client-secret-post, refresh-token, valid-pkce | — |
+| PASSED (21) | server, response-type-missing, userinfo-get/-post-header/-post-body, request-without-nonce, display-page/-popup, prompt-none-not-logged-in/-logged-in, max-age-10000, unknown-parameter, id-token-hint, login-hint, ui-locales, claims-locales, codereuse, codereuse-30seconds, ensure-post-request, server-client-secret-post, refresh-token, valid-pkce | — |
 | REVIEW (4) | prompt-login, max-age-1, ensure-registered-redirect-uri, ensure-request-object-with-redirect-uri | Pass with a screenshot the suite captured automatically (second login page; `invalid redirect_uri` error page). A human checks them in a certification submission. |
-| WARNING (7) | server, scope-email, alternate-happy-flow, claims-essential | SPEC INTERPRETATION: scope claims in the ID token (see above) |
+| WARNING (6) | server, scope-email, alternate-happy-flow, claims-essential | SPEC INTERPRETATION: scope claims in the ID token (see above) |
 | | scope-profile | UNSUPPORTED: only `name` of the profile claims |
 | | ensure-request-with-acr-values | UNSUPPORTED: no `acr` |
-| | codereuse-30seconds | DESIGN: stateless access token not revoked on code reuse |
 | SKIPPED (4) | scope-address, scope-phone, scope-all, unsigned-request-object | UNSUPPORTED: scopes not in `scopes_supported`; request objects not supported |
 
 The failures the first run found — POST `/authorize` unsupported, request objects silently ignored — were
@@ -218,6 +217,9 @@ The upgrade fixture is produced by `scripts/upgrade-fixture.sh <tag>`: it builds
 bootstraps the conformance user and clients, performs one login + consent + token exchange, stops
 cleanly and copies the database. Re-run it for the release just cut whenever a new one is made, so
 "previous release" stays current; CI's shallow checkout has no tags and relies on the committed file.
+
+Access-token revocation (after v0.0.4) removed the last `SHOULD` warning: a replayed code now also
+invalidates the access token it issued (`oidcc-codereuse-30seconds` passes).
 
 Found and fixed while writing the suite (after v0.0.4): the JWKS kept publishing keys whose grace
 period had ended (verification already refused them); `X-Forwarded-Proto` from an untrusted peer

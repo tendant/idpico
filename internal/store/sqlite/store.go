@@ -29,6 +29,7 @@ type Store struct {
 	sessions    *sessionRepository
 	authCodes   *authCodeRepository
 	tokens      *tokenRepository
+	revocations *revocationRepository
 	signingKeys *signingKeyRepository
 	consents    *consentRepository
 	verifTokens *verificationTokenRepository
@@ -81,6 +82,7 @@ func NewStore(ctx context.Context, path string) (*Store, error) {
 	s.sessions = &sessionRepository{db: db}
 	s.authCodes = &authCodeRepository{db: db}
 	s.tokens = &tokenRepository{db: db}
+	s.revocations = &revocationRepository{db: db}
 	s.signingKeys = &signingKeyRepository{db: db}
 	s.consents = &consentRepository{db: db}
 	s.verifTokens = &verificationTokenRepository{db: db}
@@ -96,6 +98,7 @@ func (s *Store) Clients() store.ClientRepository         { return s.clients }
 func (s *Store) Sessions() store.SessionRepository       { return s.sessions }
 func (s *Store) AuthCodes() store.AuthCodeRepository     { return s.authCodes }
 func (s *Store) Tokens() store.TokenRepository           { return s.tokens }
+func (s *Store) Revocations() store.RevocationRepository { return s.revocations }
 func (s *Store) SigningKeys() store.SigningKeyRepository { return s.signingKeys }
 func (s *Store) Consents() store.ConsentRepository       { return s.consents }
 func (s *Store) VerificationTokens() store.VerificationTokenRepository {

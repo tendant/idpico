@@ -202,8 +202,10 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		15*time.Minute,
 		7*24*time.Hour,
 		oidc.WithGroupClaims(groupClaims),
+		oidc.WithRevocations(store.Revocations()),
 	)
-	userInfoService := oidc.NewUserInfoService(store.Users(), tokenGenerator, oidc.WithUserInfoGroups(groupClaims))
+	userInfoService := oidc.NewUserInfoService(store.Users(), tokenGenerator,
+		oidc.WithUserInfoGroups(groupClaims), oidc.WithUserInfoRevocations(store.Revocations()))
 
 	// Create HTTP server
 	server := NewServer(":0",
@@ -1665,5 +1667,85 @@ func TestIntegration_MaxAgeAndAuthTime(t *testing.T) {
 		if !strings.HasPrefix(loc, "/login") || ret.Query().Get("prompt") != "" {
 			t.Errorf("select_account should re-authenticate and be stripped, got %s", loc)
 		}
+	})
+}
+
+// userinfoStatus returns the HTTP status /userinfo gives this access token.
+func userinfoStatus(t *testing.T, base, accessToken string) int {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, base+"/userinfo", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+// TestIntegration_AccessTokenRevocation: access tokens are stateless JWTs,
+// yet /revoke, /account and grant cut-offs must all take effect at
+// /userinfo and /introspect.
+func TestIntegration_AccessTokenRevocation(t *testing.T) {
+	forEachDriver(t, func(t *testing.T, driver string) {
+		env := setupTestEnv(t, driver)
+		defer env.cleanup()
+		base := env.server.URL
+
+		browser := newClientWithCookies()
+		loginAs(t, browser, base, "test@example.com", "password123")
+
+		t.Run("revoke endpoint", func(t *testing.T) {
+			tokens := pkceAuthorize(t, browser, base, "openid profile")
+			if userinfoStatus(t, base, tokens.AccessToken) != http.StatusOK {
+				t.Fatal("fresh token should be accepted")
+			}
+			resp, err := http.PostForm(base+"/revoke", url.Values{"token": {tokens.AccessToken}, "client_id": {"public-client"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("/revoke: HTTP %d", resp.StatusCode)
+			}
+			if got := userinfoStatus(t, base, tokens.AccessToken); got != http.StatusUnauthorized {
+				t.Errorf("userinfo after /revoke: HTTP %d, want 401", got)
+			}
+			resp, err = http.PostForm(base+"/introspect", url.Values{"token": {tokens.AccessToken}, "client_id": {"test-client"}, "client_secret": {"test-secret"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var intro struct {
+				Active bool `json:"active"`
+			}
+			_ = json.NewDecoder(resp.Body).Decode(&intro)
+			resp.Body.Close()
+			if intro.Active {
+				t.Error("introspection should report the revoked token inactive")
+			}
+		})
+
+		t.Run("sign out everywhere", func(t *testing.T) {
+			tokens := pkceAuthorize(t, browser, base, "openid profile offline_access")
+			me := newClientWithCookies()
+			loginAs(t, me, base, "test@example.com", "password123")
+			get(t, me, base+"/account") // renders the form and its CSRF cookie
+			postAndFollow(t, me, base, "/account/sessions/revoke-others", nil)
+			if got := userinfoStatus(t, base, tokens.AccessToken); got != http.StatusUnauthorized {
+				t.Errorf("userinfo after sign-out-everywhere: HTTP %d, want 401", got)
+			}
+		})
+
+		t.Run("survives across restart of the store", func(t *testing.T) {
+			// The revocation is a stored fact, not process state: a second
+			// service on the same store sees it too.
+			revoked, err := env.store.Revocations().IsRevoked(context.Background(), "no-such-jti", env.testUser.ID, "public-client", time.Now().Add(-time.Minute))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !revoked {
+				t.Error("the user-wide revocation from sign-out-everywhere should be in the store")
+			}
+		})
 	})
 }

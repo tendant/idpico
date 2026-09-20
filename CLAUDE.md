@@ -118,9 +118,9 @@ All production code goes under `internal/` to prevent accidental coupling.
 
 ### Key Technical Decisions
 - **Signing keys**: RSA 2048 / RS256 (default) or Ed25519 / EdDSA (`IDPICO_SIGNING_ALGORITHM`); `signing_keys.algorithm` carries the alg per key and a change rotates at startup
-- **Tokens**: JWT for both ID and access tokens with short TTL + refresh token rotation
+- **Tokens**: JWT for both ID and access tokens with short TTL + refresh token rotation. Access tokens are not stored; revocation goes through `store.Revocations()` (`token_revocations`: by `jti`, or a per-user / user+client / client watermark). **Invariant**: `Tokens().Revoke/RevokeByUserID/RevokeByClientID` also write the matching watermark, so every grant cut-off covers access tokens; use `Tokens().Rotate` for refresh-token rotation, which must not. `/userinfo` and `/introspect` check it; the `jti` is a UUIDv7 carrying the issue time
 - **Database**: SQLite (default) or JSON files today; Postgres planned. Tables: users, clients, sessions, auth_codes, tokens, signing_keys
-- **Migrations**: goose, embedded via `embed.FS` and applied at startup. Keep SQL portable; dialect-specific DDL lives in its own directory. **Shipped migrations are frozen** (`00001_init.sql` as of v0.0.2, `00002_client_token_ttls.sql` as of v0.0.4): every schema change is a new `0000N_<name>.sql`, never an edit of an existing file
+- **Migrations**: goose, embedded via `embed.FS` and applied at startup. Keep SQL portable; dialect-specific DDL lives in its own directory. **Shipped migrations are frozen** (`00001_init.sql` as of v0.0.2, `00002_client_token_ttls.sql` as of v0.0.4; `00003_token_revocations.sql` is unreleased and freezes with the next tag): every schema change is a new `0000N_<name>.sql`, never an edit of an existing file
 - **Dependency versions**: `go.mod` targets Go 1.24 (matches the Dockerfile). Newer goose/modernc releases require Go 1.25+; check a dependency's `go` directive before bumping
 - **Config**: Environment variables with `IDPICO_` prefix (e.g., `IDPICO_ISSUER_URL`, `IDPICO_STORE_DRIVER`, `IDPICO_COOKIE_SECRET`)
 

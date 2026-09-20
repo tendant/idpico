@@ -3,7 +3,9 @@
 package conformance
 
 import (
+	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -38,6 +40,57 @@ func TestSecurityToken(t *testing.T) {
 		expectTokenError(t, exchange(t, code, "", cfg.ClientID, cfg.ClientSecret, cfg.RedirectURI), 400, "invalid_grant")
 		refreshed := tokenRequest(t, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {first.str("refresh_token")}}, &[2]string{cfg.ClientID, cfg.ClientSecret})
 		expectTokenError(t, refreshed, 400, "invalid_grant")
+		// ...and so must the access token issued from the replayed code.
+		resp, body := userinfo(t, "Bearer "+first.str("access_token"))
+		expectUnauthorized(t, resp, body)
+		afterRevocation()
+	})
+
+	t.Run("revocation_endpoint", func(t *testing.T) {
+		// RFC 7009: a revoked access token is refused, revoking a refresh
+		// token also revokes the access token of its grant, and a client
+		// cannot revoke another client's tokens.
+		d := discovery(t)
+		revocationEndpoint, _ := d.raw["revocation_endpoint"].(string)
+		if revocationEndpoint == "" {
+			t.Skip("no revocation_endpoint advertised")
+		}
+		revoke := func(t *testing.T, token, clientID, secret string) {
+			t.Helper()
+			req, _ := http.NewRequest(http.MethodPost, revocationEndpoint, strings.NewReader(url.Values{"token": {token}}.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.SetBasicAuth(clientID, secret)
+			resp, body := send(t, http.DefaultClient, req)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("revoke: HTTP %d: %s", resp.StatusCode, redact(snippet(body)))
+			}
+		}
+		issue := func(t *testing.T) tokenResponse {
+			t.Helper()
+			code, _ := obtainCode(t, authzParams(cfg.ClientID, cfg.RedirectURI, "openid offline_access", randomString(t, 8), "", ""), cfg.RedirectURI)
+			tr := exchange(t, code, "", cfg.ClientID, cfg.ClientSecret, cfg.RedirectURI)
+			if tr.Status != 200 {
+				t.Fatalf("token: HTTP %d", tr.Status)
+			}
+			return tr
+		}
+
+		afterRevocation()
+		a := issue(t)
+		revoke(t, a.str("access_token"), cfg.OtherClientID, cfg.OtherClientSecret) // foreign client: no effect
+		if resp, _ := userinfo(t, "Bearer "+a.str("access_token")); resp.StatusCode != http.StatusOK {
+			t.Errorf("another client's revocation request took effect: HTTP %d", resp.StatusCode)
+		}
+		revoke(t, a.str("access_token"), cfg.ClientID, cfg.ClientSecret)
+		resp, body := userinfo(t, "Bearer "+a.str("access_token"))
+		expectUnauthorized(t, resp, body)
+
+		b := issue(t)
+		revoke(t, b.str("refresh_token"), cfg.ClientID, cfg.ClientSecret)
+		defer afterRevocation()
+		resp, body = userinfo(t, "Bearer "+b.str("access_token"))
+		expectUnauthorized(t, resp, body)
+		expectTokenError(t, tokenRequest(t, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {b.str("refresh_token")}}, &[2]string{cfg.ClientID, cfg.ClientSecret}), 400, "invalid_grant")
 	})
 
 	t.Run("code_bound_to_client", func(t *testing.T) {

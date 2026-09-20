@@ -57,6 +57,7 @@ type UserInfoService struct {
 	users          store.UserRepository
 	tokenGenerator *crypto.TokenGenerator
 	groupClaims    *GroupClaims
+	revocations    store.RevocationRepository // nil = revoked access tokens are not refused
 }
 
 // UserInfoOption configures the UserInfoService.
@@ -65,6 +66,11 @@ type UserInfoOption func(*UserInfoService)
 // WithUserInfoGroups includes group memberships when the groups scope is granted.
 func WithUserInfoGroups(gc *GroupClaims) UserInfoOption {
 	return func(s *UserInfoService) { s.groupClaims = gc }
+}
+
+// WithUserInfoRevocations refuses access tokens that have been revoked.
+func WithUserInfoRevocations(r store.RevocationRepository) UserInfoOption {
+	return func(s *UserInfoService) { s.revocations = r }
 }
 
 // NewUserInfoService creates a new UserInfoService.
@@ -89,6 +95,11 @@ func (s *UserInfoService) GetUserInfo(ctx context.Context, accessToken string) (
 
 	if !token.Valid {
 		return nil, idperrors.New(idperrors.CodeTokenInvalid, "invalid access token")
+	}
+	if revoked, err := accessTokenRevoked(ctx, s.revocations, claims); err != nil {
+		return nil, err
+	} else if revoked {
+		return nil, idperrors.New(idperrors.CodeTokenInvalid, "access token has been revoked")
 	}
 
 	// Get user ID from token subject
