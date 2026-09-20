@@ -32,99 +32,39 @@ IdP without standing up Keycloak.
 
 ## Quick Start
 
-```bash
-# From source
-make build && make seed && make run        # test@example.com / password123
+IDPico needs no configuration to start:
 
-# Or with Docker
-docker compose up                          # admin@example.com / password123
+```bash
+make build && ./idpico          # http://localhost:8080, SQLite in ./data
 ```
 
-The server starts at `http://localhost:8080`. Open `/playground` to run a login end to end,
-`/admin` for the console. Kubernetes manifests are in [`deploy/k8s/`](deploy/k8s/) (kustomize;
-see [docs/k3s-headlamp-setup.md](docs/k3s-headlamp-setup.md) for a full walkthrough).
+A fresh instance has no users, so `/` shows what to do next. The shortest path is a three-line
+`.env` in the directory you start it from (`cp .env.example .env` and edit), then restart:
 
-Images are not published; build your own with `make docker-build` and push it to your registry.
+```bash
+IDPICO_BOOTSTRAP_USERS=you@example.com:change-me:Your Name   # the first user...
+IDPICO_ADMIN_EMAILS=you@example.com                          # ...who gets the admin console
+IDPICO_BOOTSTRAP_CLIENTS=my-app|my-app-secret|http://localhost:3000/callback   # your application
+```
+
+Now sign in at `/login`, open `/playground` to run an OIDC login end to end, and `/admin` to manage
+users, groups, clients and keys. The same three lines work as environment variables, in
+`docker compose` or in a Kubernetes manifest; `idpicoctl user add` / `client add` do the same
+without a restart. For a developer sandbox with ready-made accounts, `make seed && make run`
+(`test@example.com` / `password123`) or `docker compose up` (`admin@example.com` / `password123`).
+
+Kubernetes manifests are in [`deploy/k8s/`](deploy/k8s/) (kustomize; see
+[docs/k3s-headlamp-setup.md](docs/k3s-headlamp-setup.md) for a full walkthrough). Images are
+published as `wang/idpico:<tag>`; `make docker-build` builds your own.
 
 ## Configuration
 
-Configuration is via environment variables with `IDPICO_` prefix:
-
-```bash
-# Server
-IDPICO_HOST=0.0.0.0
-IDPICO_PORT=8080
-IDPICO_ISSUER_URL=http://localhost:8080
-
-# Storage
-IDPICO_STORE_DRIVER=sqlite      # sqlite (default) or file
-IDPICO_DATA_DIR=./data          # Holds idpico.db (sqlite) or the JSON files (file)
-IDPICO_STORE_DSN=               # Optional: explicit SQLite path, overrides <IDPICO_DATA_DIR>/idpico.db
-
-# Session
-IDPICO_SESSION_DURATION=24h
-IDPICO_COOKIE_SECRET=           # Auto-generated if empty
-IDPICO_COOKIE_SECURE=           # Unset: true when IDPICO_ISSUER_URL is https://, else false
-
-# Tokens (server defaults; each client can override both on its admin page)
-IDPICO_SIGNING_ALGORITHM=RS256  # or EdDSA (Ed25519); changing it rotates the key at the next start
-IDPICO_ACCESS_TOKEN_TTL=15m
-IDPICO_REFRESH_TOKEN_TTL=168h   # 7 days
-IDPICO_AUTH_CODE_TTL=10m
-
-# Groups
-IDPICO_GROUPS_CLAIM=groups            # claim name for memberships
-IDPICO_BOOTSTRAP_GROUPS=              # "admins:alice@x.com bob@x.com,devs:carol@x.com"
-
-# Admin UI & playground
-IDPICO_ADMIN_EMAILS=admin@example.com # who may open /admin (comma-separated)
-IDPICO_PLAYGROUND_ENABLED=            # built-in test client at /playground; unset: on for http://, off for https:// issuers
-
-# Consent
-IDPICO_REQUIRE_CONSENT=true           # consent screen for third-party clients
-
-# Email (password reset / verification links)
-IDPICO_MAIL_DRIVER=log                # log = print to server log, smtp = send
-IDPICO_SMTP_HOST=                     # required for smtp, with IDPICO_SMTP_FROM
-IDPICO_PASSWORD_RESET_TTL=1h
-IDPICO_EMAIL_VERIFY_TTL=24h
-
-# Key rotation & maintenance
-IDPICO_SIGNING_KEY_ROTATION_DAYS=30   # 0 = disabled
-IDPICO_SIGNING_KEY_GRACE_PERIOD=24h   # rotated keys remain valid for verification
-IDPICO_MAINTENANCE_INTERVAL=10m       # expired-row purge + key rotation (0 = disabled)
-
-# Logging
-IDPICO_LOG_LEVEL=info           # debug, info, warn, error
-IDPICO_LOG_FORMAT=json          # json or text
-
-# Rate limiting
-IDPICO_LOGIN_RATE_LIMIT=5       # requests per minute per IP (0 = disabled)
-IDPICO_TRUSTED_PROXIES=private  # peers whose X-Forwarded-For/X-Real-IP name the client: private | none | IPs/CIDRs
-
-# Account lockout
-IDPICO_LOCKOUT_MAX_ATTEMPTS=5   # failed attempts before lockout (0 = disabled)
-IDPICO_LOCKOUT_DURATION=15m     # how long account stays locked
-
-# CORS (empty = disabled)
-IDPICO_CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
-IDPICO_CORS_ALLOW_CREDENTIALS=true
-
-# Security headers
-IDPICO_SECURITY_HEADERS_ENABLED=true
-IDPICO_CONTENT_SECURITY_POLICY=default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'
-IDPICO_HSTS_MAX_AGE=31536000    # 1 year, 0 = disabled
-
-# Bootstrap a single client
-IDPICO_CLIENT_ID=my-app
-IDPICO_CLIENT_SECRET=my-secret
-IDPICO_CLIENT_REDIRECT_URI=http://localhost:3000/callback
-
-# Bootstrap users (email:password:name, comma-separated)
-IDPICO_BOOTSTRAP_USERS=admin@example.com:password123:Admin User
-```
-
-You can also use a `.env` file (copy from `.env.example`).
+Everything is an `IDPICO_*` environment variable with a working default; IDPico also reads a
+`.env` file from its working directory. A first run needs nothing, a deployment needs the
+handful under [Running it on a shared host](#running-it-on-a-shared-host), and the full list —
+storage, sessions, token lifetimes, signing algorithm and key rotation, mail, rate limiting,
+lockout, CORS, security headers, logging, bootstrap formats — is in
+[docs/configuration.md](docs/configuration.md).
 
 ## Endpoints
 

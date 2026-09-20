@@ -1,0 +1,19 @@
+{{define "title"}}Set up IDPico{{end}}
+{{define "content"}}
+<h1>No users yet</h1>
+<p>IDPico is running, but nobody can sign in until a user exists. Pick one:</p>
+
+<h2>A file next to the binary</h2>
+<p>Create <code>.env</code> in the directory you start <code>idpico</code> from, then restart it:</p>
+<pre>IDPICO_BOOTSTRAP_USERS={{.Email}}:change-me:Your Name
+IDPICO_ADMIN_EMAILS={{.Email}}
+IDPICO_BOOTSTRAP_CLIENTS=my-app|my-app-secret|http://localhost:3000/callback</pre>
+<p class="help">One line each for the first user (who gets the admin console), and your application as an OIDC client with its redirect URI. The same three lines work as environment variables, in <code>docker compose</code> or in a Kubernetes manifest.</p>
+
+<h2>Or the command line</h2>
+<pre>idpicoctl user add {{.Email}} -admin
+idpicoctl client add my-app -redirect http://localhost:3000/callback</pre>
+<p class="help">Both print what they created; <code>client add</code> shows the secret once. No restart needed.</p>
+
+<div class="links"><a href="/login">Sign in</a></div>
+{{end}}

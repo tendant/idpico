@@ -161,6 +161,11 @@ func (t *Templates) Render(w http.ResponseWriter, status int, name string, data 
 	_, _ = buf.WriteTo(w)
 }
 
+// setupPageData drives setup.html, shown on / while no user exists.
+type setupPageData struct {
+	Email string // example address used in the snippets
+}
+
 // errorPageData drives error.html.
 type errorPageData struct {
 	Title     string

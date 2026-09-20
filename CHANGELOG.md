@@ -4,6 +4,10 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Added
+
+- First run without configuration: `/` on an instance with no users shows how to create the first one (a three-line `.env`, or `idpicoctl`), and the startup log says the same. `.env.example` is now that three-line file; the full variable reference moved from the README to `docs/configuration.md`, and the README's Quick Start starts from `./idpico` with nothing set.
+
 ## [0.0.6] - 2026-09-20
 
 Tighter tokens. ID-token claims are released only for the scopes a client was granted (an

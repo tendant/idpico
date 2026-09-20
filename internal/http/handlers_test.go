@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/tendant/idpico/internal/config"
+	"github.com/tendant/idpico/internal/domain"
+	"github.com/tendant/idpico/internal/store/sqlite"
 )
 
 func TestHealthHandler_Healthz(t *testing.T) {
@@ -337,5 +339,32 @@ func TestStaticStylesheet(t *testing.T) {
 	}
 	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "max-age") {
 		t.Errorf("stylesheet should be cacheable, got %q", cc)
+	}
+}
+
+// A fresh instance shows how to create the first user instead of a login
+// link nobody can use; once a user exists the landing page is back.
+func TestRootShowsSetupUntilFirstUser(t *testing.T) {
+	ctx := context.Background()
+	st, err := sqlite.NewStore(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	srv := NewServer(":0", WithAccountPage(st))
+
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "No users yet") || !strings.Contains(rec.Body.String(), "IDPICO_BOOTSTRAP_USERS=") {
+		t.Fatalf("empty instance: expected the setup page, got %d %s", rec.Code, rec.Body.String()[:200])
+	}
+
+	if err := st.Users().Create(ctx, &domain.User{ID: "u1", Email: "u1@example.com", Active: true}); err != nil {
+		t.Fatal(err)
+	}
+	rec = httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "No users yet") {
+		t.Fatalf("with a user: expected the landing page, got %d", rec.Code)
 	}
 }

@@ -350,6 +350,14 @@ func NewServer(addr string, opts ...Option) *Server {
 				return
 			}
 		}
+		// A fresh instance: tell the operator how to create the first user
+		// instead of showing a login form nobody can use.
+		if s.accountStore != nil {
+			if users, err := s.accountStore.Users().List(r.Context()); err == nil && len(users) == 0 {
+				templates.Render(w, http.StatusOK, "setup", setupPageData{Email: "you@example.com"})
+				return
+			}
+		}
 		landing := messagePageData{
 			Title:     "IDPico",
 			Message:   "This is an OpenID Connect identity provider for local development.",

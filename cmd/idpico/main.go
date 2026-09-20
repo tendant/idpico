@@ -69,6 +69,11 @@ func main() {
 
 	// Bootstrap users and clients from environment variables
 	bootstrapData(context.Background(), cfg, store, logger)
+	if users, err := store.Users().List(context.Background()); err == nil && len(users) == 0 {
+		logger.Warn("no users exist yet: nobody can sign in. Create one with `idpicoctl user add you@example.com -admin`, " +
+			"or set IDPICO_BOOTSTRAP_USERS=you@example.com:password:Name (and IDPICO_ADMIN_EMAILS) in the environment or a .env file and restart. " +
+			"The page at / shows the same instructions.")
+	}
 	bootstrapGroups(context.Background(), cfg, store, logger)
 	grantAdmins(context.Background(), cfg, store, logger)
 
