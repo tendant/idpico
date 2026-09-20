@@ -50,12 +50,26 @@ func NewOIDCHandler(
 	}
 }
 
-// Authorize handles GET /authorize - the OAuth 2.0 authorization endpoint.
+// Authorize handles GET and POST /authorize - the OAuth 2.0 authorization
+// endpoint. OIDC Core §3.1.2.1 requires both methods; a POST carries the
+// parameters as a form body and is otherwise identical.
 func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	params := r.URL.Query()
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err != nil {
+			h.renderAuthError(w, r, "", "invalid form data", "", "")
+			return
+		}
+		params = r.PostForm
+	}
+	// The request as a GET URL: what the login page returns to and what the
+	// consent form re-submits.
+	requestURL := &url.URL{Path: r.URL.Path, RawQuery: params.Encode()}
+
 	// Parse authorization request
-	authReq, err := h.authorizeService.ParseAuthorizeRequest(r)
+	authReq, err := h.authorizeService.ParseAuthorizeQuery(params)
 	if err != nil {
 		h.renderAuthError(w, r, "", err.Error(), "", "")
 		return
@@ -86,7 +100,7 @@ func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 			// fresh session and can stay).
 			_ = h.authService.Logout(ctx, w, r)
 		}
-		loginURL := "/login?return_url=" + url.QueryEscape(withoutPrompt(r.URL, "login", "select_account"))
+		loginURL := "/login?return_url=" + url.QueryEscape(withoutPrompt(requestURL, "login", "select_account"))
 		http.Redirect(w, r, loginURL, http.StatusFound)
 		return
 	}
@@ -104,7 +118,7 @@ func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 				h.redirectError(w, r, authReq, "consent_required", "user consent is required")
 				return
 			}
-			h.renderConsent(w, r, authReq, client, user.Email)
+			h.renderConsent(w, r, authReq, requestURL.RawQuery, client, user.Email)
 			return
 		}
 	}
@@ -247,7 +261,7 @@ type consentPageData struct {
 	Scopes         []consentScope
 }
 
-func (h *OIDCHandler) renderConsent(w http.ResponseWriter, r *http.Request, authReq *oidc.AuthorizeRequest, client *domain.Client, userEmail string) {
+func (h *OIDCHandler) renderConsent(w http.ResponseWriter, r *http.Request, authReq *oidc.AuthorizeRequest, authorizeQuery string, client *domain.Client, userEmail string) {
 	csrfToken, err := h.authService.CSRF().GenerateToken(w)
 	if err != nil {
 		h.logger.Error("failed to generate CSRF token", "error", err)
@@ -267,7 +281,7 @@ func (h *OIDCHandler) renderConsent(w http.ResponseWriter, r *http.Request, auth
 
 	h.templates.Render(w, http.StatusOK, "consent", consentPageData{
 		CSRFToken:      csrfToken,
-		AuthorizeQuery: r.URL.RawQuery,
+		AuthorizeQuery: authorizeQuery,
 		ClientID:       client.ID,
 		ClientName:     name,
 		UserEmail:      userEmail,
@@ -365,10 +379,22 @@ func (h *OIDCHandler) UserInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract bearer token
+	// Extract bearer token: the Authorization header (RFC 6750 §2.1) or,
+	// for a form-encoded POST without one, the access_token body parameter
+	// (§2.2). A request that sends neither gets a bare challenge (§3).
 	token, err := oidc.ExtractBearerToken(r.Header.Get("Authorization"))
+	if err != nil && r.Header.Get("Authorization") == "" && r.Method == http.MethodPost &&
+		strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
+		if perr := r.ParseForm(); perr == nil && r.PostForm.Get("access_token") != "" {
+			token, err = r.PostForm.Get("access_token"), nil
+		}
+	}
 	if err != nil {
-		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+		if r.Header.Get("Authorization") == "" {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+		} else {
+			w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
+		}
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}

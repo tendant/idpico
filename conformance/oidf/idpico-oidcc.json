@@ -1,0 +1,132 @@
+{
+  "alias": "idpico",
+  "description": "IDPico \u2014 OpenID Connect Core Basic OP profile (see CONFORMANCE.md)",
+  "server": {
+    "discoveryUrl": "http://host.docker.internal:28100/.well-known/openid-configuration",
+    "login_hint": "alice@example.com"
+  },
+  "client": {
+    "client_id": "oidf-client-1",
+    "client_secret": "oidf-secret-1"
+  },
+  "client2": {
+    "client_id": "oidf-client-2",
+    "client_secret": "oidf-secret-2"
+  },
+  "browser": [
+    {
+      "match": "http://host.docker.internal:28100/authorize*",
+      "tasks": [
+        {
+          "task": "Login",
+          "optional": true,
+          "match": "http://host.docker.internal:28100/login*",
+          "commands": [
+            [
+              "wait",
+              "xpath",
+              "//*",
+              10,
+              "Sign In",
+              "update-image-placeholder-optional"
+            ],
+            [
+              "text",
+              "id",
+              "email",
+              "alice@example.com"
+            ],
+            [
+              "text",
+              "id",
+              "password",
+              "test-password"
+            ],
+            [
+              "click",
+              "xpath",
+              "//button[@type='submit']"
+            ]
+          ]
+        },
+        {
+          "task": "Consent",
+          "optional": true,
+          "match": "http://host.docker.internal:28100/authorize*",
+          "commands": [
+            [
+              "click",
+              "xpath",
+              "//button[@name='action' and @value='allow']",
+              "optional"
+            ]
+          ]
+        },
+        {
+          "task": "Verify Complete",
+          "match": "*/test/*/callback*",
+          "commands": [
+            [
+              "wait",
+              "id",
+              "submission_complete",
+              10
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "override": {
+    "oidcc-ensure-registered-redirect-uri": {
+      "browser": [
+        {
+          "match": "http://host.docker.internal:28100/authorize*",
+          "tasks": [
+            {
+              "task": "Expect redirect_uri error page",
+              "match": "http://host.docker.internal:28100/authorize*",
+              "commands": [
+                [
+                  "wait",
+                  "xpath",
+                  "//*",
+                  10,
+                  "Authorization Error",
+                  "update-image-placeholder"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "oidcc-ensure-request-object-with-redirect-uri": {
+      "browser": [
+        {
+          "match": "http://host.docker.internal:28100/authorize*",
+          "tasks": [
+            {
+              "task": "Expect redirect_uri error page",
+              "match": "http://host.docker.internal:28100/authorize*",
+              "commands": [
+                [
+                  "wait",
+                  "xpath",
+                  "//*",
+                  10,
+                  "Authorization Error",
+                  "update-image-placeholder"
+                ]
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "client_secret_post": {
+    "client_id": "oidf-client-1",
+    "client_secret": "oidf-secret-1"
+  }
+}

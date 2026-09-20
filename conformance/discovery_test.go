@@ -77,6 +77,13 @@ func TestDiscovery(t *testing.T) {
 		if !contains(d.TokenEndpointAuthMethodsSupported, "none") {
 			t.Errorf("token_endpoint_auth_methods_supported %v lacks none (public clients)", d.TokenEndpointAuthMethodsSupported)
 		}
+		// Unsupported optional features must be declared, since the
+		// request_uri_parameter_supported default is true.
+		for _, k := range []string{"request_parameter_supported", "request_uri_parameter_supported", "claims_parameter_supported"} {
+			if v, ok := d.raw[k].(bool); !ok || v {
+				t.Errorf("%s = %v, want false", k, d.raw[k])
+			}
+		}
 		if !contains(d.GrantTypesSupported, "authorization_code") {
 			t.Errorf("grant_types_supported %v lacks authorization_code", d.GrantTypesSupported)
 		}

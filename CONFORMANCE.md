@@ -27,7 +27,7 @@ Unsupported response types and grant types are refused with `unsupported_respons
 | 1 Functional | discovery, JWKS, authorization code, token exchange, independent ID token validation, UserInfo | ✅ `make validate-conformance`, CI |
 | 2 Security | PKCE S256, redirect URI enforcement, code replay, client/code binding, state/nonce, forged and damaged JWTs | ✅ `make validate-security`, CI |
 | 3 Interoperability | independent go-oidc client (`examples/oidc-client`) | ✅ `make validate-interop`, CI · other real applications: see below |
-| 4 Standards | OpenID Foundation conformance suite, Basic OP profile | ⏳ not yet run |
+| 4 Standards | OpenID Foundation conformance suite, Basic OP profile | ✅ `make validate-oidf`: 36 modules, 0 failures (results below) |
 
 A release states the level it reached rather than claiming "OIDC compatible".
 
@@ -39,6 +39,7 @@ make validate-conformance   # conformance suite only, verbose
 make validate-security      # only the Security* tests (level 2)
 make validate-interop       # login through examples/oidc-client
 make validate-all           # everything incl. -race
+make validate-oidf          # OpenID Foundation suite, Basic OP profile (docker; ~90 s after first pull)
 ```
 
 `validate-conformance` builds `./cmd/idpico`, starts it on a free loopback port with a temporary data
@@ -130,33 +131,67 @@ Found while writing the suite; none affects the declared profile.
   clients are held to `S256`. RFC 7636 permits `plain`; a future release may refuse it everywhere.
 - **No `at_hash` in the ID token.** Not required for the code flow (OIDC Core §3.1.3.6), but clients that
   validate access tokens through it will not be able to.
-- **`/userinfo` answers `WWW-Authenticate: Bearer error="invalid_token"` even when no token was sent.**
-  RFC 6750 §3.1 says a request without authentication should get a challenge without an error code.
+- **Scope claims are in the ID token.** For the code flow OIDC Core §5.4 says the `profile`/`email`
+  claims belong in the UserInfo response; IDPico also puts `email`, `email_verified` and `name` (and a
+  non-standard `client_id`) in the ID token so that relying parties that only read the ID token —
+  Kubernetes, most auth proxies — get them without a UserInfo call. Deliberate; the OIDF suite warns.
+- **Only `name` for scope `profile`**: no `given_name`, `family_name`, `picture`, `locale`, … .
+- **`acr_values` is ignored** and no `acr` claim is returned (a SHOULD); there are no authentication
+  context classes.
+- **The `claims` request parameter is not supported** (`claims_parameter_supported: false`).
+- **Access tokens are stateless JWTs.** Reusing an authorization code revokes the grant's refresh
+  tokens, but an access token already issued from it stays valid until it expires (RFC 6749 §4.1.2
+  SHOULD); the same applies to `/revoke`. Keep `IDPICO_ACCESS_TOKEN_TTL` short.
 - **`grant_types` on a client is stored but not enforced** at `/token`; every client can use both
   `authorization_code` and `refresh_token`.
-- **Refresh tokens, logout, revocation and introspection** have unit and `scripts/test-client.sh` coverage
-  but are not yet part of the black-box conformance contract.
+- **Refresh tokens, logout, revocation and introspection** have unit, `scripts/test-client.sh` and (for
+  refresh) OIDF coverage but are not yet part of the black-box conformance contract.
 
-Fixed while writing the suite (v0.0.4): `/authorize` used to show a 400 page for an unsupported
-`response_type`, a `scope` without `openid`, a disallowed scope or a public client without PKCE even
-when the client and `redirect_uri` were valid; RFC 6749 §4.1.2.1 requires these to be delivered to the
-redirect URI, and `openid` was matched as a substring.
+Fixed while writing the suite and running the OIDF tests (v0.0.4):
+
+- `/authorize` showed a 400 page for an unsupported `response_type`, a `scope` without `openid`, a
+  disallowed scope or a public client without PKCE even when the client and `redirect_uri` were valid;
+  RFC 6749 §4.1.2.1 requires these to go to the redirect URI. `openid` was matched as a substring.
+- `/authorize` only accepted GET; OIDC Core §3.1.2.1 requires POST too.
+- A `request`, `request_uri` or `registration` parameter was silently ignored and the request processed
+  from the query parameters; §6.1/§6.2/§7.2.1 require `request_not_supported` /
+  `request_uri_not_supported` / `registration_not_supported`. Discovery now states
+  `request_parameter_supported`, `request_uri_parameter_supported` (whose default is *true*) and
+  `claims_parameter_supported` as `false`.
+- Reusing an authorization code did not revoke anything; it now revokes the grant's refresh tokens.
+- `/userinfo` did not accept `access_token` in a form-encoded POST body (RFC 6750 §2.2), and answered a
+  request with no credentials with `error="invalid_token"` instead of a bare `Bearer` challenge (§3.1).
 
 ## OpenID Foundation conformance (level 4)
 
-The project's suite is not a substitute for the official one. Plan for running it:
+`make validate-oidf` runs the official [conformance suite](https://gitlab.com/openid/conformance-suite)
+(prebuilt images, pinned commit in `scripts/oidf.sh`) with docker compose, starts a throwaway IDPico
+that the containers reach as `host.docker.internal`, and drives the **OpenID Connect Core: Basic OP**
+plan (`oidcc-basic-certification-test-plan`, discovery, static clients) with the suite's own
+`run-test-plan.py`. The test configuration, including the scripted-browser steps that fill IDPico's login
+form, is `conformance/oidf/idpico-oidcc.json`; `expected-warnings.json` and `expected-skips.json` list
+what is accepted, with a reason each. Anything else — a failure, a new warning, a new skip — makes the
+run exit non-zero. `KEEP_SUITE=1` leaves the suite up at <https://localhost.emobix.co.uk:8443/> to browse
+the logs and screenshots. It is not run in CI (docker, ~1.3 GB of images, ~90 s).
 
-1. Run the [conformance suite](https://gitlab.com/openid/conformance-suite) locally with its
-   `docker-compose`, or use <https://www.certification.openid.net/> against a publicly reachable IDPico.
-2. Create a test plan **OpenID Connect Core: Basic Certification Profile Authorization server test**
-   (`oidcc-basic-certification-test-plan`), server metadata by discovery, client registration
-   *static*, with two clients registered on IDPico whose redirect URIs are the suite's callback URLs
-   (`https://<suite host>/test/a/<alias>/callback`). Set `IDPICO_REQUIRE_CONSENT=false` or mark the
-   clients `skip_consent` so the suite's browser automation only has to fill the login form.
-3. Classify every failure as `BUG`, `SPEC INTERPRETATION`, `UNSUPPORTED FEATURE` or
-   `TEST CONFIGURATION`, and record the results here. A `BUG` in the declared profile blocks the release.
+### Results — 2026-09-20, suite `440eec8b`, Basic OP profile
 
-Certification itself is a separate decision from running the tests.
+36 modules, 1711 conditions: **0 failures**, 15 warnings, 4 skips, 4 screenshots for review.
+
+| Result | Modules | Classification |
+|---|---|---|
+| PASSED (20) | server, response-type-missing, userinfo-get/-post-header/-post-body, request-without-nonce, display-page/-popup, prompt-none-not-logged-in/-logged-in, max-age-10000, unknown-parameter, id-token-hint, login-hint, ui-locales, claims-locales, codereuse, ensure-post-request, server-client-secret-post, refresh-token, valid-pkce | — |
+| REVIEW (4) | prompt-login, max-age-1, ensure-registered-redirect-uri, ensure-request-object-with-redirect-uri | Pass with a screenshot the suite captured automatically (second login page; `invalid redirect_uri` error page). A human checks them in a certification submission. |
+| WARNING (7) | server, scope-email, alternate-happy-flow, claims-essential | SPEC INTERPRETATION: scope claims in the ID token (see above) |
+| | scope-profile | UNSUPPORTED: only `name` of the profile claims |
+| | ensure-request-with-acr-values | UNSUPPORTED: no `acr` |
+| | codereuse-30seconds | DESIGN: stateless access token not revoked on code reuse |
+| SKIPPED (4) | scope-address, scope-phone, scope-all, unsigned-request-object | UNSUPPORTED: scopes not in `scopes_supported`; request objects not supported |
+
+The failures the first run found — POST `/authorize` unsupported, request objects silently ignored — were
+bugs in the declared profile and are fixed above. Formal certification (submitting these results to the
+OpenID Foundation) is a separate decision; the profile would need the ID-token-claims interpretation
+accepted or changed, and the screenshots reviewed.
 
 ## Follow-on: operational validation
 

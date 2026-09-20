@@ -938,6 +938,18 @@ func TestIntegration_AuthorizeErrors(t *testing.T) {
 				expectStatus: http.StatusFound,
 				expectError:  "invalid_request",
 			},
+			{
+				name:         "request object not supported",
+				query:        url.Values{"client_id": {"test-client"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"code"}, "scope": {"openid"}, "state": {"s1"}, "request": {"eyJhbGciOiJub25lIn0.e30."}},
+				expectStatus: http.StatusFound,
+				expectError:  "request_not_supported",
+			},
+			{
+				name:         "request_uri not supported",
+				query:        url.Values{"client_id": {"test-client"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"code"}, "scope": {"openid"}, "state": {"s1"}, "request_uri": {"https://rp.example/r"}},
+				expectStatus: http.StatusFound,
+				expectError:  "request_uri_not_supported",
+			},
 		}
 
 		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -973,6 +985,24 @@ func TestIntegration_AuthorizeErrors(t *testing.T) {
 				}
 			})
 		}
+
+		// OIDC Core §3.1.2.1: POST is accepted and, when a login is needed,
+		// the return URL carries the posted parameters as a GET.
+		t.Run("POST authorize", func(t *testing.T) {
+			form := url.Values{"client_id": {"test-client"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"code"}, "scope": {"openid"}, "state": {"s2"}}
+			resp, err := client.PostForm(env.server.URL+"/authorize", form)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusFound {
+				t.Fatalf("POST /authorize: HTTP %d", resp.StatusCode)
+			}
+			ret := mustParseURL(mustParseURL(resp.Header.Get("Location")).Query().Get("return_url"))
+			if ret.Path != "/authorize" || ret.Query().Get("state") != "s2" || ret.Query().Get("client_id") != "test-client" {
+				t.Errorf("return_url = %q, want the posted request as a GET", ret)
+			}
+		})
 	})
 }
 

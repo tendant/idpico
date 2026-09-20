@@ -37,3 +37,4 @@ go.work.sum
 # .vscode/
 .claude/
 /examples/oidc-client/oidc-client
+/seed

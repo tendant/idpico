@@ -55,6 +55,11 @@ func TestSecurityAuthorize(t *testing.T) {
 			"scope_without_openid":   {func(p url.Values) { p.Set("scope", "profile email") }, "invalid_scope"},
 			"scope_openid_prefix":    {func(p url.Values) { p.Set("scope", "openidx") }, "invalid_scope"},
 			"scope_not_allowed":      {func(p url.Values) { p.Set("scope", "openid admin:everything") }, "invalid_scope"},
+			// OIDC Core §6.1/§6.2/§7.2.1: unsupported request objects and
+			// registration must be refused, never silently ignored.
+			"request_object": {func(p url.Values) { p.Set("request", "eyJhbGciOiJub25lIn0.e30.") }, "request_not_supported"},
+			"request_uri":    {func(p url.Values) { p.Set("request_uri", "https://client.example/req.jwt") }, "request_uri_not_supported"},
+			"registration":   {func(p url.Values) { p.Set("registration", "{}") }, "registration_not_supported"},
 		} {
 			t.Run(name, func(t *testing.T) {
 				p := valid()
@@ -72,6 +77,32 @@ func TestSecurityAuthorize(t *testing.T) {
 				}
 				assertNoSecrets(t, "error redirect", []byte(resp.Header.Get("Location")))
 			})
+		}
+	})
+
+	t.Run("post_authorize", func(t *testing.T) {
+		// OIDC Core §3.1.2.1: the authorization endpoint must accept the
+		// request as a form POST as well as a GET.
+		state := randomString(t, 8)
+		p := valid()
+		p.Set("state", state)
+		c := newHTTPClient(t)
+		resp, body := postForm(t, c, d.AuthorizationEndpoint, p)
+		if resp.StatusCode != http.StatusFound {
+			t.Fatalf("POST authorize: HTTP %d: %s", resp.StatusCode, redact(snippet(body)))
+		}
+		// Not signed in yet: the login page must bring us back to the same
+		// request, which then completes like a GET.
+		next := login(t, c, resolve(t, d.AuthorizationEndpoint, resp.Header.Get("Location")))
+		resp, body = get(t, c, next)
+		if resp.StatusCode == http.StatusOK && strings.Contains(string(body), `action="/consent"`) {
+			resp, body = postForm(t, c, resolve(t, d.AuthorizationEndpoint, "/consent"), url.Values{
+				"csrf_token": {formValue(body, "csrf_token")}, "authorize_query": {formValue(body, "authorize_query")}, "action": {"allow"},
+			})
+		}
+		q := callback(t, resp, body, cfg.RedirectURI)
+		if q.Get("code") == "" || q.Get("state") != state {
+			t.Errorf("POST authorize did not complete: %v", q)
 		}
 	})
 

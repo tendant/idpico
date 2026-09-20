@@ -31,6 +31,11 @@ type AuthorizeRequest struct {
 	MaxAge              int      // Seconds since authentication the session may be; -1 when absent
 
 	maxAge string // raw max_age, validated by ValidateClient
+	// Parameters for features IDPico does not implement. Their presence is
+	// an error the client must hear about (OIDC Core §6.1, §6.2, §7.2.1)
+	// rather than something to ignore, since the client expects the values
+	// inside them to be honoured.
+	hasRequest, hasRequestURI, hasRegistration bool
 }
 
 // RequiresFreshLogin reports whether the request insists on re-authentication:
@@ -113,6 +118,9 @@ func (s *AuthorizeService) ParseAuthorizeQuery(q url.Values) (*AuthorizeRequest,
 		Prompt:              strings.Fields(q.Get("prompt")),
 		MaxAge:              -1,
 		maxAge:              q.Get("max_age"),
+		hasRequest:          q.Has("request"),
+		hasRequestURI:       q.Has("request_uri"),
+		hasRegistration:     q.Has("registration"),
 	}
 
 	if req.ClientID == "" {
@@ -147,6 +155,18 @@ func (s *AuthorizeService) ValidateClient(ctx contextInterface, req *AuthorizeRe
 	}
 	if !validURI {
 		return nil, idperrors.InvalidInput("invalid redirect_uri")
+	}
+
+	// Request objects would carry parameters this server never reads; refuse
+	// rather than silently authorize something other than what was asked.
+	if req.hasRequest {
+		return nil, redirectErr("request_not_supported", "request objects are not supported")
+	}
+	if req.hasRequestURI {
+		return nil, redirectErr("request_uri_not_supported", "request_uri is not supported")
+	}
+	if req.hasRegistration {
+		return nil, redirectErr("registration_not_supported", "the registration parameter is not supported")
 	}
 
 	if req.maxAge != "" {

@@ -28,6 +28,12 @@ type OIDCDiscovery struct {
 	CodeChallengeMethodsSupported     []string `json:"code_challenge_methods_supported,omitempty"`
 	RevocationEndpointAuthMethods     []string `json:"revocation_endpoint_auth_methods_supported,omitempty"`
 	IntrospectionEndpointAuthMethods  []string `json:"introspection_endpoint_auth_methods_supported,omitempty"`
+
+	// Stated explicitly because the OIDC Discovery defaults are not all
+	// "false": request_uri_parameter_supported defaults to true.
+	RequestParameterSupported    bool `json:"request_parameter_supported"`
+	RequestURIParameterSupported bool `json:"request_uri_parameter_supported"`
+	ClaimsParameterSupported     bool `json:"claims_parameter_supported"`
 }
 
 // DiscoveryHandler handles OIDC discovery endpoints.
@@ -104,6 +110,10 @@ func (h *DiscoveryHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Re
 		CodeChallengeMethodsSupported: []string{
 			"S256",
 		},
+
+		RequestParameterSupported:    false,
+		RequestURIParameterSupported: false,
+		ClaimsParameterSupported:     false,
 
 		RevocationEndpointAuthMethods: []string{
 			"client_secret_basic",

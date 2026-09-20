@@ -304,6 +304,7 @@ func NewServer(addr string, opts ...Option) *Server {
 		oidcHandler := NewOIDCHandler(s.authService, s.authorizeService, s.consentService, s.tokenService, s.userInfoService, templates, s.logger)
 		oidcHandler.audit = s.audit
 		r.Get("/authorize", oidcHandler.Authorize)
+		r.Post("/authorize", oidcHandler.Authorize) // OIDC Core §3.1.2.1: both methods
 		limited(interactive).Post("/consent", oidcHandler.Consent)
 
 		// Endpoints apps call often get the higher "api" limit; it still

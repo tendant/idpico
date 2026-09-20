@@ -181,9 +181,14 @@ func (s *TokenService) HandleAuthorizationCode(ctx context.Context, req *TokenRe
 		return nil, err
 	}
 
-	// Validate code
+	// Validate code. A code presented twice has leaked (or the client is
+	// broken); RFC 6749 §4.1.2 says the server SHOULD then revoke every
+	// token issued from it, so the grant is cut off as for refresh reuse.
 	if authCode.Used {
-		return nil, idperrors.InvalidGrant("code already used")
+		if err := s.revokeGrant(ctx, authCode.UserID, authCode.ClientID); err != nil {
+			return nil, fmt.Errorf("failed to revoke tokens after code reuse: %w", err)
+		}
+		return nil, idperrors.InvalidGrant("code already used; all tokens for this client were revoked")
 	}
 	if authCode.IsExpired() {
 		return nil, idperrors.InvalidGrant("code expired")

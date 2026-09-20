@@ -203,15 +203,6 @@ sed 's/^/    /' "$WORK/userinfo.json"; echo
 ok "userinfo matches $USER_EMAIL"
 
 # --- 7. Negative checks ------------------------------------------------------
-step "Replay the authorization code (must be rejected)"
-request "$WORK/replay.json" "${auth[@]}" -X POST "$TOKEN" \
-	-d grant_type=authorization_code -d "client_id=$CLIENT_ID" \
-	--data-urlencode "code=$CODE" --data-urlencode "redirect_uri=$REDIRECT_URI" \
-	--data-urlencode "code_verifier=$VERIFIER"
-[ "$STATUS" = 400 ] || fail "code replay returned HTTP $STATUS, expected 400"
-[ "$(json_get "$WORK/replay.json" error)" = invalid_grant ] || fail "expected error=invalid_grant, got $(cat "$WORK/replay.json")"
-ok "rejected (invalid_grant): $(json_get "$WORK/replay.json" error_description)"
-
 if [ -n "$CLIENT_SECRET" ]; then
 	step "Wrong client secret (must be rejected)"
 	request "$WORK/badsecret.json" -u "$CLIENT_ID:not-the-secret" -X POST "$TOKEN" \
@@ -253,5 +244,17 @@ if [ -n "$REFRESH_TOKEN" ]; then
 else
 	step "No refresh_token issued (scope lacks offline_access); skipping refresh checks"
 fi
+
+# --- 9. Code replay ----------------------------------------------------------
+# Last, because a replayed code revokes every token of the grant (RFC 6749
+# §4.1.2), including the refresh token exercised above.
+step "Replay the authorization code (must be rejected)"
+request "$WORK/replay.json" "${auth[@]}" -X POST "$TOKEN" \
+	-d grant_type=authorization_code -d "client_id=$CLIENT_ID" \
+	--data-urlencode "code=$CODE" --data-urlencode "redirect_uri=$REDIRECT_URI" \
+	--data-urlencode "code_verifier=$VERIFIER"
+[ "$STATUS" = 400 ] || fail "code replay returned HTTP $STATUS, expected 400"
+[ "$(json_get "$WORK/replay.json" error)" = invalid_grant ] || fail "expected error=invalid_grant, got $(cat "$WORK/replay.json")"
+ok "rejected (invalid_grant): $(json_get "$WORK/replay.json" error_description)"
 
 printf '\nAll client checks passed against %s as %s\n' "$ISSUER" "$CLIENT_ID"

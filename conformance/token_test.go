@@ -27,6 +27,19 @@ func TestSecurityToken(t *testing.T) {
 		expectTokenError(t, exchange(t, code, "", cfg.ClientID, cfg.ClientSecret, cfg.RedirectURI), 400, "invalid_grant")
 	})
 
+	t.Run("replay_revokes_grant", func(t *testing.T) {
+		// RFC 6749 §4.1.2: a reused code SHOULD revoke the tokens it issued.
+		// The refresh token from the first exchange must stop working.
+		code, _ := obtainCode(t, authzParams(cfg.ClientID, cfg.RedirectURI, "openid offline_access", randomString(t, 8), "", ""), cfg.RedirectURI)
+		first := exchange(t, code, "", cfg.ClientID, cfg.ClientSecret, cfg.RedirectURI)
+		if first.Status != 200 || first.str("refresh_token") == "" {
+			t.Skipf("no refresh token issued for offline_access (HTTP %d)", first.Status)
+		}
+		expectTokenError(t, exchange(t, code, "", cfg.ClientID, cfg.ClientSecret, cfg.RedirectURI), 400, "invalid_grant")
+		refreshed := tokenRequest(t, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {first.str("refresh_token")}}, &[2]string{cfg.ClientID, cfg.ClientSecret})
+		expectTokenError(t, refreshed, 400, "invalid_grant")
+	})
+
 	t.Run("code_bound_to_client", func(t *testing.T) {
 		// A code issued to one client cannot be redeemed by another, even
 		// with that client's valid credentials.

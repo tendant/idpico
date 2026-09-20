@@ -50,6 +50,25 @@ func TestUserInfo(t *testing.T) {
 		}
 	})
 
+	t.Run("post_body_token", func(t *testing.T) {
+		// RFC 6750 §2.2: form-encoded access_token in the body.
+		req, _ := http.NewRequest(http.MethodPost, d.UserinfoEndpoint, strings.NewReader("access_token="+tr.str("access_token")))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, body := send(t, http.DefaultClient, req)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("POST userinfo with body token: HTTP %d: %s", resp.StatusCode, redact(snippet(body)))
+		}
+	})
+
+	t.Run("no_token_gets_bare_challenge", func(t *testing.T) {
+		// RFC 6750 §3.1: no error code when the request had no credentials.
+		resp, body := userinfo(t, "")
+		expectUnauthorized(t, resp, body)
+		if h := resp.Header.Get("WWW-Authenticate"); strings.Contains(h, "error=") {
+			t.Errorf("WWW-Authenticate = %q; a request without a token should get a bare challenge", h)
+		}
+	})
+
 	t.Run("scope_limits_claims", func(t *testing.T) {
 		code, _ := obtainCode(t, authzParams(cfg.ClientID, cfg.RedirectURI, "openid", "s", "", ""), cfg.RedirectURI)
 		tr := exchange(t, code, "", cfg.ClientID, cfg.ClientSecret, cfg.RedirectURI)
