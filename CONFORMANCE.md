@@ -26,7 +26,7 @@ Unsupported response types and grant types are refused with `unsupported_respons
 | 0 Development | `go test ./...`, `go vet`, gofmt | ✅ CI |
 | 1 Functional | discovery, JWKS, authorization code, token exchange, independent ID token validation, UserInfo, refresh tokens | ✅ `make validate-conformance`, CI |
 | 2 Security | PKCE S256, redirect URI enforcement, code and refresh-token replay, client/code binding, state/nonce, forged and damaged JWTs, revocation | ✅ `make validate-security`, CI |
-| 3 Interoperability | independent go-oidc client (`examples/oidc-client`) | ✅ `make validate-interop`, CI · other real applications: see below |
+| 3 Interoperability | independent go-oidc client (`examples/oidc-client`); oauth2-proxy | ✅ `make validate-interop`, CI · `make validate-interop-proxy` (docker) |
 | 4 Standards | OpenID Foundation conformance suite, Basic OP profile | ✅ `make validate-oidf`: 36 modules, 0 failures (results below) |
 | Operational | restart, key rotation, backup/restore, upgrade, reverse proxy | ✅ `make validate-operational`, CI (section below) |
 
@@ -41,6 +41,7 @@ make validate-security      # only the Security* tests (level 2)
 make validate-interop       # login through examples/oidc-client
 make validate-all           # everything incl. -race
 make validate-operational   # restart, key rotation, backup/restore, upgrade, reverse proxy (~12 s)
+make validate-interop-proxy # oauth2-proxy in front of an app: login, headers, refresh, sign-out (docker)
 make validate-oidf          # OpenID Foundation suite, Basic OP profile (docker; ~90 s after first pull)
 ```
 
@@ -122,9 +123,14 @@ A workaround needed by a standard client is an IDPico bug, not a client configur
 
 ### Other applications
 
-Tried so far: none recorded. When adding one, note the configuration used, whether discovery, login,
-callback, token verification and logout worked, and any workaround — two or three genuinely independent
-implementations are worth more than many clients sharing a library.
+| Application | Version | Configuration | Result |
+|---|---|---|---|
+| [oauth2-proxy](https://github.com/oauth2-proxy/oauth2-proxy) | v7.14.2 | `--provider=oidc --oidc-issuer-url=<issuer> --client-id --client-secret --redirect-url --scope="openid profile email offline_access groups" --oidc-groups-claim=groups --code-challenge-method=S256 --cookie-refresh=2s --pass-user-headers --set-xauthrequest --pass-access-token` — a confidential client with PKCE | **Passes, no workaround.** `make validate-interop-proxy` (`scripts/interop-oauth2-proxy.sh`, docker) runs oauth2-proxy in front of an upstream that echoes its headers and drives: discovery → redirect to `/authorize` with PKCE → login + consent → callback → session cookie → upstream receives `X-Forwarded-Email`, `X-Forwarded-User` (`sub`), `X-Forwarded-Groups` (from the `groups` claim) and a forwarded access token that idpico's `/userinfo` accepts → `/oauth2/userinfo` → after `cookie-refresh` the session is renewed with the `refresh_token` grant (new access token, visible in `idpico_tokens_issued_total`) → `/oauth2/sign_out` ends the session. Not run in CI (docker). |
+
+Two independent relying parties (go-oidc and oauth2-proxy) plus the OpenID Foundation suite now
+agree with the black-box suite. The next genuinely different implementation would be a non-Go
+one (a Python `authlib` client, Keycloak's identity brokering, or the Kubernetes API server's
+OIDC authenticator, which the k3s guide already documents by hand).
 
 ## Known limitations and deviations
 

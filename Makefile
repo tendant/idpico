@@ -1,5 +1,5 @@
 .PHONY: build run test test-flow clean fmt vet lint help seed docker-build docker-push docker-run compose-up ci \
-	validate validate-unit validate-conformance validate-security validate-operational validate-interop validate-oidf validate-all
+	validate validate-unit validate-conformance validate-security validate-operational validate-interop validate-interop-proxy validate-oidf validate-all
 
 # Binary name
 BINARY := idpico
@@ -132,6 +132,9 @@ validate-interop: build ## Log in through the independent go-oidc reference clie
 	trap "kill $$idp $$rp 2>/dev/null; wait $$idp $$rp 2>/dev/null; rm -rf $$tmp" EXIT; \
 	for i in $$(seq 1 50); do curl -sf -o /dev/null http://localhost:$(INTEROP_CLIENT_PORT)/ && break; sleep 0.1; done; \
 	IDPICO_URL=http://localhost:$(INTEROP_PORT) CLIENT_URL=http://localhost:$(INTEROP_CLIENT_PORT) ./scripts/test-interop.sh
+
+validate-interop-proxy: ## Log in through oauth2-proxy (docker) to an upstream app; refresh and sign out (scripts/interop-oauth2-proxy.sh; not in CI)
+	./scripts/interop-oauth2-proxy.sh
 
 validate-oidf: ## OpenID Foundation conformance suite, Basic OP profile, in docker (scripts/oidf.sh; not run in CI)
 	./scripts/oidf.sh

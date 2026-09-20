@@ -6,6 +6,7 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ### Added
 
+- `make validate-interop-proxy`: oauth2-proxy v7.14.2 (docker) in front of an upstream application, driven through login, identity headers, `groups`, refresh-token session renewal and sign-out — passes with standard configuration only; recorded in CONFORMANCE.md.
 - `idpico_tokens_rejected_total{reason}` counts access tokens refused at `/userinfo` (`invalid`, `revoked`).
 
 ### Fixed

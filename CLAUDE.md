@@ -68,6 +68,7 @@ make validate-security  # Only the Security* conformance tests
 make validate-operational # Restart, key rotation, backup/restore, upgrade fixture, reverse proxy (TestOperational*)
 make validate-interop   # Login through examples/oidc-client (go-oidc) driven by scripts/test-interop.sh
 make validate-oidf      # OpenID Foundation suite (Basic OP) in docker via scripts/oidf.sh; not in CI
+make validate-interop-proxy # oauth2-proxy (docker) login/headers/refresh/sign-out via scripts/interop-oauth2-proxy.sh; not in CI
 make docker-build       # Container image wang/idpico:<git tag> and :latest (IMAGE=/TAG= to override)
 make docker-push        # buildx linux/amd64 + linux/arm64 manifest for both tags, pushed to Docker Hub
 make compose-up         # docker compose up --build
