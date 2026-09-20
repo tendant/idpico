@@ -557,12 +557,17 @@ func (s *TokenService) introspect(ctx context.Context, req *IntrospectionRequest
 }
 
 func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, client *domain.Client, scope, nonce string, authTime time.Time, grantType string) (*TokenResponse, error) {
-	// Build claims for ID token
-	idTokenClaims := &crypto.Claims{
-		Email:         user.Email,
-		EmailVerified: user.EmailVerified,
-		Name:          user.DisplayName,
-		ClientID:      client.ID,
+	// Build claims for ID token. OIDC Core §5.4 puts the scope claims in the
+	// UserInfo response for the code flow; they are also placed in the ID
+	// token — gated by the scopes granted — because many relying parties
+	// (Kubernetes, most proxies) read only the ID token. A client marked
+	// MinimalIDToken gets the spec-pure form.
+	// No client_id claim: it is not an ID token claim (aud carries the client;
+	// azp would apply only with several audiences). The access token keeps
+	// it for resource servers and revocation.
+	idTokenClaims := &crypto.Claims{}
+	if !client.MinimalIDToken {
+		applyScopeClaims(user, scope, idTokenClaims)
 	}
 
 	// Add nonce if provided
@@ -577,8 +582,10 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 	// Group memberships go in both tokens: the ID token for the client, the
 	// access token for resource servers that authorize on groups.
 	accessTokenClaims := &crypto.Claims{Scope: scope, ClientID: client.ID}
-	if err := s.groupClaims.Apply(ctx, user, scope, idTokenClaims); err != nil {
-		return nil, err
+	if !client.MinimalIDToken {
+		if err := s.groupClaims.Apply(ctx, user, scope, idTokenClaims); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.groupClaims.Apply(ctx, user, scope, accessTokenClaims); err != nil {
 		return nil, err
@@ -587,7 +594,7 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 	accessTTL, refreshTTL := s.ttlsFor(client)
 
 	// Generate ID token
-	idToken, _, err := s.tokenGenerator.GenerateIDToken(user.ID, accessTTL, idTokenClaims)
+	idToken, _, err := s.tokenGenerator.GenerateIDTokenFor(user.ID, client.ID, accessTTL, idTokenClaims)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate ID token: %w", err)
 	}
@@ -628,4 +635,23 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 	}
 
 	return response, nil
+}
+
+// applyScopeClaims adds the standard claims the granted scopes release
+// (OIDC Core §5.4): email and email_verified for "email"; name, given_name
+// and family_name for "profile". Empty values are left out.
+func applyScopeClaims(user *domain.User, scope string, claims *crypto.Claims) {
+	if hasScope(scope, "email") {
+		claims.Email = user.Email
+		claims.EmailVerified = user.EmailVerified
+	}
+	if hasScope(scope, "profile") {
+		claims.Name = user.DisplayName
+		if user.GivenName != "" {
+			claims.SetExtra("given_name", user.GivenName)
+		}
+		if user.FamilyName != "" {
+			claims.SetExtra("family_name", user.FamilyName)
+		}
+	}
 }

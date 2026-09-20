@@ -26,7 +26,7 @@ Global flags:
 
 Resources and commands:
   user    list
-          add <email> [-name NAME] [-password PW] [-admin] [-verified] [-inactive]
+          add <email> [-name NAME] [-given-name N] [-family-name N] [-password PW] [-admin] [-verified] [-inactive]
           passwd <email> <password>
           set-admin <email> true|false
           delete <email>
@@ -37,7 +37,7 @@ Resources and commands:
           add-member <name> <email>
           remove-member <name> <email>
   client  list
-          add <id> -redirect URI [-redirect URI ...] [-name NAME] [-public] [-skip-consent] [-scopes "a b"] [-access-ttl 5m] [-refresh-ttl 720h]
+          add <id> -redirect URI [-redirect URI ...] [-name NAME] [-public] [-skip-consent] [-minimal-id-token] [-scopes "a b"] [-access-ttl 5m] [-refresh-ttl 720h]
           reset-secret <id>
           delete <id>
   key     list

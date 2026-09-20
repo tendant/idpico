@@ -32,7 +32,7 @@ done
 tmp=$(mktemp -d)
 cleanup() {
 	docker rm -f idpico-interop-oauth2-proxy >/dev/null 2>&1 || true
-	kill "${idp:-}" "${up:-}" 2>/dev/null; wait "${idp:-}" "${up:-}" 2>/dev/null
+	kill "${idp:-}" "${up:-}" 2>/dev/null; wait "${idp:-}" "${up:-}" 2>/dev/null || true
 	rm -rf "$tmp"
 }
 trap cleanup EXIT

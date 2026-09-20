@@ -81,7 +81,7 @@ CI (`.github/workflows/ci.yml`) runs `make ci`'s steps plus a throwaway `docker 
 ### Core Design Principles
 - **Single instance, persistent data directory** - all state lives in `IDPICO_DATA_DIR` (SQLite or JSON files); a backup is a file copy taken after a clean stop, and one replica runs at a time
 - **OIDC-first** - Authorization Code + PKCE as primary flow
-- **Security by default** - Argon2id passwords, secure cookies, strict redirect URI validation, PKCE required for public clients
+- **Security by default** - Argon2id passwords, secure cookies, strict redirect URI validation, PKCE (S256 only) required for public clients
 - **Independent of simple-idm** - no runtime or build-time coupling (patterns are shared, code is not)
 
 ### Directory Structure
@@ -121,7 +121,7 @@ All production code goes under `internal/` to prevent accidental coupling.
 - **Signing keys**: RSA 2048 / RS256 (default) or Ed25519 / EdDSA (`IDPICO_SIGNING_ALGORITHM`); `signing_keys.algorithm` carries the alg per key and a change rotates at startup
 - **Tokens**: JWT for both ID and access tokens with short TTL + refresh token rotation. Access tokens are not stored; revocation goes through `store.Revocations()` (`token_revocations`: by `jti`, or a per-user / user+client / client watermark). **Invariant**: `Tokens().Revoke/RevokeByUserID/RevokeByClientID` also write the matching watermark, so every grant cut-off covers access tokens; use `Tokens().Rotate` for refresh-token rotation, which must not. `/userinfo` and `/introspect` check it; the `jti` is a UUIDv7 carrying the issue time
 - **Database**: SQLite (default) or JSON files; no other backend is planned. Tables: users, clients, sessions, auth_codes, tokens, token_revocations, consents, verification_tokens, groups, audit_events, signing_keys
-- **Migrations**: goose, embedded via `embed.FS` and applied at startup. Keep SQL portable; dialect-specific DDL lives in its own directory. **Shipped migrations are frozen** (`00001_init.sql` as of v0.0.2, `00002_client_token_ttls.sql` as of v0.0.4, `00003_token_revocations.sql` as of v0.0.5): every schema change is a new `0000N_<name>.sql`, never an edit of an existing file
+- **Migrations**: goose, embedded via `embed.FS` and applied at startup. Keep SQL portable; dialect-specific DDL lives in its own directory. **Shipped migrations are frozen** (`00001_init.sql` as of v0.0.2, `00002_client_token_ttls.sql` as of v0.0.4, `00003_token_revocations.sql` as of v0.0.5; `00004_profile_names_minimal_id_token.sql` is unreleased and freezes with the next tag): every schema change is a new `0000N_<name>.sql`, never an edit of an existing file
 - **Dependency versions**: `go.mod` targets Go 1.24 (matches the Dockerfile). Newer goose/modernc releases require Go 1.25+; check a dependency's `go` directive before bumping
 - **Config**: Environment variables with `IDPICO_` prefix (e.g., `IDPICO_ISSUER_URL`, `IDPICO_STORE_DRIVER`, `IDPICO_COOKIE_SECRET`)
 

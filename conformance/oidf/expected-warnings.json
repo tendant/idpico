@@ -1,48 +1,12 @@
 [
   {
-    "test-name": "oidcc-server",
-    "variant": "*",
-    "configuration-filename": "*idpico-oidcc.json",
-    "current-block": "Verify authorization endpoint response",
-    "condition": "EnsureIdTokenDoesNotContainName",
-    "expected-result": "warning",
-    "comment": "IDPico puts the scope claims (email, email_verified, name) and client_id in the ID token for the code flow so that relying parties that only read the ID token (Kubernetes, most proxies) get them; OIDC Core 5.4 says they belong in UserInfo. Deliberate; see CONFORMANCE.md."
-  },
-  {
-    "test-name": "oidcc-server",
-    "variant": "*",
-    "configuration-filename": "*idpico-oidcc.json",
-    "current-block": "",
-    "condition": "EnsureIdTokenDoesNotContainNonRequestedClaims",
-    "expected-result": "warning",
-    "comment": "IDPico puts the scope claims (email, email_verified, name) and client_id in the ID token for the code flow so that relying parties that only read the ID token (Kubernetes, most proxies) get them; OIDC Core 5.4 says they belong in UserInfo. Deliberate; see CONFORMANCE.md."
-  },
-  {
-    "test-name": "oidcc-scope-email",
-    "variant": "*",
-    "configuration-filename": "*idpico-oidcc.json",
-    "current-block": "Verify authorization endpoint response",
-    "condition": "EnsureIdTokenDoesNotContainName",
-    "expected-result": "warning",
-    "comment": "IDPico puts the scope claims (email, email_verified, name) and client_id in the ID token for the code flow so that relying parties that only read the ID token (Kubernetes, most proxies) get them; OIDC Core 5.4 says they belong in UserInfo. Deliberate; see CONFORMANCE.md."
-  },
-  {
     "test-name": "oidcc-scope-email",
     "variant": "*",
     "configuration-filename": "*idpico-oidcc.json",
     "current-block": "Verify authorization endpoint response",
     "condition": "EnsureIdTokenDoesNotContainEmailForScopeEmail",
     "expected-result": "warning",
-    "comment": "IDPico puts the scope claims (email, email_verified, name) and client_id in the ID token for the code flow so that relying parties that only read the ID token (Kubernetes, most proxies) get them; OIDC Core 5.4 says they belong in UserInfo. Deliberate; see CONFORMANCE.md."
-  },
-  {
-    "test-name": "oidcc-alternate-happy-flow",
-    "variant": "*",
-    "configuration-filename": "*idpico-oidcc.json",
-    "current-block": "Verify authorization endpoint response",
-    "condition": "EnsureIdTokenDoesNotContainName",
-    "expected-result": "warning",
-    "comment": "IDPico puts the scope claims (email, email_verified, name) and client_id in the ID token for the code flow so that relying parties that only read the ID token (Kubernetes, most proxies) get them; OIDC Core 5.4 says they belong in UserInfo. Deliberate; see CONFORMANCE.md."
+    "comment": "IDPico puts the scope claims (email, email_verified, name, given_name, family_name) in the ID token for the code flow, gated by the scopes granted, so that relying parties that only read the ID token (Kubernetes, most proxies) get them; OIDC Core 5.4 says they belong in UserInfo. Deliberate and switchable per client (minimal_id_token); see CONFORMANCE.md."
   },
   {
     "test-name": "oidcc-alternate-happy-flow",
@@ -51,16 +15,7 @@
     "current-block": "Verify authorization endpoint response",
     "condition": "EnsureIdTokenDoesNotContainEmailForScopeEmail",
     "expected-result": "warning",
-    "comment": "IDPico puts the scope claims (email, email_verified, name) and client_id in the ID token for the code flow so that relying parties that only read the ID token (Kubernetes, most proxies) get them; OIDC Core 5.4 says they belong in UserInfo. Deliberate; see CONFORMANCE.md."
-  },
-  {
-    "test-name": "oidcc-claims-essential",
-    "variant": "*",
-    "configuration-filename": "*idpico-oidcc.json",
-    "current-block": "",
-    "condition": "EnsureIdTokenDoesNotContainName",
-    "expected-result": "warning",
-    "comment": "IDPico puts the scope claims (email, email_verified, name) and client_id in the ID token for the code flow so that relying parties that only read the ID token (Kubernetes, most proxies) get them; OIDC Core 5.4 says they belong in UserInfo. Deliberate; see CONFORMANCE.md."
+    "comment": "IDPico puts the scope claims (email, email_verified, name, given_name, family_name) in the ID token for the code flow, gated by the scopes granted, so that relying parties that only read the ID token (Kubernetes, most proxies) get them; OIDC Core 5.4 says they belong in UserInfo. Deliberate and switchable per client (minimal_id_token); see CONFORMANCE.md."
   },
   {
     "test-name": "oidcc-scope-profile",
@@ -69,7 +24,7 @@
     "current-block": "",
     "condition": "VerifyScopesReturnedInUserInfoClaims",
     "expected-result": "warning",
-    "comment": "IDPico has no given_name, family_name, picture, locale... - only name. Unsupported claims."
+    "comment": "IDPico has name, given_name and family_name only; the suite expects all fourteen profile claims (picture, locale, birthdate, ...). Unsupported claims."
   },
   {
     "test-name": "oidcc-claims-essential",

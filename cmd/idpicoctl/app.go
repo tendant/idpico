@@ -68,6 +68,8 @@ func (a *app) user(ctx context.Context, cmd string, args []string) error {
 	case "add":
 		fs := flag.NewFlagSet("user add", flag.ContinueOnError)
 		name := fs.String("name", "", "display name")
+		given := fs.String("given-name", "", "given (first) name, the given_name claim")
+		family := fs.String("family-name", "", "family (last) name, the family_name claim")
 		password := fs.String("password", "", "password (min 8 chars); omitted = random, printed once")
 		admin := fs.Bool("admin", false, "grant admin UI access")
 		verified := fs.Bool("verified", false, "mark email verified")
@@ -92,7 +94,7 @@ func (a *app) user(ctx context.Context, cmd string, args []string) error {
 			return err
 		}
 		u := &domain.User{
-			ID: uuid.New().String(), Email: email, DisplayName: *name, PasswordHash: hash,
+			ID: uuid.New().String(), Email: email, DisplayName: *name, GivenName: *given, FamilyName: *family, PasswordHash: hash,
 			Active: !*inactive, EmailVerified: *verified, Admin: *admin,
 		}
 		if err := users.Create(ctx, u); err != nil {
@@ -297,6 +299,7 @@ func (a *app) client(ctx context.Context, cmd string, args []string) error {
 		name := fs.String("name", "", "display name (default: id)")
 		public := fs.Bool("public", false, "public client (PKCE, no secret)")
 		skipConsent := fs.Bool("skip-consent", false, "first-party: skip the consent screen")
+		minimalIDToken := fs.Bool("minimal-id-token", false, "leave profile, email and groups claims out of the ID token (UserInfo only)")
 		scopes := fs.String("scopes", "openid profile email offline_access groups", "allowed scopes")
 		accessTTL := fs.Duration("access-ttl", 0, "access/ID token lifetime (e.g. 5m); 0 = server default")
 		refreshTTL := fs.Duration("refresh-ttl", 0, "refresh token lifetime (e.g. 720h); 0 = server default")
@@ -308,7 +311,7 @@ func (a *app) client(ctx context.Context, cmd string, args []string) error {
 			return fmt.Errorf("at least one -redirect URI is required")
 		}
 		c := &domain.Client{
-			ID: id, Name: *name, RedirectURIs: redirects, Public: *public, SkipConsent: *skipConsent,
+			ID: id, Name: *name, RedirectURIs: redirects, Public: *public, SkipConsent: *skipConsent, MinimalIDToken: *minimalIDToken,
 			Scopes:          strings.Fields(*scopes),
 			GrantTypes:      []string{"authorization_code", "refresh_token"},
 			AccessTokenTTL:  *accessTTL,

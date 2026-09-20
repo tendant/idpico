@@ -136,15 +136,17 @@ OIDC authenticator, which the k3s guide already documents by hand).
 
 Found while writing the suite; none affects the declared profile.
 
-- **`plain` PKCE is accepted from confidential clients** while discovery advertises only `S256`. Public
-  clients are held to `S256`. RFC 7636 permits `plain`; a future release may refuse it everywhere.
 - **No `at_hash` in the ID token.** Not required for the code flow (OIDC Core §3.1.3.6), but clients that
   validate access tokens through it will not be able to.
 - **Scope claims are in the ID token.** For the code flow OIDC Core §5.4 says the `profile`/`email`
-  claims belong in the UserInfo response; IDPico also puts `email`, `email_verified` and `name` (and a
-  non-standard `client_id`) in the ID token so that relying parties that only read the ID token —
-  Kubernetes, most auth proxies — get them without a UserInfo call. Deliberate; the OIDF suite warns.
-- **Only `name` for scope `profile`**: no `given_name`, `family_name`, `picture`, `locale`, … .
+  claims belong in the UserInfo response; IDPico also puts `email`, `email_verified`, `name`,
+  `given_name` and `family_name` in the ID token — only for the scopes granted — so that relying
+  parties that read only the ID token (Kubernetes, most proxies) get them without a UserInfo call.
+  Deliberate; the OIDF suite warns. A client that needs spec-pure ID tokens can be marked
+  **Minimal ID token** (admin console, `idpicoctl client add -minimal-id-token`): its ID tokens carry
+  no profile, email or groups claims and UserInfo is the only source.
+- **Profile is `name`, `given_name`, `family_name`**: no `picture`, `locale`, `birthdate`, … (the OIDF
+  check wants all fourteen).
 - **`acr_values` is ignored** and no `acr` claim is returned (a SHOULD); there are no authentication
   context classes.
 - **The `claims` request parameter is not supported** (`claims_parameter_supported: false`).
@@ -185,15 +187,16 @@ the logs and screenshots. It is not run in CI (docker, ~1.3 GB of images, ~90 s)
 
 ### Results — 2026-09-20, suite `440eec8b`, Basic OP profile
 
-36 modules, 1712 conditions: **0 failures**, 14 warnings, 4 skips, 4 screenshots for review.
+36 modules, 1717 conditions: **0 failures**, 5 warnings, 4 skips, 4 screenshots for review.
 
 | Result | Modules | Classification |
 |---|---|---|
-| PASSED (21) | server, response-type-missing, userinfo-get/-post-header/-post-body, request-without-nonce, display-page/-popup, prompt-none-not-logged-in/-logged-in, max-age-10000, unknown-parameter, id-token-hint, login-hint, ui-locales, claims-locales, codereuse, codereuse-30seconds, ensure-post-request, server-client-secret-post, refresh-token, valid-pkce | — |
+| PASSED (23) | server, response-type-missing, userinfo-get/-post-header/-post-body, request-without-nonce, display-page/-popup, prompt-none-not-logged-in/-logged-in, max-age-10000, unknown-parameter, id-token-hint, login-hint, ui-locales, claims-locales, codereuse, codereuse-30seconds, ensure-post-request, server-client-secret-post, refresh-token, valid-pkce (`claims-essential` and `server` moved here: ID-token claims are now scope-gated and carry no `client_id`) | — |
 | REVIEW (4) | prompt-login, max-age-1, ensure-registered-redirect-uri, ensure-request-object-with-redirect-uri | Pass with a screenshot the suite captured automatically (second login page; `invalid redirect_uri` error page). A human checks them in a certification submission. |
-| WARNING (6) | server, scope-email, alternate-happy-flow, claims-essential | SPEC INTERPRETATION: scope claims in the ID token (see above) |
-| | scope-profile | UNSUPPORTED: only `name` of the profile claims |
+| WARNING (4) | scope-email, alternate-happy-flow | SPEC INTERPRETATION: `email` in the ID token for scope `email` (see above) |
+| | scope-profile | UNSUPPORTED: only `name`, `given_name`, `family_name` of the profile claims |
 | | ensure-request-with-acr-values | UNSUPPORTED: no `acr` |
+| | claims-essential | UNSUPPORTED: `claims` request parameter |
 | SKIPPED (4) | scope-address, scope-phone, scope-all, unsigned-request-object | UNSUPPORTED: scopes not in `scopes_supported`; request objects not supported |
 
 The failures the first run found — POST `/authorize` unsupported, request objects silently ignored — were
@@ -225,7 +228,9 @@ bootstraps the conformance user and clients, performs one login + consent + toke
 cleanly and copies the database. Re-run it for the release just cut whenever a new one is made, so
 "previous release" stays current; CI's shallow checkout has no tags and relies on the committed file.
 
-Access-token revocation (after v0.0.4) removed the last `SHOULD` warning: a replayed code now also
+Scope-gating the ID-token claims and dropping the non-standard `client_id` claim (after v0.0.5) took
+the warnings from 14 to 5; what remains is the deliberate `email`-in-ID-token choice and unsupported
+optional features. Access-token revocation (after v0.0.4) removed the last `SHOULD` warning: a replayed code now also
 invalidates the access token it issued (`oidcc-codereuse-30seconds` passes).
 
 Found and fixed while writing the suite (after v0.0.4): the JWKS kept publishing keys whose grace

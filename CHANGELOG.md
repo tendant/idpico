@@ -6,8 +6,15 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ### Added
 
+- `given_name` and `family_name` on users (admin console, `idpicoctl user add -given-name -family-name`), released with the `profile` scope in the ID token and at `/userinfo`. Migration `00004`.
+- Per-client **Minimal ID token** (`minimal_id_token`, admin console, `idpicoctl client add -minimal-id-token`): the ID token carries no profile, email or groups claims — spec-pure per OIDC Core §5.4 — for relying parties that require it; the claims stay at `/userinfo` and in the access token.
 - `make validate-interop-proxy`: oauth2-proxy v7.14.2 (docker) in front of an upstream application, driven through login, identity headers, `groups`, refresh-token session renewal and sign-out — passes with standard configuration only; recorded in CONFORMANCE.md.
 - `idpico_tokens_rejected_total{reason}` counts access tokens refused at `/userinfo` (`invalid`, `revoked`).
+
+### Changed
+
+- ID-token claims are gated by the scopes granted: `email`/`email_verified` only with scope `email`, `name`/`given_name`/`family_name` only with `profile`. Before, every ID token carried email and name. The non-standard `client_id` claim is no longer in the ID token (`aud` names the client; the access token keeps `client_id`). OpenID Foundation Basic OP warnings drop from 14 to 5.
+- PKCE `plain` is refused for every client (`invalid_request`), as discovery has always advertised `S256` only; an omitted `code_challenge_method` means `plain` and is refused too.
 
 ### Fixed
 

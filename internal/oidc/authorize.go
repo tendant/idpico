@@ -204,18 +204,11 @@ func (s *AuthorizeService) ValidateClient(ctx contextInterface, req *AuthorizeRe
 		return nil, redirectErr("invalid_request", "code_challenge is required for public clients")
 	}
 
-	// Validate PKCE method if challenge is provided
-	if req.CodeChallenge != "" {
-		if req.CodeChallengeMethod == "" {
-			req.CodeChallengeMethod = "plain" // Default per RFC 7636
-		}
-		if req.CodeChallengeMethod != "S256" && req.CodeChallengeMethod != "plain" {
-			return nil, redirectErr("invalid_request", "code_challenge_method must be 'S256' or 'plain'")
-		}
-		// We recommend S256
-		if req.CodeChallengeMethod == "plain" && client.Public {
-			return nil, redirectErr("invalid_request", "public clients must use S256 code_challenge_method")
-		}
+	// Only S256 is supported, as discovery advertises; "plain" (RFC 7636's
+	// default when the method is omitted) offers no protection against a
+	// leaked authorization request and is refused for every client.
+	if req.CodeChallenge != "" && req.CodeChallengeMethod != "S256" {
+		return nil, redirectErr("invalid_request", "code_challenge_method must be S256")
 	}
 
 	// Validate requested scopes against allowed scopes

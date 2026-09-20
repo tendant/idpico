@@ -799,7 +799,7 @@ func UserRepository_FlagsRoundTrip(t *testing.T, newStore Factory) {
 	store := newStore(t)
 	ctx := context.Background()
 
-	u := &domain.User{ID: "u1", Email: "u1@example.com", Active: true, EmailVerified: true, Admin: true}
+	u := &domain.User{ID: "u1", Email: "u1@example.com", DisplayName: "Ada Lovelace", GivenName: "Ada", FamilyName: "Lovelace", Active: true, EmailVerified: true, Admin: true}
 	if err := store.Users().Create(ctx, u); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -807,8 +807,12 @@ func UserRepository_FlagsRoundTrip(t *testing.T, newStore Factory) {
 	if !got.EmailVerified || !got.Admin {
 		t.Errorf("flags not round-tripped on create: verified=%v admin=%v", got.EmailVerified, got.Admin)
 	}
+	if got.GivenName != "Ada" || got.FamilyName != "Lovelace" {
+		t.Errorf("names not round-tripped on create: given=%q family=%q", got.GivenName, got.FamilyName)
+	}
 
 	got.EmailVerified, got.Admin = false, false
+	got.GivenName, got.FamilyName = "Augusta", ""
 	if err := store.Users().Update(ctx, got); err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
@@ -816,30 +820,40 @@ func UserRepository_FlagsRoundTrip(t *testing.T, newStore Factory) {
 	if got.EmailVerified || got.Admin {
 		t.Errorf("flags not round-tripped on update: verified=%v admin=%v", got.EmailVerified, got.Admin)
 	}
+	if got.GivenName != "Augusta" || got.FamilyName != "" {
+		t.Errorf("names not round-tripped on update: given=%q family=%q", got.GivenName, got.FamilyName)
+	}
 }
 
 func ClientRepository_SkipConsentRoundTrip(t *testing.T, newStore Factory) {
 	store := newStore(t)
 	ctx := context.Background()
 
-	if err := store.Clients().Create(ctx, &domain.Client{ID: "c1", Name: "c1", SkipConsent: true, AccessTokenTTL: 5 * time.Minute, RefreshTokenTTL: 36 * time.Hour}); err != nil {
+	if err := store.Clients().Create(ctx, &domain.Client{ID: "c1", Name: "c1", SkipConsent: true, MinimalIDToken: true, AccessTokenTTL: 5 * time.Minute, RefreshTokenTTL: 36 * time.Hour}); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 	got, _ := store.Clients().GetByID(ctx, "c1")
 	if !got.SkipConsent {
 		t.Error("SkipConsent not round-tripped")
 	}
+	if !got.MinimalIDToken {
+		t.Error("MinimalIDToken not round-tripped")
+	}
 	if got.AccessTokenTTL != 5*time.Minute || got.RefreshTokenTTL != 36*time.Hour {
 		t.Errorf("token TTLs not round-tripped: access=%v refresh=%v", got.AccessTokenTTL, got.RefreshTokenTTL)
 	}
 
 	got.AccessTokenTTL, got.RefreshTokenTTL = 0, time.Hour
+	got.MinimalIDToken = false
 	if err := store.Clients().Update(ctx, got); err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
 	got, _ = store.Clients().GetByID(ctx, "c1")
 	if got.AccessTokenTTL != 0 || got.RefreshTokenTTL != time.Hour {
 		t.Errorf("token TTLs not round-tripped on update: access=%v refresh=%v", got.AccessTokenTTL, got.RefreshTokenTTL)
+	}
+	if got.MinimalIDToken {
+		t.Error("MinimalIDToken not round-tripped on update")
 	}
 }
 

@@ -18,6 +18,8 @@ type UserInfoResponse struct {
 	Email         string   `json:"email,omitempty"`
 	EmailVerified bool     `json:"email_verified,omitempty"`
 	Name          string   `json:"name,omitempty"`
+	GivenName     string   `json:"given_name,omitempty"`
+	FamilyName    string   `json:"family_name,omitempty"`
 	Groups        []string `json:"groups,omitempty"`
 
 	// Extra holds additional top-level members (e.g. groups under a custom claim name).
@@ -128,13 +130,15 @@ func (s *UserInfoService) GetUserInfo(ctx context.Context, accessToken string) (
 	}
 
 	// Add claims based on scope
-	if strings.Contains(scope, "email") {
+	if hasScope(scope, "email") {
 		response.Email = user.Email
 		response.EmailVerified = user.EmailVerified
 	}
 
-	if strings.Contains(scope, "profile") {
+	if hasScope(scope, "profile") {
 		response.Name = user.DisplayName
+		response.GivenName = user.GivenName
+		response.FamilyName = user.FamilyName
 	}
 
 	if s.groupClaims != nil && hasScope(scope, ScopeGroups) {

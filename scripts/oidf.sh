@@ -66,7 +66,7 @@ step "IDPico on 0.0.0.0:$OIDF_PORT (issuer http://host.docker.internal:$OIDF_POR
 go build -o "$OIDF_CACHE/idpico" ./cmd/idpico
 tmp=$(mktemp -d)
 cleanup() {
-	kill "$idp" 2>/dev/null; wait "$idp" 2>/dev/null
+	kill "$idp" 2>/dev/null; wait "$idp" 2>/dev/null || true
 	rm -rf "$tmp"
 	if [ -z "${KEEP_SUITE:-}" ]; then
 		(cd "$SUITE" && docker compose -f docker-compose-prebuilt.yml down >/dev/null 2>&1) || true

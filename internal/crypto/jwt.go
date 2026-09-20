@@ -128,19 +128,27 @@ func NewTokenGeneratorWithKeyService(keyPair *KeyPair, keyService *KeyService, i
 	}
 }
 
-// GenerateIDToken generates an OIDC ID token.
+// GenerateIDToken generates an OIDC ID token for the audience named by
+// claims.ClientID (the generator's default audience when unset).
 func (g *TokenGenerator) GenerateIDToken(subject string, expiry time.Duration, claims *Claims) (string, time.Time, error) {
+	if claims == nil {
+		claims = &Claims{}
+	}
+	audience := g.audience
+	if claims.ClientID != "" {
+		audience = claims.ClientID
+	}
+	return g.GenerateIDTokenFor(subject, audience, expiry, claims)
+}
+
+// GenerateIDTokenFor generates an OIDC ID token for an explicit audience,
+// so the ID token need not carry a client_id claim of its own.
+func (g *TokenGenerator) GenerateIDTokenFor(subject, audience string, expiry time.Duration, claims *Claims) (string, time.Time, error) {
 	now := time.Now().UTC()
 	expiresAt := now.Add(expiry)
 
 	if claims == nil {
 		claims = &Claims{}
-	}
-
-	// Use ClientID as audience if set, otherwise fall back to default
-	audience := g.audience
-	if claims.ClientID != "" {
-		audience = claims.ClientID
 	}
 
 	claims.RegisteredClaims = jwt.RegisteredClaims{

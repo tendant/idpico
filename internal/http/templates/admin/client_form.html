@@ -59,6 +59,7 @@
     <div class="form-row">
         <label class="check"><input type="checkbox" name="public" value="1"{{if .Client.Public}} checked{{end}}> Public client (no secret, PKCE required)</label>
         <label class="check"><input type="checkbox" name="skip_consent" value="1"{{if .Client.SkipConsent}} checked{{end}}> First-party: skip the consent screen</label>
+        <label class="check"><input type="checkbox" name="minimal_id_token" value="1"{{if .Client.MinimalIDToken}} checked{{end}}> Minimal ID token: profile, email and groups claims only at /userinfo (for relying parties that require spec-pure ID tokens)</label>
         {{if .IsNew}}
         <div class="help">A secret is generated automatically for confidential clients and shown once after creation.</div>
         {{end}}

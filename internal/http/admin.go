@@ -295,6 +295,8 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		ID:            uuid.New().String(),
 		Email:         strings.TrimSpace(r.FormValue("email")),
 		DisplayName:   strings.TrimSpace(r.FormValue("display_name")),
+		GivenName:     strings.TrimSpace(r.FormValue("given_name")),
+		FamilyName:    strings.TrimSpace(r.FormValue("family_name")),
 		Active:        r.FormValue("active") == "1",
 		EmailVerified: r.FormValue("email_verified") == "1",
 		Admin:         r.FormValue("admin") == "1",
@@ -515,6 +517,8 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	user.Email = newEmail
 	user.DisplayName = strings.TrimSpace(r.FormValue("display_name"))
+	user.GivenName = strings.TrimSpace(r.FormValue("given_name"))
+	user.FamilyName = strings.TrimSpace(r.FormValue("family_name"))
 	user.Active = r.FormValue("active") == "1"
 	if r.FormValue("email_verified") == "1" {
 		user.EmailVerified = true
@@ -973,6 +977,7 @@ func applyClientForm(r *http.Request, client *domain.Client) string {
 	client.Name = strings.TrimSpace(r.FormValue("name"))
 	client.Public = r.FormValue("public") == "1"
 	client.SkipConsent = r.FormValue("skip_consent") == "1"
+	client.MinimalIDToken = r.FormValue("minimal_id_token") == "1"
 	client.RedirectURIs = splitLines(r.FormValue("redirect_uris"))
 	client.Scopes = strings.Fields(r.FormValue("scopes"))
 	client.GrantTypes = strings.Fields(r.FormValue("grant_types"))

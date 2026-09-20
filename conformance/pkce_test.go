@@ -79,6 +79,24 @@ func TestPKCE(t *testing.T) {
 		})
 	}
 
+	t.Run("plain_refused_for_confidential_client_too", func(t *testing.T) {
+		// Discovery advertises S256 only; "plain" must not be accepted from
+		// any client, including one that authenticates with a secret.
+		state := randomString(t, 8)
+		p := authzParams(cfg.ClientID, cfg.RedirectURI, "openid", state, "", "some-plain-challenge")
+		p.Set("code_challenge_method", "plain")
+		resp, body := authorize(t, newHTTPClient(t), p)
+		q := callback(t, resp, body, cfg.RedirectURI)
+		if q.Get("error") != "invalid_request" || q.Get("code") != "" {
+			t.Errorf("plain PKCE from a confidential client: error=%q code=%q", q.Get("error"), q.Get("code"))
+		}
+		p.Del("code_challenge_method") // RFC 7636 default is plain
+		resp, body = authorize(t, newHTTPClient(t), p)
+		if q := callback(t, resp, body, cfg.RedirectURI); q.Get("error") != "invalid_request" {
+			t.Errorf("omitted code_challenge_method (= plain): error=%q", q.Get("error"))
+		}
+	})
+
 	t.Run("confidential_client_with_pkce", func(t *testing.T) {
 		// PKCE is optional for confidential clients, but once a challenge is
 		// sent the verifier is required.

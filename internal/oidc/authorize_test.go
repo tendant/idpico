@@ -214,7 +214,7 @@ func TestValidateClient(t *testing.T) {
 				CodeChallengeMethod: "plain",
 			},
 			wantErr:     true,
-			errContains: "public clients must use S256",
+			errContains: "code_challenge_method must be S256",
 			wantCode:    "invalid_request",
 		},
 		{
@@ -276,7 +276,7 @@ func TestValidateClient(t *testing.T) {
 				CodeChallengeMethod: "invalid",
 			},
 			wantErr:     true,
-			errContains: "code_challenge_method must be 'S256' or 'plain'",
+			errContains: "code_challenge_method must be S256",
 			wantCode:    "invalid_request",
 		},
 		{
@@ -326,6 +326,33 @@ func TestValidateClient(t *testing.T) {
 			},
 			wantErr:     true,
 			errContains: "max_age",
+			wantCode:    "invalid_request",
+		},
+		{
+			name: "confidential client with plain PKCE is refused too",
+			request: &AuthorizeRequest{
+				ResponseType:        "code",
+				ClientID:            "confidential-app",
+				RedirectURI:         "https://app.example.com/callback",
+				Scope:               "openid",
+				CodeChallenge:       "test-challenge",
+				CodeChallengeMethod: "plain",
+			},
+			wantErr:     true,
+			errContains: "code_challenge_method must be S256",
+			wantCode:    "invalid_request",
+		},
+		{
+			name: "omitted code_challenge_method means plain and is refused",
+			request: &AuthorizeRequest{
+				ResponseType:  "code",
+				ClientID:      "confidential-app",
+				RedirectURI:   "https://app.example.com/callback",
+				Scope:         "openid",
+				CodeChallenge: "test-challenge",
+			},
+			wantErr:     true,
+			errContains: "code_challenge_method must be S256",
 			wantCode:    "invalid_request",
 		},
 		{

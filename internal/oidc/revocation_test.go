@@ -216,3 +216,76 @@ func TestBulkRevocationCoversAccessTokens(t *testing.T) {
 		t.Error("every user's access tokens for app-a should be revoked")
 	}
 }
+
+// TestIDTokenClaimsByScope: the ID token carries the scope claims only for
+// the scopes granted, includes given_name/family_name for profile, and a
+// MinimalIDToken client gets none of them (they stay at UserInfo).
+func TestIDTokenClaimsByScope(t *testing.T) {
+	f := newRevocationFixture(t)
+	alice, _ := f.store.Users().GetByID(f.ctx, "alice")
+	alice.DisplayName, alice.GivenName, alice.FamilyName = "Alice Example", "Alice", "Example"
+	if err := f.store.Users().Update(f.ctx, alice); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"app-a", "app-b"} {
+		c, _ := f.store.Clients().GetByID(f.ctx, id)
+		c.Scopes = []string{"openid", "profile", "email", "offline_access"}
+		c.MinimalIDToken = id == "app-b"
+		if err := f.store.Clients().Update(f.ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	claimsFor := func(t *testing.T, clientID, secret, scope string) (map[string]any, *UserInfoResponse) {
+		t.Helper()
+		code := "code-" + clientID + "-" + scope
+		client, _ := f.store.Clients().GetByID(f.ctx, clientID)
+		if err := f.store.AuthCodes().Create(f.ctx, &domain.AuthCode{Code: code, ClientID: clientID, UserID: "alice", RedirectURI: client.RedirectURIs[0], Scope: scope, ExpiresAt: time.Now().Add(time.Minute)}); err != nil {
+			t.Fatal(err)
+		}
+		resp, err := f.tokens.HandleAuthorizationCode(f.ctx, &TokenRequest{GrantType: "authorization_code", Code: code, RedirectURI: client.RedirectURIs[0], ClientID: clientID, ClientSecret: secret})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, claims, err := f.tokens.tokenGenerator.ParseToken(resp.IDToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ui, err := f.userinfo.GetUserInfo(f.ctx, resp.AccessToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := map[string]any{"email": claims.Email, "name": claims.Name}
+		for k, v := range claims.Extra {
+			m[k] = v
+		}
+		return m, ui
+	}
+
+	t.Run("openid only", func(t *testing.T) {
+		id, ui := claimsFor(t, "app-a", "secret-a", "openid")
+		if id["email"] != "" || id["name"] != "" || id["given_name"] != nil {
+			t.Errorf("ID token for scope openid must not carry profile/email claims: %v", id)
+		}
+		if ui.Email != "" || ui.Name != "" {
+			t.Errorf("userinfo for scope openid must not carry profile/email claims: %+v", ui)
+		}
+	})
+	t.Run("profile and email", func(t *testing.T) {
+		id, ui := claimsFor(t, "app-a", "secret-a", "openid profile email")
+		if id["email"] != "alice@example.com" || id["name"] != "Alice Example" || id["given_name"] != "Alice" || id["family_name"] != "Example" {
+			t.Errorf("ID token should carry email, name, given_name, family_name: %v", id)
+		}
+		if ui.Email != "alice@example.com" || ui.GivenName != "Alice" || ui.FamilyName != "Example" {
+			t.Errorf("userinfo should carry the same: %+v", ui)
+		}
+	})
+	t.Run("minimal ID token client", func(t *testing.T) {
+		id, ui := claimsFor(t, "app-b", "secret-b", "openid profile email")
+		if id["email"] != "" || id["name"] != "" || id["given_name"] != nil {
+			t.Errorf("minimal ID token must not carry profile/email claims: %v", id)
+		}
+		if ui.Email != "alice@example.com" || ui.Name != "Alice Example" {
+			t.Errorf("userinfo still carries them for a minimal-ID-token client: %+v", ui)
+		}
+	})
+}

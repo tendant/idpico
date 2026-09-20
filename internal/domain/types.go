@@ -10,7 +10,9 @@ type User struct {
 	ID            string    `json:"id"`
 	Email         string    `json:"email"`
 	PasswordHash  string    `json:"password_hash,omitempty"`
-	DisplayName   string    `json:"display_name,omitempty"`
+	DisplayName   string    `json:"display_name,omitempty"` // the `name` claim
+	GivenName     string    `json:"given_name,omitempty"`
+	FamilyName    string    `json:"family_name,omitempty"`
 	Active        bool      `json:"active"`
 	EmailVerified bool      `json:"email_verified"`
 	Admin         bool      `json:"admin"` // May sign in to the admin UI
@@ -28,6 +30,11 @@ type Client struct {
 	Scopes       []string `json:"scopes"`       // Allowed scopes
 	Public       bool     `json:"public"`       // True for public clients (PKCE required)
 	SkipConsent  bool     `json:"skip_consent"` // First-party client: never show the consent screen
+	// MinimalIDToken leaves the profile, email and groups claims out of the
+	// ID token (OIDC Core §5.4: for the code flow they belong to UserInfo).
+	// Off by default, because many relying parties — Kubernetes, most
+	// proxies — read only the ID token.
+	MinimalIDToken bool `json:"minimal_id_token"`
 	// Token lifetimes for this client; zero means the server default applies.
 	AccessTokenTTL  time.Duration `json:"access_token_ttl,omitempty"`
 	RefreshTokenTTL time.Duration `json:"refresh_token_ttl,omitempty"`
