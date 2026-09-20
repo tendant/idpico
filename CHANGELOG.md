@@ -4,6 +4,14 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-09-20
+
+Revocable access tokens and operational validation. Revoking a refresh token, replaying a code,
+signing out everywhere or changing a password now really cuts off the access tokens too — the last
+`SHOULD` the OpenID Foundation suite flagged — and a new operational suite proves restarts, backups,
+key rotation, upgrades and reverse-proxy deployments behave. **Adds migration `00003`**; it applies
+at startup, and there is no rollback: take a copy of the data directory first.
+
 ### Added
 
 - Access-token revocation. `/revoke` accepts an access token (recorded by `jti` until it would have expired), and every way a grant is cut off — a replayed authorization code or refresh token, revoking a refresh token, `/account` **Sign out everywhere** and password change, the admin console's revoke actions, `idpicoctl user passwd` / `client delete` — now also invalidates the access tokens issued up to that moment for that user, user+client or client. `/userinfo` and `/introspect` refuse revoked tokens; nothing is stored when a token is issued. Migration `00003` adds `token_revocations`; rows are purged by maintenance. The access-token `jti` is now a UUIDv7 so the issue time is known to the millisecond. With this the OpenID Foundation Basic OP run has no remaining `SHOULD` warnings (`oidcc-codereuse-30seconds` passes).
@@ -139,7 +147,8 @@ client, and an audit trail.
 - Initial file-backed IdP: Authorization Code + PKCE, RS256 JWTs, refresh token rotation,
   revocation, introspection, RP-initiated logout, rate limiting, lockout, CORS, metrics.
 
-[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.4...HEAD
+[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.5...HEAD
+[0.0.5]: https://github.com/tendant/idpico/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/tendant/idpico/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/tendant/idpico/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/tendant/idpico/compare/v0.0.1...v0.0.2
