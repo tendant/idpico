@@ -40,3 +40,5 @@ go.work.sum
 /seed
 *.db-wal
 *.db-shm
+/idp
+/idpctl
