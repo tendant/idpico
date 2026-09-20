@@ -4,6 +4,14 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-09-20
+
+Easier first run, nothing opaque in the repository. A fresh instance now explains how to create its
+first user, a three-line `.env` bootstraps a user and a client without the CLI, and the README
+starts from `./idpico` with nothing set. The upgrade test builds previous releases from source
+instead of reading checked-in databases, history was rewritten to drop every binary that had ever
+been committed, and CI refuses new ones. No migration.
+
 ### Changed
 
 - `make ci` and CI fail if any tracked file is binary (`scripts/check-no-binaries.sh`; the two embedded icons are the only exceptions).
@@ -182,7 +190,8 @@ client, and an audit trail.
 - Initial file-backed IdP: Authorization Code + PKCE, RS256 JWTs, refresh token rotation,
   revocation, introspection, RP-initiated logout, rate limiting, lockout, CORS, metrics.
 
-[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.6...HEAD
+[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.7...HEAD
+[0.0.7]: https://github.com/tendant/idpico/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/tendant/idpico/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/tendant/idpico/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/tendant/idpico/compare/v0.0.3...v0.0.4

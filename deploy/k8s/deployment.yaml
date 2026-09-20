@@ -23,7 +23,7 @@ spec:
         fsGroup: 10001      # so the volume is writable by that user
       containers:
         - name: idpico
-          image: wang/idpico:v0.0.6   # `make docker-push` also updates :latest; keep this pinned
+          image: wang/idpico:v0.0.7   # `make docker-push` also updates :latest; keep this pinned
           ports:
             - containerPort: 8080
               name: http
