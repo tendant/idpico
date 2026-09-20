@@ -6,6 +6,8 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ### Added
 
+- Black-box conformance suite in `conformance/` (`make validate`, `make validate-security`): builds and starts an isolated IDPico, then tests it over HTTP only — discovery, JWKS, Authorization Code + PKCE for confidential and public clients, independent ID-token validation with go-jose, UserInfo, and the security negatives (redirect URI matching, PKCE downgrades, code replay and client binding, forged/altered/expired JWTs, error-page vs redirect rules). `CONFORMANCE_ISSUER` points it at a running instance; diagnostics are redacted. CI runs it on every push.
+- `examples/oidc-client`: an independent relying party on coreos/go-oidc + x/oauth2 with no IDPico-specific code; `make validate-interop` drives a login through it. `CONFORMANCE.md` records the declared v0.1 profile, validation levels, known limitations and the OpenID Foundation test plan.
 - EdDSA (Ed25519) signing: `IDPICO_SIGNING_ALGORITHM=EdDSA` (default stays `RS256`). Changing it rotates the key at startup with the usual grace period, so RS256 tokens already issued keep verifying; the JWKS publishes `OKP`/`Ed25519` keys alongside RSA ones and discovery lists both algorithms. `idpicoctl key rotate -alg EdDSA`. Token verification binds the token's `alg` to the key's, so a token cannot name a key of the other kind.
 - Per-client token lifetimes: each client can override `IDPICO_ACCESS_TOKEN_TTL` (which also bounds the ID token) and `IDPICO_REFRESH_TOKEN_TTL`. Set them on the client's admin page (`15m`, `12h`, `30d`; blank = server default) or with `idpicoctl client add -access-ttl 5m -refresh-ttl 720h`. Migration `00002` adds the two columns; existing clients keep the defaults.
 
@@ -13,6 +15,7 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ### Changed
 
+- `/authorize` errors follow RFC 6749 §4.1.2.1: once the client and `redirect_uri` are valid, an unsupported `response_type`, a `scope` without `openid` or not allowed for the client, a bad `max_age`/`prompt`, and a public client without PKCE (or with `plain`) are sent back to the redirect URI as `unsupported_response_type` / `invalid_scope` / `invalid_request` with the `state`; before that point (unknown client, unregistered `redirect_uri`) the user still sees an error page and nothing is redirected. `openid` must now be a whole scope token (`openidx` no longer passes).
 - Session IP addresses are stored without the port.
 - `/token` errors follow RFC 6749 §5.2: a used, expired, revoked or mismatched code or refresh token is `invalid_grant`; a widened refresh scope is `invalid_scope`; an unknown client id or bad secret is `invalid_client` with HTTP 401. Malformed requests stay `invalid_request`. Client libraries use these codes to decide between retrying and re-authenticating.
 - The playground is off by default when the issuer is `https://` (a shared host) and on for `http://`; `IDPICO_PLAYGROUND_ENABLED` still overrides either way.

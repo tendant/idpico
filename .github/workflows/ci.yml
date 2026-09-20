@@ -19,6 +19,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: |
+            go.sum
+            examples/oidc-client/go.sum
 
       - name: gofmt
         run: |
@@ -28,13 +31,22 @@ jobs:
           fi
 
       - name: go vet
-        run: go vet ./...
+        run: make vet
 
       - name: go test
         run: go test -race -count=1 ./...
 
       - name: OIDC flow as an external client (scripts/test-client.sh)
         run: make test-flow
+
+      # Black-box OIDC conformance: starts an isolated server and tests it
+      # over HTTP only (see CONFORMANCE.md).
+      - name: Conformance suite
+        run: make validate-conformance
+
+      # Login through an independent go-oidc relying party.
+      - name: Interoperability (examples/oidc-client)
+        run: make validate-interop
 
       - name: Build (static Linux binaries, as the Dockerfile does)
         env:

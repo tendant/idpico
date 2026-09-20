@@ -560,8 +560,9 @@ make run          # Build and run
 make run-dev      # Run with debug logging
 make seed         # Dev users, groups and clients
 make test         # Run tests
-make ci           # gofmt check, vet, race tests, OIDC flow, static build (same as GitHub Actions)
+make ci           # gofmt check, vet, race tests, OIDC flow, conformance, interop, static build (same as GitHub Actions)
 make test-flow    # Full OIDC flow as an external client against a throwaway server
+make validate     # Unit tests + black-box OIDC conformance suite (see below)
 make docker-build # Build wang/idpico:<git tag> and :latest (IMAGE=/TAG= to override)
 make docker-push  # Build linux/amd64 + linux/arm64 and push both tags as one manifest
 make fmt          # Format code
@@ -579,6 +580,18 @@ IDPico, for example a container:
 IDPICO_URL=http://localhost:8090 CLIENT_ID=my-app CLIENT_SECRET=... \
   USER_EMAIL=alice@example.com USER_PASSWORD=... scripts/test-client.sh
 ```
+
+### Validation
+
+`make validate` runs the unit tests and then the black-box conformance suite in
+[`conformance/`](conformance/): it builds and starts an isolated IDPico, drives the
+Authorization Code + PKCE flow over HTTP as a foreign relying party, verifies the
+ID token with an independent JOSE library, and checks the refusals a client relies
+on — wrong redirect URIs, PKCE downgrades, replayed codes, forged tokens.
+`make validate-interop` logs in through [`examples/oidc-client`](examples/oidc-client/),
+a relying party built on go-oidc with no IDPico-specific code. The declared
+profile, how to run the suite against a deployed instance, and known limitations
+are in [CONFORMANCE.md](CONFORMANCE.md).
 
 ## License
 

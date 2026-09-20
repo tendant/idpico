@@ -885,48 +885,91 @@ func TestIntegration_AuthorizeErrors(t *testing.T) {
 		env := setupTestEnv(t, driver)
 		defer env.cleanup()
 
+		// Errors before the client and redirect_uri are validated are shown
+		// to the user (400 page, never a redirect); afterwards they go back
+		// to the client as an OAuth error redirect with the state echoed.
 		tests := []struct {
 			name         string
 			query        url.Values
 			expectStatus int
-			expectInBody string
+			expectError  string // error code in the redirect, when expectStatus is 302
 		}{
 			{
 				name:         "missing client_id",
 				query:        url.Values{"redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"code"}, "scope": {"openid"}},
 				expectStatus: http.StatusBadRequest,
-				expectInBody: "client_id",
 			},
 			{
 				name:         "missing redirect_uri",
 				query:        url.Values{"client_id": {"test-client"}, "response_type": {"code"}, "scope": {"openid"}},
 				expectStatus: http.StatusBadRequest,
-				expectInBody: "redirect_uri",
+			},
+			{
+				name:         "unknown client_id",
+				query:        url.Values{"client_id": {"nope"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"token"}, "scope": {"openid"}},
+				expectStatus: http.StatusBadRequest,
+			},
+			{
+				name:         "unregistered redirect_uri",
+				query:        url.Values{"client_id": {"test-client"}, "redirect_uri": {"http://localhost:3000/callback/"}, "response_type": {"token"}, "scope": {"openid"}},
+				expectStatus: http.StatusBadRequest,
 			},
 			{
 				name:         "invalid response_type",
-				query:        url.Values{"client_id": {"test-client"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"token"}, "scope": {"openid"}},
-				expectStatus: http.StatusBadRequest,
-				expectInBody: "response_type",
+				query:        url.Values{"client_id": {"test-client"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"token"}, "scope": {"openid"}, "state": {"s1"}},
+				expectStatus: http.StatusFound,
+				expectError:  "unsupported_response_type",
 			},
 			{
 				name:         "missing openid scope",
-				query:        url.Values{"client_id": {"test-client"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"code"}, "scope": {"profile"}},
-				expectStatus: http.StatusBadRequest,
-				expectInBody: "openid",
+				query:        url.Values{"client_id": {"test-client"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"code"}, "scope": {"profile"}, "state": {"s1"}},
+				expectStatus: http.StatusFound,
+				expectError:  "invalid_scope",
+			},
+			{
+				name:         "scope not allowed for client",
+				query:        url.Values{"client_id": {"test-client"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"code"}, "scope": {"openid admin"}, "state": {"s1"}},
+				expectStatus: http.StatusFound,
+				expectError:  "invalid_scope",
+			},
+			{
+				name:         "public client without PKCE",
+				query:        url.Values{"client_id": {"public-client"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"code"}, "scope": {"openid"}, "state": {"s1"}},
+				expectStatus: http.StatusFound,
+				expectError:  "invalid_request",
 			},
 		}
 
+		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				resp, err := http.Get(env.server.URL + "/authorize?" + tt.query.Encode())
+				resp, err := client.Get(env.server.URL + "/authorize?" + tt.query.Encode())
 				if err != nil {
 					t.Fatalf("Failed to call authorize: %v", err)
 				}
 				defer resp.Body.Close()
 
 				if resp.StatusCode != tt.expectStatus {
-					t.Errorf("Expected status %d, got %d", tt.expectStatus, resp.StatusCode)
+					t.Fatalf("Expected status %d, got %d", tt.expectStatus, resp.StatusCode)
+				}
+				if tt.expectStatus != http.StatusFound {
+					if loc := resp.Header.Get("Location"); loc != "" {
+						t.Errorf("error page must not redirect, got Location %q", loc)
+					}
+					return
+				}
+				loc, err := url.Parse(resp.Header.Get("Location"))
+				if err != nil {
+					t.Fatalf("bad Location: %v", err)
+				}
+				if got := loc.Scheme + "://" + loc.Host + loc.Path; got != tt.query.Get("redirect_uri") {
+					t.Errorf("redirected to %q, want the registered redirect_uri", got)
+				}
+				if got := loc.Query().Get("error"); got != tt.expectError {
+					t.Errorf("error = %q, want %q (%s)", got, tt.expectError, loc.Query().Get("error_description"))
+				}
+				if got := loc.Query().Get("state"); got != "s1" {
+					t.Errorf("state = %q, want s1", got)
 				}
 			})
 		}
@@ -1442,10 +1485,9 @@ func TestIntegration_GroupsClaim(t *testing.T) {
 		// A client without the scope allowed is refused at /authorize
 		p := url.Values{"client_id": {"test-client"}, "redirect_uri": {"http://localhost:3000/callback"}, "response_type": {"code"}, "scope": {"openid groups"}}
 		resp, _ = client.Get(base + "/authorize?" + p.Encode())
-		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), "not allowed") {
-			t.Errorf("client without groups scope should be rejected, got %d", resp.StatusCode)
+		if resp.StatusCode != http.StatusFound || mustParseURL(resp.Header.Get("Location")).Query().Get("error") != "invalid_scope" {
+			t.Errorf("client without groups scope should be rejected with invalid_scope, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
 		}
 	})
 }
@@ -1577,8 +1619,8 @@ func TestIntegration_MaxAgeAndAuthTime(t *testing.T) {
 		p.Set("max_age", "-5")
 		resp, _ = client.Get(base + "/authorize?" + p.Encode())
 		resp.Body.Close()
-		if resp.StatusCode != http.StatusBadRequest {
-			t.Errorf("negative max_age should be 400, got %d", resp.StatusCode)
+		if resp.StatusCode != http.StatusFound || mustParseURL(resp.Header.Get("Location")).Query().Get("error") != "invalid_request" {
+			t.Errorf("negative max_age should redirect with invalid_request, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
 		}
 
 		// prompt=select_account behaves like login (no chooser exists)

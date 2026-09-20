@@ -61,8 +61,11 @@ make run                # Build and run the server
 make run-dev            # Run with debug logging
 make seed               # Dev users/groups/clients in ./data
 make test               # Run all tests
-make ci                 # Exactly what GitHub Actions runs: gofmt, vet, -race tests, test-flow, static build
+make ci                 # Exactly what GitHub Actions runs: gofmt, vet, -race tests, test-flow, conformance, interop, static build
 make test-flow          # scripts/test-client.sh: curl-only external-client OIDC flow against a throwaway server
+make validate           # Unit tests + black-box conformance suite (conformance/, build tag `conformance`)
+make validate-security  # Only the Security* conformance tests
+make validate-interop   # Login through examples/oidc-client (go-oidc) driven by scripts/test-interop.sh
 make docker-build       # Container image wang/idpico:<git tag> and :latest (IMAGE=/TAG= to override)
 make docker-push        # buildx linux/amd64 + linux/arm64 manifest for both tags, pushed to Docker Hub
 make compose-up         # docker compose up --build
@@ -97,10 +100,18 @@ internal/
     migrations/           #   Embedded goose migrations per dialect
     storetest/            #   Conformance suite shared by all backends
   domain/                 # Core types (User, Client, Token, etc.)
+conformance/              # Black-box OIDC conformance suite (build tag `conformance`); HTTP only, go-jose verifier
+examples/oidc-client/     # Independent relying party (separate module: coreos/go-oidc + x/oauth2)
 data/                     # idpico.db (SQLite) or JSON files, auto-created
 ```
 
 All production code goes under `internal/` to prevent accidental coupling.
+
+### Validation (see CONFORMANCE.md)
+
+- `conformance/` **must not import anything from this module** (`TestNoInternalImports` enforces it) and must verify tokens with go-jose, never `internal/crypto`. It starts `./cmd/idpico` as a subprocess with a from-scratch environment; `CONFORMANCE_ISSUER` targets a running instance instead.
+- Files carry `//go:build conformance`, so `go test ./...` skips them; `make vet` and CI run them with the tag. `examples/oidc-client` is its own module and takes only standard `OIDC_*` settings — a workaround it needs is an IDPico bug.
+- A change to authorize, token, session, client, redirect, signing, JWKS or discovery behaviour must keep `make validate` green; add the spec citation to the test when asserting rejection behaviour.
 
 ### Key Technical Decisions
 - **Signing keys**: RSA 2048 / RS256 (default) or Ed25519 / EdDSA (`IDPICO_SIGNING_ALGORITHM`); `signing_keys.algorithm` carries the alg per key and a change rotates at startup

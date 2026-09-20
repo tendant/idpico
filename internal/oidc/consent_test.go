@@ -2,6 +2,7 @@ package oidc
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"testing"
 
@@ -96,7 +97,15 @@ func TestAuthorizeRequest_Prompt(t *testing.T) {
 		t.Errorf("unexpected prompt parse: %v", req.Prompt)
 	}
 
-	if _, err := svc.ParseAuthorizeQuery(mustQuery("client_id=c&redirect_uri=http://x/cb&response_type=code&scope=openid&prompt=none login")); err == nil {
-		t.Error("prompt=none combined with other values should be rejected")
+	clients := newMockClientRepository()
+	clients.Create(context.Background(), &domain.Client{ID: "c", RedirectURIs: []string{"http://x/cb"}, Scopes: []string{"openid"}})
+	svc = NewAuthorizeService(clients, nil, 0)
+	req, err = svc.ParseAuthorizeQuery(mustQuery("client_id=c&redirect_uri=http://x/cb&response_type=code&scope=openid&prompt=none login"))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	var re *RedirectError
+	if _, err := svc.ValidateClient(context.Background(), req); !errors.As(err, &re) || re.Code != "invalid_request" {
+		t.Errorf("prompt=none combined with other values should be rejected with invalid_request, got %v", err)
 	}
 }

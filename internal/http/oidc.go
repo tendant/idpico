@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -60,26 +61,10 @@ func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate client and redirect URI
+	// Validate client and redirect URI, then the rest of the request
 	client, err := h.authorizeService.ValidateClient(ctx, authReq)
 	if err != nil {
-		// If redirect URI is invalid, we can't redirect - show error page
-		if idperrors.IsCode(err, idperrors.CodeInvalidInput) {
-			errMsg := "invalid request"
-			if e, ok := err.(*idperrors.Error); ok {
-				errMsg = e.Message
-			}
-			h.renderAuthError(w, r, "", errMsg, "", "")
-			return
-		}
-		// For other errors, redirect with error
-		redirectURL := h.authorizeService.BuildErrorResponse(
-			authReq.RedirectURI,
-			"invalid_request",
-			err.Error(),
-			authReq.State,
-		)
-		http.Redirect(w, r, redirectURL, http.StatusFound)
+		h.authorizeFailed(w, r, authReq, err)
 		return
 	}
 
@@ -154,7 +139,7 @@ func (h *OIDCHandler) Consent(w http.ResponseWriter, r *http.Request) {
 	}
 	client, err := h.authorizeService.ValidateClient(ctx, authReq)
 	if err != nil {
-		h.renderAuthError(w, r, "", err.Error(), "", "")
+		h.authorizeFailed(w, r, authReq, err)
 		return
 	}
 
@@ -215,6 +200,32 @@ func (h *OIDCHandler) issueCode(w http.ResponseWriter, r *http.Request, authReq 
 	)
 
 	http.Redirect(w, r, redirectURL, http.StatusFound)
+}
+
+// authorizeFailed reports a ValidateClient error. Once the client and
+// redirect_uri are known to be valid the error goes back to the client as
+// an OAuth error redirect; before that there is nowhere safe to send it, so
+// the user sees an error page (an unknown client or unregistered
+// redirect_uri must never redirect). Anything else is a store failure.
+func (h *OIDCHandler) authorizeFailed(w http.ResponseWriter, r *http.Request, authReq *oidc.AuthorizeRequest, err error) {
+	var re *oidc.RedirectError
+	if errors.As(err, &re) {
+		h.redirectError(w, r, authReq, re.Code, re.Description)
+		return
+	}
+	if idperrors.IsCode(err, idperrors.CodeInvalidInput) {
+		errMsg := "invalid request"
+		if e, ok := err.(*idperrors.Error); ok {
+			errMsg = e.Message
+		}
+		h.renderAuthError(w, r, "", errMsg, "", "")
+		return
+	}
+	h.logger.Error("authorize failed", "error", err)
+	h.templates.Render(w, http.StatusInternalServerError, "error", errorPageData{
+		Title:   "Authorization Error",
+		Message: "internal error",
+	})
 }
 
 // redirectError sends an OAuth error back to the client's redirect URI.

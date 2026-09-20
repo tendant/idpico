@@ -29,6 +29,8 @@ type AuthorizeRequest struct {
 	CodeChallengeMethod string
 	Prompt              []string // OIDC prompt values: none, login, consent, select_account
 	MaxAge              int      // Seconds since authentication the session may be; -1 when absent
+
+	maxAge string // raw max_age, validated by ValidateClient
 }
 
 // RequiresFreshLogin reports whether the request insists on re-authentication:
@@ -75,12 +77,29 @@ func NewAuthorizeService(clients store.ClientRepository, authCodes store.AuthCod
 	}
 }
 
-// ParseAuthorizeRequest parses and validates an authorization request.
+// RedirectError is an authorization error that is delivered to the client's
+// redirect URI (RFC 6749 §4.1.2.1). It is only returned once the client and
+// redirect_uri have been validated, so redirecting to it is safe.
+type RedirectError struct {
+	Code        string // OAuth error code, e.g. invalid_request, invalid_scope
+	Description string
+}
+
+func (e *RedirectError) Error() string { return e.Code + ": " + e.Description }
+
+func redirectErr(code, format string, args ...any) error {
+	return &RedirectError{Code: code, Description: fmt.Sprintf(format, args...)}
+}
+
+// ParseAuthorizeRequest parses an authorization request. Only client_id and
+// redirect_uri are checked here, because without them there is nowhere to
+// deliver an error; everything else is validated by ValidateClient.
 func (s *AuthorizeService) ParseAuthorizeRequest(r *http.Request) (*AuthorizeRequest, error) {
 	return s.ParseAuthorizeQuery(r.URL.Query())
 }
 
-// ParseAuthorizeQuery parses and validates authorization request parameters.
+// ParseAuthorizeQuery parses authorization request parameters. See
+// ParseAuthorizeRequest.
 func (s *AuthorizeService) ParseAuthorizeQuery(q url.Values) (*AuthorizeRequest, error) {
 	req := &AuthorizeRequest{
 		ClientID:            q.Get("client_id"),
@@ -93,41 +112,22 @@ func (s *AuthorizeService) ParseAuthorizeQuery(q url.Values) (*AuthorizeRequest,
 		CodeChallengeMethod: q.Get("code_challenge_method"),
 		Prompt:              strings.Fields(q.Get("prompt")),
 		MaxAge:              -1,
+		maxAge:              q.Get("max_age"),
 	}
 
-	if v := q.Get("max_age"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 0 {
-			return nil, idperrors.InvalidInput("max_age must be a non-negative integer")
-		}
-		req.MaxAge = n
-	}
-
-	// prompt=none is exclusive per OIDC Core 3.1.2.1
-	if req.HasPrompt("none") && len(req.Prompt) > 1 {
-		return nil, idperrors.InvalidInput("prompt=none cannot be combined with other prompt values")
-	}
-
-	// Validate required parameters
 	if req.ClientID == "" {
 		return nil, idperrors.InvalidInput("client_id is required")
 	}
 	if req.RedirectURI == "" {
 		return nil, idperrors.InvalidInput("redirect_uri is required")
 	}
-	if req.ResponseType != "code" {
-		return nil, idperrors.InvalidInput("response_type must be 'code'")
-	}
-
-	// Validate scope contains openid
-	if !strings.Contains(req.Scope, "openid") {
-		return nil, idperrors.InvalidInput("scope must contain 'openid'")
-	}
-
 	return req, nil
 }
 
-// ValidateClient validates the client and redirect URI.
+// ValidateClient validates the client and redirect URI, then the rest of the
+// request. An unknown client or unregistered redirect_uri is an InvalidInput
+// error that must be shown to the user; every later failure is a
+// RedirectError for the client (RFC 6749 §4.1.2.1, RFC 7636 §4.4.1).
 func (s *AuthorizeService) ValidateClient(ctx contextInterface, req *AuthorizeRequest) (*domain.Client, error) {
 	client, err := s.clients.GetByID(ctx, req.ClientID)
 	if err != nil {
@@ -149,9 +149,38 @@ func (s *AuthorizeService) ValidateClient(ctx contextInterface, req *AuthorizeRe
 		return nil, idperrors.InvalidInput("invalid redirect_uri")
 	}
 
+	if req.maxAge != "" {
+		n, err := strconv.Atoi(req.maxAge)
+		if err != nil || n < 0 {
+			return nil, redirectErr("invalid_request", "max_age must be a non-negative integer")
+		}
+		req.MaxAge = n
+	}
+
+	// prompt=none is exclusive per OIDC Core 3.1.2.1
+	if req.HasPrompt("none") && len(req.Prompt) > 1 {
+		return nil, redirectErr("invalid_request", "prompt=none cannot be combined with other prompt values")
+	}
+
+	if req.ResponseType != "code" {
+		return nil, redirectErr("unsupported_response_type", "response_type must be 'code'")
+	}
+
+	scopes := req.Scopes()
+	hasOpenID := false
+	for _, scope := range scopes {
+		if scope == "openid" {
+			hasOpenID = true
+			break
+		}
+	}
+	if !hasOpenID {
+		return nil, redirectErr("invalid_scope", "scope must contain 'openid'")
+	}
+
 	// Public clients MUST use PKCE
 	if client.Public && req.CodeChallenge == "" {
-		return nil, idperrors.InvalidInput("code_challenge is required for public clients")
+		return nil, redirectErr("invalid_request", "code_challenge is required for public clients")
 	}
 
 	// Validate PKCE method if challenge is provided
@@ -160,20 +189,16 @@ func (s *AuthorizeService) ValidateClient(ctx contextInterface, req *AuthorizeRe
 			req.CodeChallengeMethod = "plain" // Default per RFC 7636
 		}
 		if req.CodeChallengeMethod != "S256" && req.CodeChallengeMethod != "plain" {
-			return nil, idperrors.InvalidInput("code_challenge_method must be 'S256' or 'plain'")
+			return nil, redirectErr("invalid_request", "code_challenge_method must be 'S256' or 'plain'")
 		}
 		// We recommend S256
 		if req.CodeChallengeMethod == "plain" && client.Public {
-			return nil, idperrors.InvalidInput("public clients must use S256 code_challenge_method")
+			return nil, redirectErr("invalid_request", "public clients must use S256 code_challenge_method")
 		}
 	}
 
 	// Validate requested scopes against allowed scopes
-	requestedScopes := strings.Split(req.Scope, " ")
-	for _, scope := range requestedScopes {
-		if scope == "" {
-			continue
-		}
+	for _, scope := range scopes {
 		allowed := false
 		for _, s := range client.Scopes {
 			if s == scope {
@@ -182,7 +207,7 @@ func (s *AuthorizeService) ValidateClient(ctx contextInterface, req *AuthorizeRe
 			}
 		}
 		if !allowed {
-			return nil, idperrors.InvalidInput(fmt.Sprintf("scope '%s' not allowed for this client", scope))
+			return nil, redirectErr("invalid_scope", "scope '%s' not allowed for this client", scope)
 		}
 	}
 

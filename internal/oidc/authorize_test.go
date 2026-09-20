@@ -2,6 +2,7 @@ package oidc
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -118,18 +119,6 @@ func TestParseAuthorizeRequest(t *testing.T) {
 			errContains: "redirect_uri is required",
 		},
 		{
-			name:        "invalid response_type",
-			queryString: "client_id=test-app&redirect_uri=http://localhost:3000/callback&response_type=token&scope=openid",
-			wantErr:     true,
-			errContains: "response_type must be 'code'",
-		},
-		{
-			name:        "missing openid scope",
-			queryString: "client_id=test-app&redirect_uri=http://localhost:3000/callback&response_type=code&scope=profile",
-			wantErr:     true,
-			errContains: "scope must contain 'openid'",
-		},
-		{
 			name:        "with PKCE",
 			queryString: "client_id=test-app&redirect_uri=http://localhost:3000/callback&response_type=code&scope=openid&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256",
 			wantErr:     false,
@@ -188,10 +177,12 @@ func TestValidateClient(t *testing.T) {
 		request     *AuthorizeRequest
 		wantErr     bool
 		errContains string
+		wantCode    string // expected RedirectError code; "" means an InvalidInput error page
 	}{
 		{
 			name: "valid public client with PKCE",
 			request: &AuthorizeRequest{
+				ResponseType:        "code",
 				ClientID:            "public-app",
 				RedirectURI:         "http://localhost:3000/callback",
 				Scope:               "openid profile",
@@ -203,16 +194,19 @@ func TestValidateClient(t *testing.T) {
 		{
 			name: "public client without PKCE",
 			request: &AuthorizeRequest{
-				ClientID:    "public-app",
-				RedirectURI: "http://localhost:3000/callback",
-				Scope:       "openid",
+				ResponseType: "code",
+				ClientID:     "public-app",
+				RedirectURI:  "http://localhost:3000/callback",
+				Scope:        "openid",
 			},
 			wantErr:     true,
 			errContains: "code_challenge is required for public clients",
+			wantCode:    "invalid_request",
 		},
 		{
 			name: "public client with plain PKCE method",
 			request: &AuthorizeRequest{
+				ResponseType:        "code",
 				ClientID:            "public-app",
 				RedirectURI:         "http://localhost:3000/callback",
 				Scope:               "openid",
@@ -221,13 +215,15 @@ func TestValidateClient(t *testing.T) {
 			},
 			wantErr:     true,
 			errContains: "public clients must use S256",
+			wantCode:    "invalid_request",
 		},
 		{
 			name: "unknown client",
 			request: &AuthorizeRequest{
-				ClientID:    "unknown-app",
-				RedirectURI: "http://localhost:3000/callback",
-				Scope:       "openid",
+				ResponseType: "code",
+				ClientID:     "unknown-app",
+				RedirectURI:  "http://localhost:3000/callback",
+				Scope:        "openid",
 			},
 			wantErr:     true,
 			errContains: "unknown client_id",
@@ -235,6 +231,7 @@ func TestValidateClient(t *testing.T) {
 		{
 			name: "invalid redirect URI",
 			request: &AuthorizeRequest{
+				ResponseType:        "code",
 				ClientID:            "public-app",
 				RedirectURI:         "http://evil.com/callback",
 				Scope:               "openid",
@@ -247,6 +244,7 @@ func TestValidateClient(t *testing.T) {
 		{
 			name: "scope not allowed",
 			request: &AuthorizeRequest{
+				ResponseType:        "code",
 				ClientID:            "confidential-app",
 				RedirectURI:         "https://app.example.com/callback",
 				Scope:               "openid admin",
@@ -255,19 +253,22 @@ func TestValidateClient(t *testing.T) {
 			},
 			wantErr:     true,
 			errContains: "scope 'admin' not allowed",
+			wantCode:    "invalid_scope",
 		},
 		{
 			name: "confidential client without PKCE is OK",
 			request: &AuthorizeRequest{
-				ClientID:    "confidential-app",
-				RedirectURI: "https://app.example.com/callback",
-				Scope:       "openid profile",
+				ResponseType: "code",
+				ClientID:     "confidential-app",
+				RedirectURI:  "https://app.example.com/callback",
+				Scope:        "openid profile",
 			},
 			wantErr: false,
 		},
 		{
 			name: "invalid PKCE method",
 			request: &AuthorizeRequest{
+				ResponseType:        "code",
 				ClientID:            "confidential-app",
 				RedirectURI:         "https://app.example.com/callback",
 				Scope:               "openid",
@@ -276,6 +277,78 @@ func TestValidateClient(t *testing.T) {
 			},
 			wantErr:     true,
 			errContains: "code_challenge_method must be 'S256' or 'plain'",
+			wantCode:    "invalid_request",
+		},
+		{
+			name: "unsupported response_type is reported to the client",
+			request: &AuthorizeRequest{
+				ResponseType: "token",
+				ClientID:     "confidential-app",
+				RedirectURI:  "https://app.example.com/callback",
+				Scope:        "openid",
+			},
+			wantErr:     true,
+			errContains: "response_type must be 'code'",
+			wantCode:    "unsupported_response_type",
+		},
+		{
+			name: "missing openid scope is reported to the client",
+			request: &AuthorizeRequest{
+				ResponseType: "code",
+				ClientID:     "confidential-app",
+				RedirectURI:  "https://app.example.com/callback",
+				Scope:        "profile",
+			},
+			wantErr:     true,
+			errContains: "scope must contain 'openid'",
+			wantCode:    "invalid_scope",
+		},
+		{
+			name: "openid must be a whole scope token",
+			request: &AuthorizeRequest{
+				ResponseType: "code",
+				ClientID:     "confidential-app",
+				RedirectURI:  "https://app.example.com/callback",
+				Scope:        "openidx",
+			},
+			wantErr:     true,
+			errContains: "scope must contain 'openid'",
+			wantCode:    "invalid_scope",
+		},
+		{
+			name: "invalid max_age is reported to the client",
+			request: &AuthorizeRequest{
+				ResponseType: "code",
+				ClientID:     "confidential-app",
+				RedirectURI:  "https://app.example.com/callback",
+				Scope:        "openid",
+				maxAge:       "-1",
+			},
+			wantErr:     true,
+			errContains: "max_age",
+			wantCode:    "invalid_request",
+		},
+		{
+			name: "unknown client with bad response_type shows the error page",
+			request: &AuthorizeRequest{
+				ResponseType: "token",
+				ClientID:     "unknown-app",
+				RedirectURI:  "http://localhost:3000/callback",
+				Scope:        "openid",
+			},
+			wantErr:     true,
+			errContains: "unknown client_id",
+		},
+		{
+			name: "bad redirect_uri with bad response_type shows the error page",
+			request: &AuthorizeRequest{
+				ResponseType: "token",
+				ClientID:     "confidential-app",
+				RedirectURI:  "https://app.example.com/callback/",
+				Scope:        "openid",
+			},
+			wantErr:     true,
+			errContains: "invalid redirect_uri",
 		},
 	}
 
@@ -288,6 +361,14 @@ func TestValidateClient(t *testing.T) {
 					t.Error("Expected error, got nil")
 				} else if tt.errContains != "" && !containsString(err.Error(), tt.errContains) {
 					t.Errorf("Error should contain '%s', got '%s'", tt.errContains, err.Error())
+				}
+				var re *RedirectError
+				if errors.As(err, &re) {
+					if re.Code != tt.wantCode {
+						t.Errorf("RedirectError code = %q, want %q", re.Code, tt.wantCode)
+					}
+				} else if tt.wantCode != "" {
+					t.Errorf("expected RedirectError %q, got %T: %v", tt.wantCode, err, err)
 				}
 			} else {
 				if err != nil {
