@@ -10,6 +10,7 @@ import (
 	"github.com/tendant/idpico/internal/audit"
 	"github.com/tendant/idpico/internal/domain"
 	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/metrics"
 	"github.com/tendant/idpico/internal/store"
 )
 
@@ -113,6 +114,7 @@ func (s *Service) Login(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		remaining := s.lockout.GetLockoutRemaining(email)
 		s.logger.Warn("login attempt on locked account", "email", email, "unlock_in", remaining)
 		s.audit.Record(ctx, audit.Event{ActorEmail: email, Action: audit.LoginLocked, TargetType: "user", IP: audit.ClientIP(r)})
+		metrics.RecordLogin("locked")
 		return nil, idperrors.New(idperrors.CodeForbidden, "account is temporarily locked")
 	}
 
@@ -123,9 +125,11 @@ func (s *Service) Login(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		if s.lockout != nil {
 			if s.lockout.RecordFailure(email) {
 				s.logger.Warn("account locked due to failed attempts", "email", email)
+				metrics.RecordAccountLockout()
 			}
 		}
 		s.audit.Record(ctx, audit.Event{ActorEmail: email, Action: audit.LoginFailure, TargetType: "user", IP: audit.ClientIP(r)})
+		metrics.RecordLogin("failure")
 		return nil, err
 	}
 
@@ -154,6 +158,7 @@ func (s *Service) Login(ctx context.Context, w http.ResponseWriter, r *http.Requ
 
 	s.logger.Info("user logged in", "user_id", user.ID, "email", user.Email)
 	s.audit.Record(ctx, audit.Event{Actor: user, Action: audit.LoginSuccess, TargetType: "user", TargetID: user.ID, IP: audit.ClientIP(r)})
+	metrics.RecordLogin("success")
 
 	return user, nil
 }

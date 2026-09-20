@@ -4,6 +4,14 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Added
+
+- `idpico_tokens_rejected_total{reason}` counts access tokens refused at `/userinfo` (`invalid`, `revoked`).
+
+### Fixed
+
+- The token, login, lockout and rate-limit counters on `/metrics` were defined but never incremented; `idpico_tokens_issued_total`, `idpico_token_introspections_total`, `idpico_token_revocations_total`, `idpico_auth_codes_issued_total`, `idpico_login_attempts_total`, `idpico_account_lockouts_total` and `idpico_rate_limit_exceeded_total` now move. The never-set `idpico_active_sessions` gauge is gone.
+
 ## [0.0.5] - 2026-09-20
 
 Revocable access tokens and operational validation. Revoking a refresh token, replaying a code,

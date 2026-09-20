@@ -8,6 +8,7 @@ import (
 	"github.com/tendant/idpico/internal/crypto"
 	"github.com/tendant/idpico/internal/domain"
 	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/metrics"
 	"github.com/tendant/idpico/internal/store"
 )
 
@@ -89,16 +90,14 @@ func NewUserInfoService(users store.UserRepository, tokenGenerator *crypto.Token
 func (s *UserInfoService) GetUserInfo(ctx context.Context, accessToken string) (*UserInfoResponse, error) {
 	// Parse and validate the access token
 	token, claims, err := s.tokenGenerator.ParseToken(accessToken)
-	if err != nil {
-		return nil, idperrors.New(idperrors.CodeTokenInvalid, "invalid access token")
-	}
-
-	if !token.Valid {
+	if err != nil || !token.Valid {
+		metrics.RecordTokenRejected("invalid")
 		return nil, idperrors.New(idperrors.CodeTokenInvalid, "invalid access token")
 	}
 	if revoked, err := accessTokenRevoked(ctx, s.revocations, claims); err != nil {
 		return nil, err
 	} else if revoked {
+		metrics.RecordTokenRejected("revoked")
 		return nil, idperrors.New(idperrors.CodeTokenInvalid, "access token has been revoked")
 	}
 

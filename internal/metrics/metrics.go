@@ -39,11 +39,12 @@ var (
 		[]string{"status"}, // "success", "failure", "locked"
 	)
 
-	activeSessionsGauge = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "idpico_active_sessions",
-			Help: "Number of active sessions",
+	tokensRejectedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "idpico_tokens_rejected_total",
+			Help: "Access tokens refused at /userinfo, by reason (invalid, revoked)",
 		},
+		[]string{"reason"},
 	)
 
 	// Token metrics
@@ -131,9 +132,9 @@ func RecordAccountLockout() {
 	accountLockoutsTotal.Inc()
 }
 
-// SetActiveSessions sets the number of active sessions.
-func SetActiveSessions(count int) {
-	activeSessionsGauge.Set(float64(count))
+// RecordTokenRejected records an access token refused at /userinfo.
+func RecordTokenRejected(reason string) {
+	tokensRejectedTotal.WithLabelValues(reason).Inc()
 }
 
 // Handler returns the Prometheus metrics HTTP handler.

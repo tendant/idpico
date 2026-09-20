@@ -12,6 +12,7 @@ import (
 	"github.com/tendant/idpico/internal/crypto"
 	"github.com/tendant/idpico/internal/domain"
 	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/metrics"
 	"github.com/tendant/idpico/internal/store"
 )
 
@@ -237,7 +238,7 @@ func (s *TokenService) HandleAuthorizationCode(ctx context.Context, req *TokenRe
 	}
 
 	// Generate tokens
-	return s.generateTokens(ctx, user, client, authCode.Scope, authCode.Nonce, authCode.AuthTime)
+	return s.generateTokens(ctx, user, client, authCode.Scope, authCode.Nonce, authCode.AuthTime, "authorization_code")
 }
 
 // HandleRefreshToken handles the refresh_token grant type.
@@ -307,7 +308,7 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 	}
 
 	// Generate new tokens
-	return s.generateTokens(ctx, user, client, scope, "", time.Time{})
+	return s.generateTokens(ctx, user, client, scope, "", time.Time{}, "refresh_token")
 }
 
 // ttlsFor returns the access and refresh token lifetimes for a client: its
@@ -424,6 +425,7 @@ func (s *TokenService) HandleRevocation(ctx context.Context, req *RevocationRequ
 			if err := s.tokens.Revoke(ctx, req.Token); err != nil {
 				return err
 			}
+			metrics.RecordTokenRevocation()
 			return nil
 		}
 	}
@@ -438,7 +440,11 @@ func (s *TokenService) HandleRevocation(ctx context.Context, req *RevocationRequ
 		if req.ClientID != "" && claims.ClientID != req.ClientID {
 			return nil
 		}
-		return s.revocations.RevokeAccessToken(ctx, claims.ID, claims.ExpiresAt.Time)
+		if err := s.revocations.RevokeAccessToken(ctx, claims.ID, claims.ExpiresAt.Time); err != nil {
+			return err
+		}
+		metrics.RecordTokenRevocation()
+		return nil
 	}
 
 	return nil
@@ -480,6 +486,14 @@ func (s *TokenService) ParseIntrospectionRequest(r *http.Request) (*Introspectio
 
 // HandleIntrospection handles token introspection (RFC 7662).
 func (s *TokenService) HandleIntrospection(ctx context.Context, req *IntrospectionRequest) (*IntrospectionResponse, error) {
+	resp, err := s.introspect(ctx, req)
+	if err == nil {
+		metrics.RecordTokenIntrospection(resp.Active)
+	}
+	return resp, err
+}
+
+func (s *TokenService) introspect(ctx context.Context, req *IntrospectionRequest) (*IntrospectionResponse, error) {
 	// Validate client credentials (introspection requires authentication)
 	if req.ClientID == "" {
 		return nil, idperrors.Unauthorized("client authentication required")
@@ -542,7 +556,7 @@ func (s *TokenService) HandleIntrospection(ctx context.Context, req *Introspecti
 	return &IntrospectionResponse{Active: false}, nil
 }
 
-func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, client *domain.Client, scope, nonce string, authTime time.Time) (*TokenResponse, error) {
+func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, client *domain.Client, scope, nonce string, authTime time.Time, grantType string) (*TokenResponse, error) {
 	// Build claims for ID token
 	idTokenClaims := &crypto.Claims{
 		Email:         user.Email,
@@ -591,6 +605,8 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 		IDToken:     idToken,
 		Scope:       scope,
 	}
+	metrics.RecordTokenIssued("access", grantType)
+	metrics.RecordTokenIssued("id", grantType)
 
 	// Generate refresh token if offline_access scope is requested
 	if strings.Contains(scope, "offline_access") {
@@ -608,6 +624,7 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 		}
 
 		response.RefreshToken = refreshToken.ID
+		metrics.RecordTokenIssued("refresh", grantType)
 	}
 
 	return response, nil

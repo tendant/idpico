@@ -552,10 +552,10 @@ Available metrics at `/metrics`:
 | `idpico_http_requests_total` | Counter | Total HTTP requests by method, path, status |
 | `idpico_http_request_duration_seconds` | Histogram | Request duration |
 | `idpico_login_attempts_total` | Counter | Login attempts by status (success/failure/locked) |
-| `idpico_active_sessions` | Gauge | Number of active sessions |
-| `idpico_tokens_issued_total` | Counter | Tokens issued by type and grant type |
-| `idpico_token_introspections_total` | Counter | Token introspection requests |
-| `idpico_token_revocations_total` | Counter | Token revocation requests |
+| `idpico_tokens_issued_total` | Counter | Tokens issued by `type` (access, id, refresh) and `grant_type` |
+| `idpico_tokens_rejected_total` | Counter | Access tokens refused at `/userinfo` by `reason` (invalid, revoked) |
+| `idpico_token_introspections_total` | Counter | Introspection requests by `active` |
+| `idpico_token_revocations_total` | Counter | Tokens actually revoked via `/revoke` |
 | `idpico_auth_codes_issued_total` | Counter | Authorization codes issued |
 | `idpico_rate_limit_exceeded_total` | Counter | Rate limit exceeded events |
 | `idpico_account_lockouts_total` | Counter | Account lockout events |

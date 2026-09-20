@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -219,6 +220,7 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		WithGroupsClaim(groupClaims.ClaimName()),
 		WithAudit(auditRecorder),
 		WithAccountPage(store),
+		WithMetrics(true),
 		WithAdmin(AdminConfig{
 			Store:          store,
 			AuthService:    authService,
@@ -1711,7 +1713,7 @@ func TestIntegration_AccessTokenRevocation(t *testing.T) {
 			if got := userinfoStatus(t, base, tokens.AccessToken); got != http.StatusUnauthorized {
 				t.Errorf("userinfo after /revoke: HTTP %d, want 401", got)
 			}
-			resp, err = http.PostForm(base+"/introspect", url.Values{"token": {tokens.AccessToken}, "client_id": {"test-client"}, "client_secret": {"test-secret"}})
+			resp, err = http.PostForm(base+"/introspect", url.Values{"token": {tokens.AccessToken}, "client_id": {"test-client"}, "client_secret": {"test-client-secret"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1748,4 +1750,69 @@ func TestIntegration_AccessTokenRevocation(t *testing.T) {
 			}
 		})
 	})
+}
+
+// TestIntegration_Metrics: the token, login and revocation counters on
+// /metrics move when the corresponding things happen (they were once
+// defined but never incremented).
+func TestIntegration_Metrics(t *testing.T) {
+	env := setupTestEnv(t, "sqlite")
+	defer env.cleanup()
+	base := env.server.URL
+
+	scrape := func(t *testing.T) string {
+		t.Helper()
+		resp, err := http.Get(base + "/metrics")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+	// counter returns the value of a sample line such as
+	// idpico_tokens_issued_total{grant_type="authorization_code",type="access"} 3
+	counter := func(metrics, line string) float64 {
+		for _, l := range strings.Split(metrics, "\n") {
+			if strings.HasPrefix(l, line+" ") {
+				var v float64
+				fmt.Sscanf(strings.TrimPrefix(l, line+" "), "%g", &v)
+				return v
+			}
+		}
+		return 0
+	}
+	before := scrape(t)
+
+	browser := newClientWithCookies()
+	loginAs(t, browser, base, "test@example.com", "password123")
+	tokens := pkceAuthorize(t, browser, base, "openid profile offline_access")
+	userinfoStatus(t, base, tokens.AccessToken)
+	userinfoStatus(t, base, "not-a-token")
+	resp, _ := http.PostForm(base+"/revoke", url.Values{"token": {tokens.AccessToken}, "client_id": {"public-client"}})
+	resp.Body.Close()
+	userinfoStatus(t, base, tokens.AccessToken)
+	resp, _ = http.PostForm(base+"/introspect", url.Values{"token": {tokens.AccessToken}, "client_id": {"test-client"}, "client_secret": {"test-client-secret"}})
+	resp.Body.Close()
+	bad := newClientWithCookies()
+	bad.Get(base + "/login")
+	postForm(t, bad, base, "/login", url.Values{"email": {"test@example.com"}, "password": {"wrong"}}).Body.Close()
+
+	after := scrape(t)
+	for line, want := range map[string]float64{
+		`idpico_login_attempts_total{status="success"}`:                              1,
+		`idpico_login_attempts_total{status="failure"}`:                              1,
+		`idpico_auth_codes_issued_total`:                                             1,
+		`idpico_tokens_issued_total{grant_type="authorization_code",type="access"}`:  1,
+		`idpico_tokens_issued_total{grant_type="authorization_code",type="id"}`:      1,
+		`idpico_tokens_issued_total{grant_type="authorization_code",type="refresh"}`: 1,
+		`idpico_tokens_rejected_total{reason="invalid"}`:                             1,
+		`idpico_tokens_rejected_total{reason="revoked"}`:                             1,
+		`idpico_token_revocations_total`:                                             1,
+		`idpico_token_introspections_total{active="false"}`:                          1,
+	} {
+		if got := counter(after, line) - counter(before, line); got < want {
+			t.Errorf("%s increased by %g, want at least %g", line, got, want)
+		}
+	}
 }

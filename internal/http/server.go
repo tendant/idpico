@@ -272,8 +272,12 @@ func NewServer(addr string, opts ...Option) *Server {
 	// "api" for endpoints legitimate apps call frequently. Nil when disabled.
 	var interactive, api func(http.Handler) http.Handler
 	if s.loginRateLimit > 0 {
-		interactive = httprate.LimitByIP(s.loginRateLimit, time.Minute)
-		api = httprate.LimitByIP(s.loginRateLimit*10, time.Minute)
+		exceeded := httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
+			metrics.RecordRateLimitExceeded(r.URL.Path)
+			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+		})
+		interactive = httprate.Limit(s.loginRateLimit, time.Minute, httprate.WithKeyFuncs(httprate.KeyByIP), exceeded)
+		api = httprate.Limit(s.loginRateLimit*10, time.Minute, httprate.WithKeyFuncs(httprate.KeyByIP), exceeded)
 	}
 	limited := func(limiter func(http.Handler) http.Handler) chi.Router {
 		if limiter == nil {

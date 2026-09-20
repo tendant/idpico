@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/tendant/idpico/internal/domain"
 	idperrors "github.com/tendant/idpico/internal/errors"
+	"github.com/tendant/idpico/internal/metrics"
 	"github.com/tendant/idpico/internal/store"
 )
 
@@ -255,6 +256,7 @@ func (s *AuthorizeService) CreateAuthCode(ctx contextInterface, req *AuthorizeRe
 	if err := s.authCodes.Create(ctx, code); err != nil {
 		return nil, fmt.Errorf("failed to create auth code: %w", err)
 	}
+	metrics.RecordAuthCodeIssued()
 
 	return code, nil
 }
