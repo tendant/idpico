@@ -1,8 +1,9 @@
 # IDPico — Design Document
 
-**Status:** Implemented (v0.3 in progress — SQLite storage is the default, JSON file storage retained)
+**Status:** Implemented through v0.0.5 — SQLite storage is the default, JSON file storage retained; no
+PostgreSQL backend (decided 2026-09-20). Validation is described in CONFORMANCE.md.
 **Owner:** Wei Labs / tendant  
-**Last updated:** 2026-02-03
+**Last updated:** 2026-09-20
 
 ## 1. Purpose
 
@@ -11,7 +12,7 @@
 - First-party user authentication (local users)
 - OAuth 2.0 + OpenID Connect (OIDC) provider endpoints
 - Token issuance + verification primitives (JWKS, key rotation)
-- Minimal, dependable operational footprint (Go + Postgres, optional Redis later)
+- Minimal, dependable operational footprint: one static Go binary and one data directory (SQLite); no database server
 
 `idpico` is explicitly **not dependent** on `simple-idm` at runtime or build time.
 
@@ -25,7 +26,7 @@
 
 ### Engineering goals
 - Small, understandable codebase.
-- Stateless app servers; persistent state in Postgres.
+- One instance with a persistent data directory (SQLite by default, JSON files as an alternative); no external database. Backups are a file copy after a clean stop; upgrades apply migrations at startup.
 - Clear migration path from existing `simple-idm` auth logic (if desired).
 - Strong security defaults (Argon2, secure cookies, strict redirect URI validation).
 
@@ -50,7 +51,7 @@
    - UserInfo: `/userinfo` (optional but recommended)
    - JWKS: `/.well-known/jwks.json` or `/jwks.json`
 
-3. **Core Stores (Postgres)**
+3. **Core Stores (SQLite / JSON files)**
    - Users and credentials (Argon2)
    - OAuth clients
    - Authorization codes
@@ -162,9 +163,10 @@ Choose one for v1:
   - user_id + client_id + scopes
 - Support revocation.
 
-## 8. Data model (Postgres)
+## 8. Data model
 
-Below is a suggested baseline schema (snake_case). Adjust to your conventions.
+The baseline schema below is the original sketch; the shipped schema is `internal/store/migrations/sqlite/`
+(`00001_init.sql` onward, frozen once released), which is authoritative where they differ.
 
 ### users
 - `id` (uuid, pk)
@@ -298,17 +300,13 @@ Client bootstrap options:
 ## 11. Deployment
 
 ### Docker/Kubernetes
-- Stateless `idpico` pods
-- Postgres (CloudNativePG or managed)
-- Ingress terminates TLS; forward `X-Forwarded-*` headers.
+- One `idpico` pod with a persistent volume for `IDPICO_DATA_DIR` (SQLite); `replicas: 1`, `Recreate` strategy
+- Ingress terminates TLS; forward `X-Forwarded-*` headers from a trusted proxy (`IDPICO_TRUSTED_PROXIES`)
+- `/readyz` checks the database; `/healthz` liveness
 
-### Suggested K8s objects
-- Deployment + HPA
-- Service
-- Ingress
-- Secret (cookie secret, DB creds)
-- ConfigMap (issuer url, token TTL)
-- PodDisruptionBudget (optional)
+### K8s objects (`deploy/k8s`, kustomize)
+- Namespace, Deployment (single replica, env-configured) + PersistentVolumeClaim, Service, Ingress
+- Put `IDPICO_COOKIE_SECRET` and bootstrap credentials in a Secret rather than the manifest
 
 ## 12. Integrating with applications (e.g., simple-idm)
 
@@ -369,7 +367,7 @@ Two strategies:
 - `/userinfo` endpoint
 - File-based JSON storage
 
-### v0.3 - IN PROGRESS
+### v0.3 - ✅ COMPLETE (shipped as v0.0.2–v0.0.5)
 - ✅ SQLite storage backend (default) with embedded goose migrations
 - ✅ Store conformance test suite shared by all backends
 - ✅ Background maintenance: expired-row purge, signing key rotation with grace period
@@ -380,7 +378,9 @@ Two strategies:
 - ✅ Audit log with retention; client secrets hashed at rest
 - ✅ Rate limits on all secret-accepting endpoints; per-address reset throttle
 - ✅ OIDC playground: built-in relying party at /playground
-- PostgreSQL storage backend (reuses the SQLite schema/migration layout)
+- ✅ Validation levels 0–4 (black-box conformance suite, go-oidc and oauth2-proxy interop, OpenID Foundation Basic OP with 0 failures) and an operational suite — see CONFORMANCE.md
+- ✅ Access-token revocation (`token_revocations`), EdDSA signing, per-client token lifetimes, `/account`
+- ~~PostgreSQL storage backend~~ — not planned; single-instance SQLite is the deployment model
 
 ### v1.0
 - ✅ k8s manifests (deploy/k8s), docker-compose, CI (verification only)
