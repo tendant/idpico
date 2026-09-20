@@ -109,7 +109,7 @@ validate-security: ## Only the security (negative) conformance tests
 	go test -tags conformance -count=1 -v -run Security ./conformance/
 
 # Restarts, key rotation, backup/restore, upgrade from the previous release
-# (conformance/testdata/upgrade, scripts/upgrade-fixture.sh) and a simulated
+# (built from its git tag at test time) and a simulated
 # TLS-terminating proxy; each test starts its own server(s).
 validate-operational: ## Operational suite: restart, key rotation, backup/restore, upgrade, reverse proxy
 	go test -tags conformance -count=1 -v -run Operational ./conformance/
