@@ -156,7 +156,10 @@ func (s *KeyService) setActive(key *KeyPair) {
 	s.activeAt = s.now()
 }
 
-// GetJWKS returns all public keys in JWKS format.
+// GetJWKS returns the public keys a relying party may verify against: the
+// active key and rotated-out keys still inside their grace period. A key
+// past its grace period is refused by verification and is not published
+// while it waits for maintenance to delete it.
 func (s *KeyService) GetJWKS(ctx context.Context) (*JWKS, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -171,6 +174,9 @@ func (s *KeyService) GetJWKS(ctx context.Context) (*JWKS, error) {
 	}
 
 	for _, key := range keys {
+		if key.IsExpired() {
+			continue
+		}
 		// Restore public key from PEM if needed
 		if key.PublicKey == nil {
 			if err := key.LoadFromPEM(); err != nil {

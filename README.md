@@ -317,7 +317,7 @@ The defaults suit a laptop. For anything reachable by other people, set:
 
 ```bash
 IDPICO_ISSUER_URL=https://idp.example.com   # https: cookies become Secure automatically
-IDPICO_COOKIE_SECRET=<random 32+ bytes>      # otherwise sessions die on every restart
+IDPICO_COOKIE_SECRET=<random 32+ bytes>      # otherwise forms open during a restart fail their CSRF check (sessions persist regardless)
 IDPICO_HSTS_MAX_AGE=31536000                 # once the host is https-only
 IDPICO_PLAYGROUND_ENABLED=false              # already the default for an https issuer; the test client is one more signed-in surface
 IDPICO_TRUSTED_PROXIES=private               # or your load balancer's CIDRs; "none" if reached directly
@@ -588,7 +588,9 @@ IDPICO_URL=http://localhost:8090 CLIENT_ID=my-app CLIENT_SECRET=... \
 Authorization Code + PKCE flow over HTTP as a foreign relying party, verifies the
 ID token with an independent JOSE library, and checks the refusals a client relies
 on — wrong redirect URIs, PKCE downgrades, replayed codes, forged tokens.
-`make validate-interop` logs in through [`examples/oidc-client`](examples/oidc-client/),
+`make validate-operational` restarts servers, rotates keys, restores a backup, upgrades a
+data directory written by the previous release and drives a login through a simulated
+TLS-terminating proxy. `make validate-interop` logs in through [`examples/oidc-client`](examples/oidc-client/),
 a relying party built on go-oidc with no IDPico-specific code, and `make validate-oidf` runs the
 OpenID Foundation conformance suite (Basic OP profile) in docker — v0.0.4 passes it with no
 failures. The declared

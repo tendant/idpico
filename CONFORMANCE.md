@@ -28,6 +28,7 @@ Unsupported response types and grant types are refused with `unsupported_respons
 | 2 Security | PKCE S256, redirect URI enforcement, code replay, client/code binding, state/nonce, forged and damaged JWTs | ✅ `make validate-security`, CI |
 | 3 Interoperability | independent go-oidc client (`examples/oidc-client`) | ✅ `make validate-interop`, CI · other real applications: see below |
 | 4 Standards | OpenID Foundation conformance suite, Basic OP profile | ✅ `make validate-oidf`: 36 modules, 0 failures (results below) |
+| Operational | restart, key rotation, backup/restore, upgrade, reverse proxy | ✅ `make validate-operational`, CI (section below) |
 
 A release states the level it reached rather than claiming "OIDC compatible".
 
@@ -39,6 +40,7 @@ make validate-conformance   # conformance suite only, verbose
 make validate-security      # only the Security* tests (level 2)
 make validate-interop       # login through examples/oidc-client
 make validate-all           # everything incl. -race
+make validate-operational   # restart, key rotation, backup/restore, upgrade, reverse proxy (~12 s)
 make validate-oidf          # OpenID Foundation suite, Basic OP profile (docker; ~90 s after first pull)
 ```
 
@@ -193,9 +195,31 @@ bugs in the declared profile and are fixed above. Formal certification (submitti
 OpenID Foundation) is a separate decision; the profile would need the ID-token-claims interpretation
 accepted or changed, and the screenshots reviewed.
 
-## Follow-on: operational validation
+## Operational validation
 
-Not covered by any of the above and planned as a separate `make validate-operational`: signing-key
-lifecycle across restarts and rotation, persistence across restarts and backup/restore, behaviour behind
-a TLS-terminating proxy (issuer, forwarded headers, secure cookies), and upgrade/migration from the
-previous release.
+Protocol conformance says nothing about what happens to identity state over time. `make
+validate-operational` (`go test -tags conformance -run Operational ./conformance/`, in CI) starts its own
+idpico instances — several per test, restarted on the same data directory so the issuer and every
+`iss` stay the same — and pins the following policies. Each runs against the SQLite and the file
+driver.
+
+| Test | Proves | Policy it pins |
+|---|---|---|
+| `TestOperationalRestart` | After a restart: same `kid`, an access token issued before still passes `/userinfo`, the refresh token refreshes, the browser session completes `/authorize` without a login or consent page, the user's password and the client's secret still work | **Sessions survive restarts.** They are opaque server-side records; `IDPICO_COOKIE_SECRET` only signs CSRF tokens, so an auto-generated secret costs only the login/consent/admin forms that were open at the moment of the restart |
+| `TestOperationalBackupRestore` | A `cp -a` of the data directory taken after a clean stop, started elsewhere on the same port, has the signing key, users, clients, sessions and live tokens | **A backup is a file copy of `IDPICO_DATA_DIR` after a clean stop.** SQLite is checkpointed on close (no `-wal`/`-shm` left behind); copying a running instance is not tested and not recommended |
+| `TestOperationalKeyRotation` | `idpicoctl key rotate -grace 6s`, restart: JWKS lists old and new key (public members only), new tokens carry the new `kid`, old tokens still verify. After the grace: old tokens are refused and the old key is no longer published; after the next maintenance run it is deleted. `IDPICO_SIGNING_ALGORITHM=EdDSA` on restart rotates likewise, keeping the RS256 key verifiable | **Rotated keys verify until `IDPICO_SIGNING_KEY_GRACE_PERIOD` ends and are published only until then.** Rotate ≥ one access-token lifetime before the old key must be gone |
+| `TestOperationalReverseProxy` | Behind a simulated TLS-terminating proxy (`Host` + `X-Forwarded-Proto: https` to the loopback listener): discovery and `iss` are the configured `https://` issuer whatever `Host` says; cookies are `Secure`; HSTS is sent only for requests that arrived over TLS; a login completes; `X-Forwarded-For` is believed from a trusted proxy (`IDPICO_TRUSTED_PROXIES`, default private ranges) and ignored — together with `X-Forwarded-Proto` — from anyone else | **The issuer is configuration, never the request.** Forwarding headers from untrusted peers are stripped |
+| `TestOperationalUpgrade` | The current build starts on `conformance/testdata/upgrade/<previous tag>/idpico.db`, `goose_db_version` reaches the newest migration, the previous release's `kid`, user password, client secret and recorded consent all work | **Upgrades are forward-only**: migrations apply at startup; running an older release on a migrated directory is unsupported. Restore the pre-upgrade backup instead |
+
+Every instance start also requires `/readyz` to answer 200, which now checks the backend (a SQLite
+ping, or the data directory for the file driver).
+
+The upgrade fixture is produced by `scripts/upgrade-fixture.sh <tag>`: it builds that tag from git,
+bootstraps the conformance user and clients, performs one login + consent + token exchange, stops
+cleanly and copies the database. Re-run it for the release just cut whenever a new one is made, so
+"previous release" stays current; CI's shallow checkout has no tags and relies on the committed file.
+
+Found and fixed while writing the suite (after v0.0.4): the JWKS kept publishing keys whose grace
+period had ended (verification already refused them); `X-Forwarded-Proto` from an untrusted peer
+could switch HSTS on; the startup warning and README said sessions die with an auto-generated cookie
+secret; `/readyz` never looked at the database.

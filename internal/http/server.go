@@ -39,6 +39,7 @@ type Server struct {
 	metricsEnabled        bool
 	adminConfig           *AdminConfig
 	accountStore          store.Store // enables /account when set
+	readinessCheck        func(context.Context) error
 	groupsClaim           string
 	audit                 *audit.Recorder
 	playground            bool
@@ -121,6 +122,14 @@ func WithGroupsClaim(name string) Option {
 func WithAdmin(cfg AdminConfig) Option {
 	return func(s *Server) {
 		s.adminConfig = &cfg
+	}
+}
+
+// WithReadinessCheck makes /readyz depend on check succeeding (typically a
+// database ping).
+func WithReadinessCheck(check func(context.Context) error) Option {
+	return func(s *Server) {
+		s.readinessCheck = check
 	}
 }
 
@@ -233,7 +242,7 @@ func NewServer(addr string, opts ...Option) *Server {
 	})
 
 	// Health endpoints
-	health := NewHealthHandler()
+	health := NewHealthHandler(s.readinessCheck)
 	r.Get("/healthz", health.Healthz)
 	r.Get("/readyz", health.Readyz)
 

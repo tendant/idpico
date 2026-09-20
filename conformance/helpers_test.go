@@ -25,18 +25,45 @@ import (
 
 // ---- HTTP -------------------------------------------------------------
 
+// provider is the client-side view of one OpenID provider: its issuer, the
+// transport to reach it (nil for a direct connection; a proxyTransport to
+// simulate a reverse proxy) and its cached discovery document. The
+// package-level free functions below act on def, the default server, so
+// tests that only ever talk to one provider read naturally; operational
+// tests hold several providers and call the methods.
+type provider struct {
+	issuer    string
+	transport http.RoundTripper
+	client    *http.Client // no cookie jar: discovery, JWKS, token, userinfo
+
+	discOnce sync.Once
+	disc     *discoveryDoc
+	discErr  error
+}
+
+func newProvider(issuer string, transport http.RoundTripper) *provider {
+	return &provider{
+		issuer:    strings.TrimSuffix(issuer, "/"),
+		transport: transport,
+		client:    &http.Client{Transport: transport, Timeout: 10 * time.Second},
+	}
+}
+
 // newHTTPClient returns a client that keeps cookies (the CSRF cookie is
 // SameSite=Strict, so it must round-trip between GET and POST /login) and
 // never follows redirects: every 302 is inspected by the test.
-func newHTTPClient(t *testing.T) *http.Client {
+func newHTTPClient(t *testing.T) *http.Client { return def.newHTTPClient(t) }
+
+func (p *provider) newHTTPClient(t *testing.T) *http.Client {
 	t.Helper()
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return &http.Client{
-		Jar:     jar,
-		Timeout: 10 * time.Second,
+		Jar:       jar,
+		Transport: p.transport,
+		Timeout:   10 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -153,46 +180,44 @@ type discoveryDoc struct {
 	raw map[string]any
 }
 
-var (
-	discoveryOnce sync.Once
-	discoveryVal  *discoveryDoc
-	discoveryErr  error
-)
-
 // discovery fetches and caches the provider metadata. Every endpoint the
 // suite talks to comes from here, never from a hard-coded path.
-func discovery(t *testing.T) *discoveryDoc {
+func discovery(t *testing.T) *discoveryDoc { return def.discovery(t) }
+
+func (p *provider) discovery(t *testing.T) *discoveryDoc {
 	t.Helper()
-	discoveryOnce.Do(func() {
-		resp, err := http.Get(strings.TrimSuffix(cfg.Issuer, "/") + "/.well-known/openid-configuration")
+	p.discOnce.Do(func() {
+		resp, err := p.client.Get(p.issuer + "/.well-known/openid-configuration")
 		if err != nil {
-			discoveryErr = err
+			p.discErr = err
 			return
 		}
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
 		if resp.StatusCode != http.StatusOK {
-			discoveryErr = fmt.Errorf("discovery: HTTP %d", resp.StatusCode)
+			p.discErr = fmt.Errorf("discovery: HTTP %d", resp.StatusCode)
 			return
 		}
 		var d discoveryDoc
 		if err := json.Unmarshal(body, &d); err != nil {
-			discoveryErr = fmt.Errorf("discovery: invalid JSON: %w", err)
+			p.discErr = fmt.Errorf("discovery: invalid JSON: %w", err)
 			return
 		}
 		_ = json.Unmarshal(body, &d.raw)
-		discoveryVal = &d
+		p.disc = &d
 	})
-	if discoveryErr != nil {
-		t.Fatal(discoveryErr)
+	if p.discErr != nil {
+		t.Fatal(p.discErr)
 	}
-	return discoveryVal
+	return p.disc
 }
 
 // fetchJWKS returns the raw JWK Set document and its parsed form.
-func fetchJWKS(t *testing.T) ([]byte, *jose.JSONWebKeySet) {
+func fetchJWKS(t *testing.T) ([]byte, *jose.JSONWebKeySet) { return def.fetchJWKS(t) }
+
+func (p *provider) fetchJWKS(t *testing.T) ([]byte, *jose.JSONWebKeySet) {
 	t.Helper()
-	resp, body := get(t, http.DefaultClient, discovery(t).JWKSURI)
+	resp, body := get(t, p.client, p.discovery(t).JWKSURI)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("jwks_uri: HTTP %d", resp.StatusCode)
 	}
@@ -299,8 +324,12 @@ func resolve(t *testing.T, base, loc string) string {
 // provider puts in front of the user (login page, consent page) until it
 // answers the request: a 302 to the client's redirect_uri or an error page.
 func authorize(t *testing.T, c *http.Client, params url.Values) (*http.Response, []byte) {
+	return def.authorize(t, c, params)
+}
+
+func (p *provider) authorize(t *testing.T, c *http.Client, params url.Values) (*http.Response, []byte) {
 	t.Helper()
-	authURL := discovery(t).AuthorizationEndpoint + "?" + params.Encode()
+	authURL := p.discovery(t).AuthorizationEndpoint + "?" + params.Encode()
 	resp, body := get(t, c, authURL)
 
 	for i := 0; i < 5; i++ {
@@ -345,8 +374,12 @@ func callback(t *testing.T, resp *http.Response, body []byte, redirectURI string
 // obtainCode runs a complete authorization for a fresh browser session and
 // returns the code and the callback parameters.
 func obtainCode(t *testing.T, params url.Values, redirectURI string) (string, url.Values) {
+	return def.obtainCode(t, params, redirectURI)
+}
+
+func (p *provider) obtainCode(t *testing.T, params url.Values, redirectURI string) (string, url.Values) {
 	t.Helper()
-	resp, body := authorize(t, newHTTPClient(t), params)
+	resp, body := p.authorize(t, p.newHTTPClient(t), params)
 	q := callback(t, resp, body, redirectURI)
 	if q.Get("error") != "" {
 		t.Fatalf("authorization error: %s (%s)", q.Get("error"), q.Get("error_description"))
@@ -377,8 +410,12 @@ func (r tokenResponse) str(k string) string {
 // client authenticates with client_secret_basic; otherwise whatever is in
 // form (client_secret_post or nothing for public clients).
 func tokenRequest(t *testing.T, form url.Values, basic *[2]string) tokenResponse {
+	return def.tokenRequest(t, form, basic)
+}
+
+func (p *provider) tokenRequest(t *testing.T, form url.Values, basic *[2]string) tokenResponse {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, discovery(t).TokenEndpoint, strings.NewReader(form.Encode()))
+	req, err := http.NewRequest(http.MethodPost, p.discovery(t).TokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +424,7 @@ func tokenRequest(t *testing.T, form url.Values, basic *[2]string) tokenResponse
 	if basic != nil {
 		req.SetBasicAuth(basic[0], basic[1])
 	}
-	resp, body := send(t, http.DefaultClient, req)
+	resp, body := send(t, p.client, req)
 	tr := tokenResponse{Status: resp.StatusCode, Header: resp.Header, Raw: body}
 	if err := json.Unmarshal(body, &tr.Body); err != nil {
 		t.Fatalf("token endpoint returned HTTP %d with non-JSON body: %s", resp.StatusCode, redact(snippet(body)))
@@ -398,6 +435,10 @@ func tokenRequest(t *testing.T, form url.Values, basic *[2]string) tokenResponse
 // exchange redeems an authorization code. secret == "" means a public
 // client (no client authentication); verifier == "" omits code_verifier.
 func exchange(t *testing.T, code, verifier, clientID, secret, redirectURI string) tokenResponse {
+	return def.exchange(t, code, verifier, clientID, secret, redirectURI)
+}
+
+func (p *provider) exchange(t *testing.T, code, verifier, clientID, secret, redirectURI string) tokenResponse {
 	t.Helper()
 	form := url.Values{
 		"grant_type":   {"authorization_code"},
@@ -412,7 +453,7 @@ func exchange(t *testing.T, code, verifier, clientID, secret, redirectURI string
 	if secret != "" {
 		basic = &[2]string{clientID, secret}
 	}
-	return tokenRequest(t, form, basic)
+	return p.tokenRequest(t, form, basic)
 }
 
 // expectTokenError asserts an RFC 6749 §5.2 error response.
@@ -547,8 +588,12 @@ func numericDate(v any) (time.Time, bool) {
 
 // mustVerifyIDToken is verifyIDToken for the positive path.
 func mustVerifyIDToken(t *testing.T, raw string, want idTokenExpectation) map[string]any {
+	return def.mustVerifyIDToken(t, raw, want)
+}
+
+func (p *provider) mustVerifyIDToken(t *testing.T, raw string, want idTokenExpectation) map[string]any {
 	t.Helper()
-	_, set := fetchJWKS(t)
+	_, set := p.fetchJWKS(t)
 	claims, err := verifyIDToken(t, raw, set, want)
 	if err != nil {
 		t.Fatalf("ID token failed independent validation: %v", err)
@@ -618,15 +663,19 @@ func flipSignature(raw string) string {
 // userinfo calls the UserInfo endpoint with the given Authorization header
 // value ("" sends none).
 func userinfo(t *testing.T, authorization string) (*http.Response, []byte) {
+	return def.userinfo(t, authorization)
+}
+
+func (p *provider) userinfo(t *testing.T, authorization string) (*http.Response, []byte) {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, discovery(t).UserinfoEndpoint, nil)
+	req, err := http.NewRequest(http.MethodGet, p.discovery(t).UserinfoEndpoint, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if authorization != "" {
 		req.Header.Set("Authorization", authorization)
 	}
-	return send(t, http.DefaultClient, req)
+	return send(t, p.client, req)
 }
 
 // expectUnauthorized asserts an RFC 6750 §3 rejection.

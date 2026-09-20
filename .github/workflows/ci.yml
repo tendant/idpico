@@ -44,6 +44,11 @@ jobs:
       - name: Conformance suite
         run: make validate-conformance
 
+      # Restarts, key rotation, backup/restore, upgrade from the committed
+      # previous-release fixture, simulated reverse proxy.
+      - name: Operational suite
+        run: make validate-operational
+
       # Login through an independent go-oidc relying party.
       - name: Interoperability (examples/oidc-client)
         run: make validate-interop

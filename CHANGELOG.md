@@ -4,6 +4,20 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Added
+
+- Operational validation, `make validate-operational` (in CI): every test starts its own servers and restarts them on the same data directory. Covers restart (signing key, access/refresh tokens, sessions and consents survive), backup/restore from a file copy of the data directory, key rotation with `idpicoctl key rotate` and the grace period (old tokens verify until it ends, then the key is unpublished and deleted), the algorithm-change rotation, upgrade from the previous release's data directory (`conformance/testdata/upgrade/v0.0.3`, made by `scripts/upgrade-fixture.sh`), and a simulated TLS-terminating reverse proxy (issuer, Secure cookies, HSTS, forwarded-header trust). CONFORMANCE.md documents the policies these pin.
+- `/readyz` checks the backend (SQLite ping; data directory for the file driver) and answers 503 when it fails, so an instance that lost its database leaves rotation.
+
+### Security
+
+- `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Real-IP` and `True-Client-IP` are stripped from requests that do not come from a trusted proxy (`IDPICO_TRUSTED_PROXIES`). Before, a direct client could turn on HSTS for its own response by sending `X-Forwarded-Proto: https` (the address logic already ignored the headers).
+
+### Fixed
+
+- The JWKS no longer publishes keys whose grace period has ended; verification already refused them, and a relying party that cached the key set could pick one up and fail later.
+- The startup warning and README claimed sessions do not survive a restart with an auto-generated `IDPICO_COOKIE_SECRET`. They do — sessions are server-side records; only forms rendered before the restart fail their CSRF check afterwards.
+
 ## [0.0.4] - 2026-09-20
 
 Validated. A black-box conformance suite, an independent go-oidc reference client and the

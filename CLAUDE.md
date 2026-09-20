@@ -65,6 +65,7 @@ make ci                 # Exactly what GitHub Actions runs: gofmt, vet, -race te
 make test-flow          # scripts/test-client.sh: curl-only external-client OIDC flow against a throwaway server
 make validate           # Unit tests + black-box conformance suite (conformance/, build tag `conformance`)
 make validate-security  # Only the Security* conformance tests
+make validate-operational # Restart, key rotation, backup/restore, upgrade fixture, reverse proxy (TestOperational*)
 make validate-interop   # Login through examples/oidc-client (go-oidc) driven by scripts/test-interop.sh
 make validate-oidf      # OpenID Foundation suite (Basic OP) in docker via scripts/oidf.sh; not in CI
 make docker-build       # Container image wang/idpico:<git tag> and :latest (IMAGE=/TAG= to override)
@@ -112,6 +113,7 @@ All production code goes under `internal/` to prevent accidental coupling.
 
 - `conformance/` **must not import anything from this module** (`TestNoInternalImports` enforces it) and must verify tokens with go-jose, never `internal/crypto`. It starts `./cmd/idpico` as a subprocess with a from-scratch environment; `CONFORMANCE_ISSUER` targets a running instance instead.
 - Files carry `//go:build conformance`, so `go test ./...` skips them; `make vet` and CI run them with the tag. `examples/oidc-client` is its own module and takes only standard `OIDC_*` settings — a workaround it needs is an IDPico bug.
+- After tagging a release, run `scripts/upgrade-fixture.sh <that tag>` and commit `conformance/testdata/upgrade/<tag>/` so `TestOperationalUpgrade` tests the upgrade from the previous release; remove fixtures for releases no longer supported.
 - A change to authorize, token, session, client, redirect, signing, JWKS or discovery behaviour must keep `make validate` green; add the spec citation to the test when asserting rejection behaviour. Run `make validate-oidf` before a release; a new OIDF warning or skip must be added to `conformance/oidf/expected-*.json` with a reason, or fixed.
 
 ### Key Technical Decisions

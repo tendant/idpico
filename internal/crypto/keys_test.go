@@ -223,3 +223,34 @@ func TestKeyService_CacheDisabled(t *testing.T) {
 		t.Errorf("with caching disabled b should always see the current key, got %s", got.Kid)
 	}
 }
+
+func TestKeyService_JWKSOmitsExpiredKeys(t *testing.T) {
+	ctx := context.Background()
+	repo := newMemKeyRepo()
+	svc := NewKeyService(repo, WithActiveKeyCacheTTL(0))
+
+	first, _ := svc.EnsureActiveKey(ctx)
+	second, _ := svc.RotateKey(ctx, time.Hour)
+
+	kids := func() []string {
+		jwks, err := svc.GetJWKS(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, k := range jwks.Keys {
+			out = append(out, k.Kid)
+		}
+		return out
+	}
+	if got := kids(); len(got) != 2 {
+		t.Fatalf("during the grace period both keys are published, got %v", got)
+	}
+
+	// Grace over: the old key is refused by verification, so it must not be
+	// offered to relying parties either, even before cleanup removes it.
+	repo.keys[first.Kid].ExpiresAt = time.Now().Add(-time.Second)
+	if got := kids(); len(got) != 1 || got[0] != second.Kid {
+		t.Errorf("after the grace period only the active key is published, got %v", got)
+	}
+}

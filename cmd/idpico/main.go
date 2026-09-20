@@ -56,7 +56,7 @@ func main() {
 
 	// Warn if using auto-generated cookie secret
 	if cfg.CookieSecretGenerated {
-		logger.Warn("using auto-generated cookie secret - sessions will not persist across restarts. Set IDPICO_COOKIE_SECRET for production.")
+		logger.Warn("using auto-generated cookie secret: login, consent and admin forms open at the time of a restart will be rejected afterwards (sessions themselves persist). Set IDPICO_COOKIE_SECRET for production.")
 	}
 
 	// Initialize persistence
@@ -189,6 +189,7 @@ func main() {
 
 	// Self-service account page for every signed-in user
 	serverOpts = append(serverOpts, idphttp.WithAccountPage(store))
+	serverOpts = append(serverOpts, idphttp.WithReadinessCheck(readinessCheck(cfg, store)))
 
 	// Admin UI
 	serverOpts = append(serverOpts, idphttp.WithAdmin(idphttp.AdminConfig{
@@ -292,6 +293,18 @@ func main() {
 	}
 
 	logger.Info("server stopped")
+}
+
+// readinessCheck is what /readyz verifies: the SQLite connection answers, or
+// the file store's directory is still there.
+func readinessCheck(cfg *config.Config, st store.Store) func(context.Context) error {
+	if s, ok := st.(*sqlite.Store); ok {
+		return s.DB().PingContext
+	}
+	return func(context.Context) error {
+		_, err := os.Stat(cfg.DataDir)
+		return err
+	}
 }
 
 // openStore opens the persistence backend selected by IDPICO_STORE_DRIVER and

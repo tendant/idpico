@@ -1,7 +1,9 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -12,7 +14,7 @@ import (
 )
 
 func TestHealthHandler_Healthz(t *testing.T) {
-	handler := NewHealthHandler()
+	handler := NewHealthHandler(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
@@ -33,8 +35,26 @@ func TestHealthHandler_Healthz(t *testing.T) {
 	}
 }
 
+func TestHealthHandler_Readyz_Check(t *testing.T) {
+	// The readiness check reaches the backend; its failure is a 503.
+	failing := errors.New("database is gone")
+	var err error
+	handler := NewHealthHandler(func(context.Context) error { return err })
+	for _, tc := range []struct {
+		err  error
+		want int
+	}{{nil, http.StatusOK}, {failing, http.StatusServiceUnavailable}} {
+		err = tc.err
+		w := httptest.NewRecorder()
+		handler.Readyz(w, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+		if w.Code != tc.want {
+			t.Errorf("check error %v: HTTP %d, want %d", tc.err, w.Code, tc.want)
+		}
+	}
+}
+
 func TestHealthHandler_Readyz(t *testing.T) {
-	handler := NewHealthHandler()
+	handler := NewHealthHandler(nil)
 
 	// Test when ready
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
@@ -239,34 +259,41 @@ func contains(slice []string, item string) bool {
 }
 
 func TestRealIPFromTrustedProxies(t *testing.T) {
-	seen := ""
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { seen = r.RemoteAddr })
+	seen, seenProto := "", ""
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen, seenProto = r.RemoteAddr, r.Header.Get("X-Forwarded-Proto")
+	})
 	private, _ := (&config.Config{TrustedProxies: "private"}).ParseTrustedProxies()
 
 	cases := []struct {
-		name    string
-		trusted []netip.Prefix
-		peer    string
-		xff     string
-		want    string
+		name      string
+		trusted   []netip.Prefix
+		peer      string
+		xff       string
+		want      string
+		wantProto string // X-Forwarded-Proto as seen downstream; stripped with the other forwarding headers when untrusted
 	}{
-		{"private peer: header honoured", private, "10.0.0.2:4444", "203.0.113.9", "203.0.113.9"},
-		{"loopback peer: header honoured", private, "127.0.0.1:4444", "203.0.113.9", "203.0.113.9"},
-		{"public peer: header ignored", private, "198.51.100.7:4444", "203.0.113.9", "198.51.100.7:4444"},
-		{"no trusted proxies: header ignored", nil, "10.0.0.2:4444", "203.0.113.9", "10.0.0.2:4444"},
-		{"private peer without header: unchanged", private, "10.0.0.2:4444", "", "10.0.0.2:4444"},
+		{"private peer: header honoured", private, "10.0.0.2:4444", "203.0.113.9", "203.0.113.9", "https"},
+		{"loopback peer: header honoured", private, "127.0.0.1:4444", "203.0.113.9", "203.0.113.9", "https"},
+		{"public peer: header stripped", private, "198.51.100.7:4444", "203.0.113.9", "198.51.100.7:4444", ""},
+		{"no trusted proxies: header stripped", nil, "10.0.0.2:4444", "203.0.113.9", "10.0.0.2:4444", ""},
+		{"private peer without header: unchanged", private, "10.0.0.2:4444", "", "10.0.0.2:4444", "https"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			seen = ""
+			seen, seenProto = "", ""
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.RemoteAddr = tc.peer
 			if tc.xff != "" {
 				req.Header.Set("X-Forwarded-For", tc.xff)
 			}
+			req.Header.Set("X-Forwarded-Proto", "https")
 			RealIPFromTrustedProxies(tc.trusted)(next).ServeHTTP(httptest.NewRecorder(), req)
 			if seen != tc.want {
 				t.Errorf("RemoteAddr = %q, want %q", seen, tc.want)
+			}
+			if seenProto != tc.wantProto {
+				t.Errorf("X-Forwarded-Proto downstream = %q, want %q", seenProto, tc.wantProto)
 			}
 		})
 	}

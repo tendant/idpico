@@ -38,3 +38,5 @@ go.work.sum
 .claude/
 /examples/oidc-client/oidc-client
 /seed
+*.db-wal
+*.db-shm

@@ -151,21 +151,27 @@ func DefaultSecurityHeadersConfig() *SecurityHeadersConfig {
 	}
 }
 
+// forwardingHeaders are only believed from a trusted proxy. They are removed
+// from every other request so that nothing downstream — the real-IP logic,
+// isHTTPS for HSTS, audit and session records — can be steered by a direct
+// client claiming to be behind a proxy.
+var forwardingHeaders = []string{"X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host", "X-Real-IP", "True-Client-IP"}
+
 // RealIPFromTrustedProxies rewrites r.RemoteAddr from the forwarding headers
 // (as chi's RealIP does) only when the connecting peer is one of the trusted
-// proxies; otherwise the headers are ignored. With no trusted proxies every
+// proxies; otherwise the headers are stripped. With no trusted proxies every
 // request is attributed to its connecting address.
 func RealIPFromTrustedProxies(trusted []netip.Prefix) func(http.Handler) http.Handler {
 	fromProxy := middleware.RealIP
 	return func(next http.Handler) http.Handler {
-		if len(trusted) == 0 {
-			return next
-		}
 		proxied := fromProxy(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if peerIsTrusted(r.RemoteAddr, trusted) {
+			if len(trusted) > 0 && peerIsTrusted(r.RemoteAddr, trusted) {
 				proxied.ServeHTTP(w, r)
 				return
+			}
+			for _, h := range forwardingHeaders {
+				r.Header.Del(h)
 			}
 			next.ServeHTTP(w, r)
 		})

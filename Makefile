@@ -1,5 +1,5 @@
 .PHONY: build run test test-flow clean fmt vet lint help seed docker-build docker-push docker-run compose-up ci \
-	validate validate-unit validate-conformance validate-security validate-interop validate-oidf validate-all
+	validate validate-unit validate-conformance validate-security validate-operational validate-interop validate-oidf validate-all
 
 # Binary name
 BINARY := idpico
@@ -65,6 +65,7 @@ ci: ## What CI runs: gofmt check, vet, race tests, OIDC flow, conformance, inter
 	go test -race -count=1 ./...
 	$(MAKE) test-flow
 	$(MAKE) validate-conformance
+	$(MAKE) validate-operational
 	$(MAKE) validate-interop
 	CGO_ENABLED=0 GOOS=linux go build -o /dev/null ./cmd/idpico
 	CGO_ENABLED=0 GOOS=linux go build -o /dev/null ./cmd/idpicoctl
@@ -92,7 +93,7 @@ test-flow: build ## Start a throwaway server and run scripts/test-client.sh (ful
 	IDPICO_URL=http://localhost:$(TEST_FLOW_PORT) CLIENT_ID=test-spa CLIENT_SECRET= ./scripts/test-client.sh
 
 ## Validation (see CONFORMANCE.md)
-validate: validate-unit validate-conformance ## Unit tests + black-box OIDC conformance suite
+validate: validate-unit validate-conformance validate-operational ## Unit tests + black-box conformance + operational suites
 
 validate-unit: ## Unit and in-process integration tests
 	go test ./...
@@ -100,12 +101,18 @@ validate-unit: ## Unit and in-process integration tests
 # The suite builds ./cmd/idpico, starts it on a free port with test data in a
 # temp dir, and tears it down. Set CONFORMANCE_ISSUER to test a running
 # instance instead (see CONFORMANCE.md for the clients and user it expects).
-validate-conformance: ## Black-box conformance suite against a throwaway server (or CONFORMANCE_ISSUER)
+validate-conformance: ## Black-box protocol conformance suite against a throwaway server (or CONFORMANCE_ISSUER)
 	go vet -tags conformance ./conformance/
-	go test -tags conformance -count=1 -v ./conformance/
+	go test -tags conformance -count=1 -v -skip Operational ./conformance/
 
 validate-security: ## Only the security (negative) conformance tests
 	go test -tags conformance -count=1 -v -run Security ./conformance/
+
+# Restarts, key rotation, backup/restore, upgrade from the previous release
+# (conformance/testdata/upgrade, scripts/upgrade-fixture.sh) and a simulated
+# TLS-terminating proxy; each test starts its own server(s).
+validate-operational: ## Operational suite: restart, key rotation, backup/restore, upgrade, reverse proxy
+	go test -tags conformance -count=1 -v -run Operational ./conformance/
 
 INTEROP_PORT        ?= 28090
 INTEROP_CLIENT_PORT ?= 28091
@@ -129,11 +136,12 @@ validate-interop: build ## Log in through the independent go-oidc reference clie
 validate-oidf: ## OpenID Foundation conformance suite, Basic OP profile, in docker (scripts/oidf.sh; not run in CI)
 	./scripts/oidf.sh
 
-validate-all: ## Everything: unit, race, vet, conformance, interop
+validate-all: ## Everything: unit, race, vet, conformance, operational, interop
 	go test ./...
 	go test -race -count=1 ./...
 	$(MAKE) vet
 	$(MAKE) validate-conformance
+	$(MAKE) validate-operational
 	$(MAKE) validate-interop
 
 ## Help
