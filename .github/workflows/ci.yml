@@ -27,6 +27,9 @@ jobs:
             go.sum
             examples/oidc-client/go.sum
 
+      - name: No binary files tracked
+        run: ./scripts/check-no-binaries.sh
+
       - name: gofmt
         run: |
           out=$(gofmt -l .)

@@ -59,7 +59,8 @@ vet: ## Run go vet (including the conformance suite, which is behind a build tag
 
 lint: fmt vet ## Run all linters
 
-ci: ## What CI runs: gofmt check, vet, race tests, OIDC flow, conformance, interop, static build
+ci: ## What CI runs: no binaries, gofmt check, vet, race tests, OIDC flow, conformance, operational, interop, static build
+	./scripts/check-no-binaries.sh
 	@test -z "$$(gofmt -l .)" || (echo "gofmt needed:"; gofmt -l .; exit 1)
 	$(MAKE) vet
 	go test -race -count=1 ./...

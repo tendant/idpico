@@ -6,6 +6,7 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ### Changed
 
+- `make ci` and CI fail if any tracked file is binary (`scripts/check-no-binaries.sh`; the two embedded icons are the only exceptions).
 - The upgrade test builds the previous releases from their git tags at test time instead of using checked-in database files; the repository holds no binary fixtures (and history was rewritten to drop the pre-rename `idp`/`idpctl` binaries that had been tracked since v0.0.2).
 
 ### Added
