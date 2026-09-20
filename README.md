@@ -590,7 +590,8 @@ ID token with an independent JOSE library, and checks the refusals a client reli
 on — wrong redirect URIs, PKCE downgrades, replayed codes, forged tokens.
 `make validate-interop` logs in through [`examples/oidc-client`](examples/oidc-client/),
 a relying party built on go-oidc with no IDPico-specific code, and `make validate-oidf` runs the
-OpenID Foundation conformance suite (Basic OP profile) in docker. The declared
+OpenID Foundation conformance suite (Basic OP profile) in docker — v0.0.4 passes it with no
+failures. The declared
 profile, how to run the suite against a deployed instance, and known limitations
 are in [CONFORMANCE.md](CONFORMANCE.md).
 

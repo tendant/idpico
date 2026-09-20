@@ -4,16 +4,26 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-09-20
+
+Validated. A black-box conformance suite, an independent go-oidc reference client and the
+OpenID Foundation conformance suite (Basic OP profile: 36 modules, 0 failures) now gate every
+change — **validation level 4** per [CONFORMANCE.md](CONFORMANCE.md) — and fixed the protocol
+deviations they found. Also EdDSA signing, per-client token lifetimes and a self-service
+`/account` page.
+
 ### Added
+
+- EdDSA (Ed25519) signing: `IDPICO_SIGNING_ALGORITHM=EdDSA` (default stays `RS256`). Changing it rotates the key at startup with the usual grace period, so RS256 tokens already issued keep verifying; the JWKS publishes `OKP`/`Ed25519` keys alongside RSA ones and discovery lists both algorithms. `idpicoctl key rotate -alg EdDSA`. Token verification binds the token's `alg` to the key's, so a token cannot name a key of the other kind.
+- Per-client token lifetimes: each client can override `IDPICO_ACCESS_TOKEN_TTL` (which also bounds the ID token) and `IDPICO_REFRESH_TOKEN_TTL`. Set them on the client's admin page (`15m`, `12h`, `30d`; blank = server default) or with `idpicoctl client add -access-ttl 5m -refresh-ttl 720h`. Migration `00002` adds the two columns; existing clients keep the defaults.
+- `/account`: every signed-in user can see and sign out their own sessions (the current one is marked), revoke the refresh tokens apps hold for them and the consents they granted, sign out everywhere else in one click, and change their password (current password required; signs out everywhere). Linked from the admin header and the playground nav; `/` sends signed-in non-admins there.
+- `/authorize` accepts POST (OIDC Core §3.1.2.1). `/userinfo` accepts `access_token` in a form-encoded POST body (RFC 6750 §2.2).
+
+### Validation
 
 - Black-box conformance suite in `conformance/` (`make validate`, `make validate-security`): builds and starts an isolated IDPico, then tests it over HTTP only — discovery, JWKS, Authorization Code + PKCE for confidential and public clients, independent ID-token validation with go-jose, UserInfo, and the security negatives (redirect URI matching, PKCE downgrades, code replay and client binding, forged/altered/expired JWTs, error-page vs redirect rules). `CONFORMANCE_ISSUER` points it at a running instance; diagnostics are redacted. CI runs it on every push.
 - `make validate-oidf` runs the OpenID Foundation conformance suite (Basic OP profile) in docker against a throwaway IDPico with the suite's own runner; configuration and the accepted warnings/skips are in `conformance/oidf/`. Current result: 36 modules, 0 failures; see CONFORMANCE.md.
-- `/authorize` accepts POST (OIDC Core §3.1.2.1). `/userinfo` accepts `access_token` in a form-encoded POST body (RFC 6750 §2.2).
 - `examples/oidc-client`: an independent relying party on coreos/go-oidc + x/oauth2 with no IDPico-specific code; `make validate-interop` drives a login through it. `CONFORMANCE.md` records the declared v0.1 profile, validation levels, known limitations and the OpenID Foundation test plan.
-- EdDSA (Ed25519) signing: `IDPICO_SIGNING_ALGORITHM=EdDSA` (default stays `RS256`). Changing it rotates the key at startup with the usual grace period, so RS256 tokens already issued keep verifying; the JWKS publishes `OKP`/`Ed25519` keys alongside RSA ones and discovery lists both algorithms. `idpicoctl key rotate -alg EdDSA`. Token verification binds the token's `alg` to the key's, so a token cannot name a key of the other kind.
-- Per-client token lifetimes: each client can override `IDPICO_ACCESS_TOKEN_TTL` (which also bounds the ID token) and `IDPICO_REFRESH_TOKEN_TTL`. Set them on the client's admin page (`15m`, `12h`, `30d`; blank = server default) or with `idpicoctl client add -access-ttl 5m -refresh-ttl 720h`. Migration `00002` adds the two columns; existing clients keep the defaults.
-
-- `/account`: every signed-in user can see and sign out their own sessions (the current one is marked), revoke the refresh tokens apps hold for them and the consents they granted, sign out everywhere else in one click, and change their password (current password required; signs out everywhere). Linked from the admin header and the playground nav; `/` sends signed-in non-admins there.
 
 ### Changed
 
@@ -112,7 +122,8 @@ client, and an audit trail.
 - Initial file-backed IdP: Authorization Code + PKCE, RS256 JWTs, refresh token rotation,
   revocation, introspection, RP-initiated logout, rate limiting, lockout, CORS, metrics.
 
-[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.3...HEAD
+[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.4...HEAD
+[0.0.4]: https://github.com/tendant/idpico/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/tendant/idpico/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/tendant/idpico/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/tendant/idpico/releases/tag/v0.0.1
