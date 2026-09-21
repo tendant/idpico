@@ -4,6 +4,10 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Fixed
+
+- Maintenance checkpoints the SQLite write-ahead log every run (`PRAGMA wal_checkpoint(TRUNCATE)`). SQLite only does this by itself at 1000 WAL pages, which a small, long-running instance never reaches: a live server was found with a 4 KB `idpico.db` and everything in `idpico.db-wal`, so a copy of `idpico.db` alone would have been empty. The README now documents `sqlite3 .backup` as the way to back up a running server.
+
 ## [0.0.8] - 2026-09-20
 
 First-impression fixes from walking the Quick Start in a browser against the published image, and

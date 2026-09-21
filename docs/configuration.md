@@ -15,7 +15,7 @@ manifest. Real environment variables take precedence over `.env`.
 | `IDPICO_ADMIN_EMAILS` | — | Who may open `/admin` (comma-separated; the users must exist). |
 | `IDPICO_BOOTSTRAP_CLIENTS` | — | Your application: `id|secret|redirect_uri` (`id||redirect_uri` for a public/PKCE client; several redirect URIs separated by spaces, several clients by commas). Or `IDPICO_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` for exactly one. |
 | `IDPICO_COOKIE_SECRET` | random per start | Production. It signs CSRF tokens; with a random one, forms open across a restart fail. Sessions persist regardless. |
-| `IDPICO_DATA_DIR` | `./data` | You want the database somewhere specific. Everything lives here (`idpico.db`); a backup is a copy of it after a clean stop. |
+| `IDPICO_DATA_DIR` | `./data` | You want the database somewhere specific. Everything lives here (`idpico.db`); back it up with `sqlite3 .backup` while running or a directory copy while stopped (README, "Backups"). |
 | `IDPICO_TRUSTED_PROXIES` | `private` | Behind an ingress on a public address: the proxy's IPs/CIDRs, or `none` when reached directly. Forwarding headers from anyone else are ignored. |
 | `IDPICO_HSTS_MAX_AGE` | `0` | The host is https-only. |
 

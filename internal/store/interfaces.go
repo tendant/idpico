@@ -144,6 +144,15 @@ type AuditRepository interface {
 	DeleteBefore(ctx context.Context, cutoff time.Time) error
 }
 
+// Checkpointer is implemented by backends whose on-disk form has a write-
+// ahead log. Checkpoint folds it into the main file so that the main file
+// alone is a complete copy of the data (SQLite: PRAGMA wal_checkpoint).
+// Maintenance calls it periodically; without it a quiet server's data can
+// sit in the -wal file indefinitely and a copy of idpico.db is empty.
+type Checkpointer interface {
+	Checkpoint(ctx context.Context) error
+}
+
 // Store aggregates all repositories.
 type Store interface {
 	Users() UserRepository

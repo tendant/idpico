@@ -131,6 +131,15 @@ func (r *Runner) RunOnce(ctx context.Context) error {
 		}
 	}
 
+	// Last, after the deletes above: keep the database file self-contained
+	// so an operator's copy of idpico.db is never an empty page with the
+	// data still in the WAL.
+	if c, ok := r.store.(store.Checkpointer); ok {
+		if err := c.Checkpoint(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
 	r.logger.Debug("maintenance run complete", "errors", len(errs))
 	return errors.Join(errs...)
 }

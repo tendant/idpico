@@ -245,12 +245,28 @@ A single-file database at `./data/idpico.db` (configurable via `IDPICO_DATA_DIR`
 pure Go (`modernc.org/sqlite`), so the static Docker image works unchanged.
 
 - Schema is created and migrated automatically on startup (embedded [goose](https://github.com/pressly/goose) migrations under `internal/store/migrations/`)
-- WAL journaling with a 5s busy timeout
-- Tables: `users`, `clients`, `sessions`, `auth_codes`, `tokens`, `signing_keys`
+- WAL journaling with a 5s busy timeout; the background maintenance run (every `IDPICO_MAINTENANCE_INTERVAL`, default 10m) checkpoints the WAL so `idpico.db` stays self-contained
+- Tables: `users`, `clients`, `sessions`, `auth_codes`, `tokens`, `token_revocations`, `consents`, `verification_tokens`, `groups`, `audit_events`, `signing_keys`
 - Foreign keys are enforced: deleting a user or client cascades to its sessions, auth codes and tokens
 - Emails are unique case-insensitively (`LOWER(email)` index); the JSON backend applies the same rule
 
 Inspect it with any SQLite client, e.g. `sqlite3 data/idpico.db '.tables'`.
+
+**Backups.** The data directory is the whole state: database, signing keys, users, clients, sessions,
+consents. The safe ways to copy it:
+
+- **While running:** `sqlite3 data/idpico.db ".backup /backups/idpico-$(date +%F).db"` — SQLite's online
+  backup, consistent regardless of the WAL. (No `sqlite3` on the host? Any container with it works:
+  `docker run --rm -v $DATA:/data:ro -v /backups:/b alpine sh -c 'apk add -q sqlite && sqlite3 /data/idpico.db ".backup /b/idpico.db"'`.)
+- **Stopped:** copy the directory. After a clean shutdown there is no `-wal`/`-shm` file and
+  `idpico.db` is complete.
+- **Do not** copy `idpico.db` alone from a running server and assume it is complete: SQLite keeps
+  recent writes in `idpico.db-wal` until a checkpoint. Maintenance checkpoints every run precisely so
+  that such a copy is not empty, but a `.backup` is the correct tool.
+
+Restore by placing the file at `<IDPICO_DATA_DIR>/idpico.db` (with no `-wal`/`-shm` beside it) before
+starting the server. Migrations are forward-only: restore a backup rather than running an older
+release on a migrated database.
 
 ### JSON files (`IDPICO_STORE_DRIVER=file`)
 

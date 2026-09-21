@@ -2,8 +2,11 @@ package maintenance
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -200,5 +203,27 @@ func TestRun_StopsOnContextCancel(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Run did not stop after cancel")
+	}
+}
+
+// Maintenance checkpoints the SQLite WAL so idpico.db stays self-contained.
+func TestRunOnce_CheckpointsWAL(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "idpico.db")
+	s, err := sqlite.NewStore(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for i := 0; i < 10; i++ {
+		if err := s.Users().Create(ctx, &domain.User{ID: fmt.Sprintf("u%d", i), Email: fmt.Sprintf("u%d@example.com", i), Active: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := NewRunner(s, nil, quiet()).RunOnce(ctx); err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if fi, err := os.Stat(path + "-wal"); err == nil && fi.Size() != 0 {
+		t.Errorf("WAL is %d bytes after maintenance, want 0", fi.Size())
 	}
 }

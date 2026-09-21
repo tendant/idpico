@@ -79,7 +79,7 @@ CI (`.github/workflows/ci.yml`) runs `make ci`'s steps plus a throwaway `docker 
 ## Architecture Overview
 
 ### Core Design Principles
-- **Single instance, persistent data directory** - all state lives in `IDPICO_DATA_DIR` (SQLite or JSON files); a backup is a file copy taken after a clean stop, and one replica runs at a time
+- **Single instance, persistent data directory** - all state lives in `IDPICO_DATA_DIR` (SQLite or JSON files); a backup is `sqlite3 .backup` while running or a directory copy while stopped (maintenance checkpoints the WAL so `idpico.db` stays self-contained), and one replica runs at a time
 - **OIDC-first** - Authorization Code + PKCE as primary flow
 - **Security by default** - Argon2id passwords, secure cookies, strict redirect URI validation, PKCE (S256 only) required for public clients
 - **Independent of simple-idm** - no runtime or build-time coupling (patterns are shared, code is not)

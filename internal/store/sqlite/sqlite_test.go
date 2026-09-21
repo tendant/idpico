@@ -3,6 +3,8 @@ package sqlite
 import (
 	"context"
 	"crypto/rsa"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -377,4 +379,67 @@ func mustCreate(t *testing.T, err error) {
 	if err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
+}
+
+// A quiet server never reaches SQLite's automatic checkpoint threshold, so
+// everything it wrote can sit in idpico.db-wal while idpico.db stays a
+// single empty page — and a copy of idpico.db alone loses it all.
+// Checkpoint folds the WAL in so the main file is self-contained.
+func TestCheckpointMakesMainFileSelfContained(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "idpico.db")
+	s, err := NewStore(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for i := 0; i < 20; i++ {
+		if err := s.Users().Create(ctx, &domain.User{ID: fmt.Sprintf("u%d", i), Email: fmt.Sprintf("u%d@example.com", i), Active: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Reproduce the hazard: a copy of only the main file, before checkpoint.
+	before := copyFile(t, path, filepath.Join(t.TempDir(), "idpico.db"))
+	if n := countUsers(t, before); n == 20 {
+		t.Log("note: SQLite had already checkpointed; the hazard did not reproduce on this run")
+	}
+
+	if err := s.Checkpoint(ctx); err != nil {
+		t.Fatalf("Checkpoint: %v", err)
+	}
+	if fi, err := os.Stat(path + "-wal"); err == nil && fi.Size() != 0 {
+		t.Errorf("WAL still %d bytes after checkpoint(TRUNCATE)", fi.Size())
+	}
+	after := copyFile(t, path, filepath.Join(t.TempDir(), "idpico.db"))
+	if n := countUsers(t, after); n != 20 {
+		t.Errorf("a copy of idpico.db after checkpoint holds %d users, want 20", n)
+	}
+}
+
+func copyFile(t *testing.T, src, dst string) string {
+	t.Helper()
+	b, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dst
+}
+
+// countUsers opens a copied database file on its own (no WAL beside it).
+func countUsers(t *testing.T, path string) int {
+	t.Helper()
+	s, err := NewStore(context.Background(), path)
+	if err != nil {
+		t.Fatalf("open copy: %v", err)
+	}
+	defer s.Close()
+	users, err := s.Users().List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(users)
 }

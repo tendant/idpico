@@ -26,7 +26,7 @@ PostgreSQL backend (decided 2026-09-20). Validation is described in CONFORMANCE.
 
 ### Engineering goals
 - Small, understandable codebase.
-- One instance with a persistent data directory (SQLite by default, JSON files as an alternative); no external database. Backups are a file copy after a clean stop; upgrades apply migrations at startup.
+- One instance with a persistent data directory (SQLite by default, JSON files as an alternative); no external database. Backups: `sqlite3 .backup` while running, or a directory copy while stopped; upgrades apply migrations at startup.
 - Clear migration path from existing `simple-idm` auth logic (if desired).
 - Strong security defaults (Argon2, secure cookies, strict redirect URI validation).
 

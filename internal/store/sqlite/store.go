@@ -108,6 +108,16 @@ func (s *Store) Groups() store.GroupRepository { return s.groups }
 func (s *Store) Audit() store.AuditRepository  { return s.audit }
 func (s *Store) Close() error                  { return s.db.Close() }
 
+// Checkpoint folds the write-ahead log into idpico.db and truncates it, so
+// the main file is self-contained. SQLite only does this by itself once the
+// WAL reaches 1000 pages, which a small IdP may never reach.
+func (s *Store) Checkpoint(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		return fmt.Errorf("sqlite checkpoint: %w", err)
+	}
+	return nil
+}
+
 // Keys returns the crypto.KeyRepository backed by this store's signing_keys table.
 func (s *Store) Keys() *KeyRepository { return s.keys }
 
