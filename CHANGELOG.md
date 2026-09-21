@@ -4,6 +4,11 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-09-20
+
+First-impression fixes from walking the Quick Start in a browser against the published image, and
+the Quick Start itself now starts with `docker run wang/idpico:latest`. No migration.
+
 ### Changed
 
 - README Quick Start starts with `docker run -p 8080:8080 wang/idpico:latest`, then the three-line env file as `--env-file` with a named volume for the database, and the port/issuer change when 8080 is taken.
@@ -198,7 +203,8 @@ client, and an audit trail.
 - Initial file-backed IdP: Authorization Code + PKCE, RS256 JWTs, refresh token rotation,
   revocation, introspection, RP-initiated logout, rate limiting, lockout, CORS, metrics.
 
-[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.7...HEAD
+[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.8...HEAD
+[0.0.8]: https://github.com/tendant/idpico/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/tendant/idpico/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/tendant/idpico/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/tendant/idpico/compare/v0.0.4...v0.0.5
