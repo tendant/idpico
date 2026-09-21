@@ -32,30 +32,49 @@ IdP without standing up Keycloak.
 
 ## Quick Start
 
-IDPico needs no configuration to start:
+### Docker
 
 ```bash
-make build && ./idpico          # http://localhost:8080, SQLite in ./data
+docker run -p 8080:8080 wang/idpico:latest
 ```
 
-A fresh instance has no users, so `/` shows what to do next. The shortest path is a three-line
-`.env` in the directory you start it from (`cp .env.example .env` and edit), then restart:
+That is a working identity provider at `http://localhost:8080` — but with no users, so `/` shows
+what to do next. Give it a first user, an admin and your application in a three-line file:
 
 ```bash
-IDPICO_BOOTSTRAP_USERS=you@example.com:change-me:Your Name   # the first user...
-IDPICO_ADMIN_EMAILS=you@example.com                          # ...who gets the admin console
-IDPICO_BOOTSTRAP_CLIENTS=my-app|my-app-secret|http://localhost:3000/callback   # your application
+cat > idpico.env <<'EOF'
+IDPICO_BOOTSTRAP_USERS=you@example.com:change-me:Your Name
+IDPICO_ADMIN_EMAILS=you@example.com
+IDPICO_BOOTSTRAP_CLIENTS=my-app|my-app-secret|http://localhost:3000/callback
+EOF
+docker run -p 8080:8080 --env-file idpico.env -v idpico-data:/app/data wang/idpico:latest
 ```
 
-Now sign in at `/login`, open `/playground` to run an OIDC login end to end, and `/admin` to manage
-users, groups, clients and keys. The same three lines work as environment variables, in
-`docker compose` or in a Kubernetes manifest; `idpicoctl user add` / `client add` do the same
-without a restart. For a developer sandbox with ready-made accounts, `make seed && make run`
-(`test@example.com` / `password123`) or `docker compose up` (`admin@example.com` / `password123`).
+Sign in at `http://localhost:8080/login`, open `/playground` to run an OIDC login end to end, and
+`/admin` to manage users, groups, clients and signing keys. The named volume keeps the database
+(`/app/data/idpico.db`) across restarts, so the env file is only needed the first time. If `8080` is
+taken, change the port mapping *and* tell idpico its public address — that URL is the OIDC issuer:
+
+```bash
+docker run -p 8090:8080 -e IDPICO_ISSUER_URL=http://localhost:8090 --env-file idpico.env -v idpico-data:/app/data wang/idpico:latest
+```
+
+Images are multi-arch (amd64, arm64); pin a version (`wang/idpico:v0.0.7`) for anything you keep.
+
+### From source
+
+```bash
+make build && ./idpico          # same server, SQLite in ./data
+```
+
+The same three lines go in a `.env` next to the binary (`cp .env.example .env`, edit, restart);
+`idpicoctl user add` / `client add` do the same without a restart. For a developer sandbox with
+ready-made accounts, `make seed && make run` (`test@example.com` / `password123`) or
+`docker compose up` (`admin@example.com` / `password123`).
 
 Kubernetes manifests are in [`deploy/k8s/`](deploy/k8s/) (kustomize; see
-[docs/k3s-headlamp-setup.md](docs/k3s-headlamp-setup.md) for a full walkthrough). Images are
-published as `wang/idpico:<tag>`; `make docker-build` builds your own.
+[docs/k3s-headlamp-setup.md](docs/k3s-headlamp-setup.md) for a full walkthrough).
+`make docker-build` builds your own image.
 
 ## Configuration
 

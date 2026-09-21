@@ -4,6 +4,10 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Changed
+
+- README Quick Start starts with `docker run -p 8080:8080 wang/idpico:latest`, then the three-line env file as `--env-file` with a named volume for the database, and the port/issuer change when 8080 is taken.
+
 ### Fixed
 
 - The landing page always offers **Sign in** (it showed only the playground link when the playground was on); the setup page's snippets no longer wrap mid-token and mention `docker run --env-file .env`. Found by walking the first run in a browser against the published image.
