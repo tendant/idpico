@@ -192,6 +192,9 @@ func (s *TokenService) HandleAuthorizationCode(ctx context.Context, req *TokenRe
 	if !authenticateClient(ctx, s.clients, client, req.ClientSecret) {
 		return nil, idperrors.Unauthorized("invalid client credentials")
 	}
+	if !client.AllowsGrant("authorization_code") {
+		return nil, idperrors.UnauthorizedClient("client is not allowed the authorization_code grant")
+	}
 
 	// Get the authorization code
 	authCode, err := s.authCodes.GetByCode(ctx, req.Code)
@@ -247,6 +250,18 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 		return nil, idperrors.InvalidInput("refresh_token is required")
 	}
 
+	// Authenticate the client before looking at the token, as for codes.
+	client, err := s.clients.GetByID(ctx, req.ClientID)
+	if err != nil {
+		return nil, idperrors.Unauthorized("invalid client")
+	}
+	if !authenticateClient(ctx, s.clients, client, req.ClientSecret) {
+		return nil, idperrors.Unauthorized("invalid client credentials")
+	}
+	if !client.AllowsGrant("refresh_token") {
+		return nil, idperrors.UnauthorizedClient("client is not allowed the refresh_token grant")
+	}
+
 	// Get the refresh token
 	token, err := s.tokens.GetByID(ctx, req.RefreshToken)
 	if err != nil {
@@ -257,17 +272,6 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 	}
 	if token.ClientID != req.ClientID {
 		return nil, idperrors.InvalidGrant("client_id mismatch")
-	}
-
-	// Validate client
-	client, err := s.clients.GetByID(ctx, req.ClientID)
-	if err != nil {
-		return nil, idperrors.Unauthorized("invalid client")
-	}
-
-	// Validate client secret for confidential clients (constant-time comparison)
-	if !authenticateClient(ctx, s.clients, client, req.ClientSecret) {
-		return nil, idperrors.Unauthorized("invalid client credentials")
 	}
 
 	// A refresh token is single-use (rotation). Seeing a rotated-out one
@@ -415,24 +419,26 @@ func (s *TokenService) HandleRevocation(ctx context.Context, req *RevocationRequ
 	// A token is only revoked by the client it was issued to (RFC 7009
 	// §2.1); anything else is silently a no-op, like an unknown token.
 
+	// token_type_hint is only a hint: both types are always searched (§2.1:
+	// the server MUST extend its search). Refresh tokens are opaque store
+	// IDs and access tokens JWTs, so the two cannot be mistaken.
+
 	// Refresh token: revoking it also revokes the access tokens of the same
 	// grant (the repository records that).
-	if req.TokenTypeHint == "" || req.TokenTypeHint == "refresh_token" {
-		if token, err := s.tokens.GetByID(ctx, req.Token); err == nil {
-			if req.ClientID != "" && token.ClientID != req.ClientID {
-				return nil
-			}
-			if err := s.tokens.Revoke(ctx, req.Token); err != nil {
-				return err
-			}
-			metrics.RecordTokenRevocation()
+	if token, err := s.tokens.GetByID(ctx, req.Token); err == nil {
+		if req.ClientID != "" && token.ClientID != req.ClientID {
 			return nil
 		}
+		if err := s.tokens.Revoke(ctx, req.Token); err != nil {
+			return err
+		}
+		metrics.RecordTokenRevocation()
+		return nil
 	}
 
 	// Access token: a signed JWT of ours is recorded by jti until it would
 	// have expired anyway.
-	if s.revocations != nil && (req.TokenTypeHint == "" || req.TokenTypeHint == "access_token") {
+	if s.revocations != nil {
 		claims, err := s.tokenGenerator.ValidateAccessToken(req.Token)
 		if err != nil || claims.ExpiresAt == nil {
 			return nil
@@ -507,49 +513,48 @@ func (s *TokenService) introspect(ctx context.Context, req *IntrospectionRequest
 		return nil, idperrors.Unauthorized("invalid client credentials")
 	}
 
+	// Both token types are searched whatever token_type_hint says (RFC 7662
+	// §2.1); access tokens are JWTs and refresh tokens opaque store IDs.
+
 	// Try to introspect as access token (JWT) first
-	if req.TokenTypeHint == "" || req.TokenTypeHint == "access_token" {
-		claims, err := s.tokenGenerator.ValidateAccessToken(req.Token)
-		if err == nil {
-			if revoked, err := accessTokenRevoked(ctx, s.revocations, claims); err != nil {
-				return nil, err
-			} else if revoked {
-				return &IntrospectionResponse{Active: false}, nil
-			}
-			return &IntrospectionResponse{
-				Active:    true,
-				Scope:     claims.Scope,
-				ClientID:  claims.ClientID,
-				Sub:       claims.Subject,
-				Iss:       claims.Issuer,
-				Aud:       claims.ClientID,
-				Exp:       claims.ExpiresAt.Unix(),
-				Iat:       claims.IssuedAt.Unix(),
-				TokenType: "Bearer",
-			}, nil
+	claims, err := s.tokenGenerator.ValidateAccessToken(req.Token)
+	if err == nil {
+		if revoked, err := accessTokenRevoked(ctx, s.revocations, claims); err != nil {
+			return nil, err
+		} else if revoked {
+			return &IntrospectionResponse{Active: false}, nil
 		}
+		return &IntrospectionResponse{
+			Active:    true,
+			Scope:     claims.Scope,
+			ClientID:  claims.ClientID,
+			Sub:       claims.Subject,
+			Iss:       claims.Issuer,
+			Aud:       claims.ClientID,
+			Exp:       claims.ExpiresAt.Unix(),
+			Iat:       claims.IssuedAt.Unix(),
+			TokenType: "Bearer",
+		}, nil
 	}
 
 	// Try to introspect as refresh token
-	if req.TokenTypeHint == "" || req.TokenTypeHint == "refresh_token" {
-		token, err := s.tokens.GetByID(ctx, req.Token)
-		if err == nil && token.IsValid() {
-			// Get user for username
-			var username string
-			if user, err := s.users.GetByID(ctx, token.UserID); err == nil {
-				username = user.Email
-			}
-
-			return &IntrospectionResponse{
-				Active:    true,
-				Scope:     token.Scope,
-				ClientID:  token.ClientID,
-				Username:  username,
-				Sub:       token.UserID,
-				Exp:       token.ExpiresAt.Unix(),
-				TokenType: "refresh_token",
-			}, nil
+	token, err := s.tokens.GetByID(ctx, req.Token)
+	if err == nil && token.IsValid() {
+		// Get user for username
+		var username string
+		if user, err := s.users.GetByID(ctx, token.UserID); err == nil {
+			username = user.Email
 		}
+
+		return &IntrospectionResponse{
+			Active:    true,
+			Scope:     token.Scope,
+			ClientID:  token.ClientID,
+			Username:  username,
+			Sub:       token.UserID,
+			Exp:       token.ExpiresAt.Unix(),
+			TokenType: "refresh_token",
+		}, nil
 	}
 
 	// Token is not active (invalid, expired, revoked, or doesn't exist)
@@ -615,8 +620,9 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 	metrics.RecordTokenIssued("access", grantType)
 	metrics.RecordTokenIssued("id", grantType)
 
-	// Generate refresh token if offline_access scope is requested
-	if strings.Contains(scope, "offline_access") {
+	// Generate a refresh token if offline_access was granted and the client
+	// may use it; one it cannot redeem would only be a liability.
+	if hasScope(scope, "offline_access") && client.AllowsGrant("refresh_token") {
 		refreshToken := &domain.Token{
 			ID:        uuid.New().String(),
 			UserID:    user.ID,

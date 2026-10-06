@@ -289,6 +289,9 @@ func NewServer(addr string, opts ...Option) *Server {
 	// Login endpoints
 	if s.authService != nil {
 		login := NewLoginHandler(s.authService, templates, s.logger)
+		if s.tokenService != nil {
+			login.postLogoutRedirect = s.tokenService.PostLogoutRedirect
+		}
 		r.Get("/login", login.LoginPage)
 
 		// Apply rate limiting to login POST to prevent brute-force attacks

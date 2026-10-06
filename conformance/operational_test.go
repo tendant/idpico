@@ -174,6 +174,47 @@ func TestOperationalRestart(t *testing.T) {
 	})
 }
 
+// TestOperationalOnlineBackup: `idpicoctl backup` against a running server
+// (the documented way to back up in production) yields a database that,
+// restored alone into an empty data directory, brings back the signing
+// key, users, clients and live tokens — including writes made just before
+// the backup, which may still be only in the WAL.
+func TestOperationalOnlineBackup(t *testing.T) {
+	inst := startInstance(t, "", map[string]string{"IDPICO_STORE_DRIVER": "sqlite"})
+	p := inst.provider()
+	before := loginAndExchange(t, p)
+
+	dir := t.TempDir()
+	backupFile := filepath.Join(dir, "idpico-backup.db")
+	inst.idpicoctl(t, "backup", backupFile)
+	if _, err := os.Stat(backupFile + ".partial"); err == nil {
+		t.Error("backup left its .partial file behind")
+	}
+	inst.stop()
+
+	restoreDir := filepath.Join(dir, "restore")
+	if err := os.MkdirAll(restoreDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(backupFile, filepath.Join(restoreDir, "idpico.db")); err != nil {
+		t.Fatal(err)
+	}
+
+	restored := &instance{dataDir: restoreDir, workDir: t.TempDir(), port: inst.port, env: map[string]string{"IDPICO_STORE_DRIVER": "sqlite"}, logPath: filepath.Join(t.TempDir(), "server.log")}
+	restored.restart(t, nil)
+	t.Cleanup(restored.stop)
+	rp := restored.provider()
+
+	if kid := activeKID(t, rp); kid != before.kid {
+		t.Errorf("restored instance signs with %s, backup had %s", kid, before.kid)
+	}
+	expectUserinfo(t, rp, before.access, true)
+	if tr := refresh(t, rp, before.refresh); tr.Status != 200 {
+		t.Errorf("refresh on restored instance: HTTP %d", tr.Status)
+	}
+	resumeWithSession(t, rp, before.client)
+}
+
 // TestOperationalBackupRestore: a copy of the data directory taken after a
 // clean stop is a complete backup — restoring it elsewhere brings back the
 // signing key, users, clients and live tokens.

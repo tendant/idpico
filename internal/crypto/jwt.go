@@ -221,6 +221,24 @@ func (g *TokenGenerator) ParseToken(tokenString string) (*jwt.Token, *Claims, er
 
 // ParseTokenWithContext parses and validates a JWT token with a context.
 func (g *TokenGenerator) ParseTokenWithContext(ctx context.Context, tokenString string) (*jwt.Token, *Claims, error) {
+	return g.parse(ctx, tokenString)
+}
+
+// ParseIDTokenHint verifies an id_token_hint: signed by one of our keys and
+// issued by us, but possibly expired — RP-Initiated Logout 1.0 §2 has the OP
+// accept a hint whose exp has passed, since logout often comes later.
+func (g *TokenGenerator) ParseIDTokenHint(ctx context.Context, tokenString string) (*Claims, error) {
+	_, claims, err := g.parse(ctx, tokenString, jwt.WithoutClaimsValidation())
+	if err != nil {
+		return nil, err
+	}
+	if claims.Issuer != g.issuer {
+		return nil, fmt.Errorf("invalid issuer")
+	}
+	return claims, nil
+}
+
+func (g *TokenGenerator) parse(ctx context.Context, tokenString string, opts ...jwt.ParserOption) (*jwt.Token, *Claims, error) {
 	claims := &Claims{}
 
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
@@ -259,7 +277,7 @@ func (g *TokenGenerator) ParseTokenWithContext(ctx context.Context, tokenString 
 			return nil, fmt.Errorf("token alg %s does not match key %s (%s)", token.Method.Alg(), kid, keyPair.Alg)
 		}
 		return keyPair.PublicKey, nil
-	})
+	}, opts...)
 
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse token: %w", err)
@@ -305,6 +323,14 @@ func (g *TokenGenerator) ValidateAccessToken(tokenString string) (*Claims, error
 	// Verify issuer matches
 	if claims.Issuer != g.issuer {
 		return nil, fmt.Errorf("invalid issuer")
+	}
+
+	// ID tokens are signed with the same keys; only access tokens carry
+	// client_id (ID tokens dropped it in v0.0.6). Without this check an ID
+	// token — which relying parties hand around far more freely — would be
+	// accepted as a bearer credential.
+	if claims.ClientID == "" {
+		return nil, fmt.Errorf("not an access token")
 	}
 
 	return claims, nil

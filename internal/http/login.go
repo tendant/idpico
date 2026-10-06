@@ -1,6 +1,8 @@
 package http
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -17,6 +19,10 @@ type LoginHandler struct {
 	templates   *Templates
 	// forgotPasswordURL is linked from the login form; empty hides the link.
 	forgotPasswordURL string
+	// postLogoutRedirect resolves an absolute post_logout_redirect_uri for a
+	// client (oidc.TokenService.PostLogoutRedirect); nil allows only
+	// same-origin paths.
+	postLogoutRedirect func(ctx context.Context, idTokenHint, clientID, redirectURI, state string) (string, error)
 }
 
 // NewLoginHandler creates a new LoginHandler.
@@ -110,52 +116,48 @@ func (h *LoginHandler) Login(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, returnURL, http.StatusFound)
 }
 
-// Logout handles GET/POST /logout - terminates the session (OIDC end_session_endpoint).
-// Supports the following parameters:
-// - id_token_hint: Optional. The ID token previously issued to the client.
-// - post_logout_redirect_uri: Optional. URL to redirect after logout (must be registered).
-// - state: Optional. Opaque value to maintain state between logout request and callback.
+// Logout handles GET/POST /logout - terminates the session (OIDC end_session_endpoint,
+// RP-Initiated Logout 1.0). Parameters, from the query or a form body:
+//   - id_token_hint: an ID token issued to the client; it may have expired.
+//   - client_id: names the client when there is no id_token_hint.
+//   - post_logout_redirect_uri: where to send the user afterwards: a path on
+//     this server, or a redirect URI registered for the client named above.
+//   - state: passed back to post_logout_redirect_uri.
 func (h *LoginHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if err := h.authService.Logout(r.Context(), w, r); err != nil {
 		h.logger.Error("logout error", "error", err)
 	}
 
-	// Parse logout parameters
-	idTokenHint := r.URL.Query().Get("id_token_hint")
-	postLogoutRedirectURI := r.URL.Query().Get("post_logout_redirect_uri")
-	state := r.URL.Query().Get("state")
+	postLogoutRedirectURI := r.FormValue("post_logout_redirect_uri")
+	state := r.FormValue("state")
 
-	// If post_logout_redirect_uri is provided, validate it
 	if postLogoutRedirectURI != "" {
-		// For security, we only allow redirect URIs that:
-		// 1. Are relative paths (start with /)
-		// 2. Or match a registered client's redirect URI (when id_token_hint is provided)
-		valid := false
-
-		// Check if it's a relative path
-		if isValidReturnURL(postLogoutRedirectURI) {
-			valid = true
-		}
-
-		// If id_token_hint is provided, we could validate against client's registered URIs
-		// For now, we accept the hint but don't validate (development use)
-		_ = idTokenHint
-
-		if valid {
-			redirectURL := postLogoutRedirectURI
-			if state != "" {
-				redirectURL += "?state=" + url.QueryEscape(state)
-			}
+		redirectURL, err := h.resolvePostLogoutRedirect(r, postLogoutRedirectURI, state)
+		if err == nil {
 			h.logger.Info("logout completed", "redirect", redirectURL)
 			http.Redirect(w, r, redirectURL, http.StatusFound)
 			return
 		}
-
-		h.logger.Warn("invalid post_logout_redirect_uri", "uri", postLogoutRedirectURI)
+		h.logger.Warn("invalid post_logout_redirect_uri", "uri", postLogoutRedirectURI, "error", err)
 	}
 
 	// Default: redirect to login page
 	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+// resolvePostLogoutRedirect accepts a same-origin path as is, and anything
+// else only when it is registered for the client the request names.
+func (h *LoginHandler) resolvePostLogoutRedirect(r *http.Request, uri, state string) (string, error) {
+	if isValidReturnURL(uri) {
+		if state != "" {
+			uri += "?state=" + url.QueryEscape(state)
+		}
+		return uri, nil
+	}
+	if h.postLogoutRedirect == nil {
+		return "", fmt.Errorf("only same-origin paths are allowed")
+	}
+	return h.postLogoutRedirect(r.Context(), r.FormValue("id_token_hint"), r.FormValue("client_id"), uri, state)
 }
 
 func (h *LoginHandler) renderLoginError(w http.ResponseWriter, errMsg, returnURL string) {

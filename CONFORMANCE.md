@@ -12,8 +12,8 @@ not with the `golang-jwt` library IDPico signs with. It cannot import `internal/
 
 | | |
 |---|---|
-| **Required, tested** | Discovery, Authorization Code flow, PKCE `S256`, JWKS, signed ID tokens (`RS256`, `EdDSA`), UserInfo, `state`, `nonce`, client authentication `client_secret_basic` / `client_secret_post` / `none`, refresh tokens (rotation, reuse detection, scope narrowing), token revocation (RFC 7009, access and refresh tokens) |
-| **Implemented, not yet in the conformance contract** | RP-initiated logout (`end_session_endpoint`), token introspection, `prompt`, `max_age` / `auth_time`, `groups` claim |
+| **Required, tested** | Discovery, Authorization Code flow, PKCE `S256`, JWKS, signed ID tokens (`RS256`, `EdDSA`), UserInfo, `state`, `nonce`, client authentication `client_secret_basic` / `client_secret_post` / `none`, refresh tokens (rotation, reuse detection, scope narrowing), token revocation (RFC 7009, access and refresh tokens), token introspection (RFC 7662), RP-Initiated Logout 1.0 (`end_session_endpoint`), per-client grant types (`unauthorized_client`) |
+| **Implemented, not yet in the conformance contract** | `prompt` (beyond `none`), `max_age` / `auth_time`, `groups` claim |
 | **Not supported** | Implicit and hybrid flows, Resource Owner Password Credentials, client credentials, device authorization, dynamic client registration, request objects, encrypted tokens, federation, SAML, SCIM |
 
 Unsupported response types and grant types are refused with `unsupported_response_type` /
@@ -100,7 +100,10 @@ and anything that looks like a JWT become `[redacted]`. The throwaway server's o
 | `TestAuthorizationCode` | full flow for a confidential (basic and post auth) and a public client; `state` round-trip; token response shape and `Cache-Control: no-store`; single-use code; UserInfo `sub` equals ID token `sub` |
 | `TestIDToken` | OIDC Core §3.1.3.7 step by step with go-jose: `kid` → JWKS key with matching `alg`, signature, `iss`, `aud` (+`azp` rule), `exp`/`iat`, `nonce`, opaque `sub`, `email` for scope `email` |
 | `TestPKCE` | correct verifier passes; wrong / missing verifier and replay are `invalid_grant`; a public client that omits the challenge, uses `plain` or an unknown method gets `error=invalid_request` at its redirect URI |
-| `TestUserInfo` | claims by scope, GET and POST, `sub` consistency, 401 + `WWW-Authenticate: Bearer` for missing / Basic / empty / junk / altered tokens |
+| `TestUserInfo` | claims by scope, GET and POST, `sub` consistency, 401 + `WWW-Authenticate: Bearer` for missing / Basic / empty / junk / altered tokens and for an unaltered ID token used as a bearer token |
+| `TestIntrospection` | RFC 7662: access and refresh tokens active with `sub`, `client_id`, `scope`, future `exp`; a wrong `token_type_hint` still finds the token (§2.1); ID token, unknown, altered, rotated-out and revoked tokens are `{"active":false}` and nothing else (§2.2); no or wrong client credentials are 401 |
+| `TestLogout` | RP-Initiated Logout 1.0: the session always ends; GET with `id_token_hint` and form POST with `client_id` return to `post_logout_redirect_uri` with `state` (§2, §3); an unregistered URI, another client's URI, a `client_id` contradicting the hint, no client named, or a forged hint are not followed |
+| `TestGrantTypes` | (throwaway server only; clients provisioned with `idpicoctl`) a client without `refresh_token` gets no refresh token and `unauthorized_client` at `/token`; one without `authorization_code` gets `error=unauthorized_client` with `state` at its redirect URI (RFC 6749 §4.1.2.1, §5.2) |
 | `TestSecurityRedirectURI` | exact matching: trailing slash, sub-path, suffix domain, other host, scheme, port, case, query, userinfo — none redirect; exchange `redirect_uri` must match |
 | `TestSecurityToken` | code bound to client (other confidential client, public client), to `redirect_uri`, single use, expiry; wrong / missing / unknown client credentials are 401 `invalid_client`; other grant types `unsupported_grant_type`; error bodies are JSON, `no-store`, leak nothing |
 | `TestRefreshToken` | issued only for `offline_access`; every use rotates (old token `invalid_grant`, access token from before still valid); replaying a rotated-out token kills the current refresh token and every access token of the grant; scope may narrow but not widen (`invalid_scope`); wrong secret 401 `invalid_client`, another client `invalid_grant`, neither consumes the token |
@@ -153,10 +156,23 @@ Found while writing the suite; none affects the declared profile.
 - **Access tokens are JWTs; revocation is checked at `/userinfo` and `/introspect` only.** A resource
   server that validates the signature itself will not learn that a token was revoked — use
   introspection there, or keep `IDPICO_ACCESS_TOKEN_TTL` short.
-- **`grant_types` on a client is stored but not enforced** at `/token`; every client can use both
-  `authorization_code` and `refresh_token`.
-- **Logout and introspection** have unit and `scripts/test-client.sh` coverage but are not yet part of
-  the black-box conformance contract.
+- **No separate `post_logout_redirect_uris`.** RP-Initiated Logout returns the browser to any of the
+  client's registered redirect URIs (exact match), or to a path on IDPico itself.
+- **Introspection is open to every authenticated client.** RFC 7662 §4 leaves the policy to the server;
+  any client with valid credentials may introspect any token, so give introspection credentials only to
+  trusted resource servers.
+
+Fixed while adding logout, introspection and grant types to the suite (v0.0.9):
+
+- `/userinfo` and `/introspect` accepted an unaltered **ID token as an access token** (same key and
+  issuer; the old `TestUserInfo` case altered the token and so never exercised this). Access tokens are
+  now recognised by their `client_id` claim, which ID tokens have not carried since v0.0.6.
+- `post_logout_redirect_uri` accepted only paths on IDPico, so a relying party could never be returned
+  to itself; `id_token_hint` was ignored and a form POST's parameters were not read.
+- Introspection and revocation searched only the type named by `token_type_hint`, reporting an active
+  token inactive (or not revoking it) when the hint was wrong; RFC 7662 / RFC 7009 §2.1 require the
+  search to extend to all types.
+- A client's `grant_types` were stored but not enforced.
 
 Fixed while writing the suite and running the OIDF tests (v0.0.4):
 
@@ -215,7 +231,8 @@ driver.
 | Test | Proves | Policy it pins |
 |---|---|---|
 | `TestOperationalRestart` | After a restart: same `kid`, an access token issued before still passes `/userinfo`, the refresh token refreshes, the browser session completes `/authorize` without a login or consent page, the user's password and the client's secret still work | **Sessions survive restarts.** They are opaque server-side records; `IDPICO_COOKIE_SECRET` only signs CSRF tokens, so an auto-generated secret costs only the login/consent/admin forms that were open at the moment of the restart |
-| `TestOperationalBackupRestore` | A `cp -a` of the data directory taken after a clean stop, started elsewhere on the same port, has the signing key, users, clients, sessions and live tokens | **A backup is `sqlite3 .backup` while running, or a copy of `IDPICO_DATA_DIR` while stopped.** SQLite is checkpointed on close (no `-wal`/`-shm` left behind) and by every maintenance run, so `idpico.db` is self-contained between writes; a naive copy of a running instance is still not the recommended tool |
+| `TestOperationalBackupRestore` | A `cp -a` of the data directory taken after a clean stop, started elsewhere on the same port, has the signing key, users, clients, sessions and live tokens | **A backup is `idpicoctl backup` (or `sqlite3 .backup`) while running, or a copy of `IDPICO_DATA_DIR` while stopped.** SQLite is checkpointed on close (no `-wal`/`-shm` left behind) and by every maintenance run, so `idpico.db` is self-contained between writes; a naive copy of a running instance is still not the recommended tool |
+| `TestOperationalOnlineBackup` | `idpicoctl backup` against the **running** server, the file alone restored into an empty data directory: same `kid`, the access token and refresh token issued just before still work, the browser session resumes | **The restore drill.** The production backup path is exercised end to end on every CI run |
 | `TestOperationalKeyRotation` | `idpicoctl key rotate -grace 6s`, restart: JWKS lists old and new key (public members only), new tokens carry the new `kid`, old tokens still verify. After the grace: old tokens are refused and the old key is no longer published; after the next maintenance run it is deleted. `IDPICO_SIGNING_ALGORITHM=EdDSA` on restart rotates likewise, keeping the RS256 key verifiable | **Rotated keys verify until `IDPICO_SIGNING_KEY_GRACE_PERIOD` ends and are published only until then.** Rotate ≥ one access-token lifetime before the old key must be gone |
 | `TestOperationalReverseProxy` | Behind a simulated TLS-terminating proxy (`Host` + `X-Forwarded-Proto: https` to the loopback listener): discovery and `iss` are the configured `https://` issuer whatever `Host` says; cookies are `Secure`; HSTS is sent only for requests that arrived over TLS; a login completes; `X-Forwarded-For` is believed from a trusted proxy (`IDPICO_TRUSTED_PROXIES`, default private ranges) and ignored — together with `X-Forwarded-Proto` — from anyone else | **The issuer is configuration, never the request.** Forwarding headers from untrusted peers are stripped |
 | `TestOperationalUpgrade` | For each of the two most recent release tags: that release is built from git and run first, writing a real installation (its schema, signing key, password and secret hashes, one login with consent and a refresh token); the current build then starts on the same directory. `goose_db_version` reaches the newest migration and never goes backwards; the `kid`, an access token and a refresh token the old release issued, its password hash, client secret hash and recorded consent all work | **Upgrades are forward-only**: migrations apply at startup; running an older release on a migrated directory is unsupported. Restore the pre-upgrade backup instead |

@@ -92,6 +92,9 @@ func TestUserInfo(t *testing.T) {
 		"bearer_empty": "Bearer ",
 		"bearer_junk":  "Bearer not-a-token",
 		"id_token":     "Bearer " + tr.str("id_token") + "x",
+		// Same key and issuer as an access token, but not a bearer
+		// credential (RFC 6750 §1.2; OIDC Core §5.3 takes an access token).
+		"id_token_as_access_token": "Bearer " + tr.str("id_token"),
 	} {
 		t.Run("rejects_"+name, func(t *testing.T) {
 			resp, body := userinfo(t, header)

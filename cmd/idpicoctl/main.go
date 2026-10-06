@@ -37,16 +37,18 @@ Resources and commands:
           add-member <name> <email>
           remove-member <name> <email>
   client  list
-          add <id> -redirect URI [-redirect URI ...] [-name NAME] [-public] [-skip-consent] [-minimal-id-token] [-scopes "a b"] [-access-ttl 5m] [-refresh-ttl 720h]
+          add <id> -redirect URI [-redirect URI ...] [-name NAME] [-public] [-skip-consent] [-minimal-id-token] [-scopes "a b"] [-grant-types "a b"] [-access-ttl 5m] [-refresh-ttl 720h]
           reset-secret <id>
           delete <id>
   key     list
           rotate [-grace DURATION] [-alg RS256|EdDSA]
+  backup  <file>    consistent copy of the SQLite database, safe while the server runs
 
 Examples:
   idpicoctl user add alice@example.com -name Alice -password s3cret-pass -admin
   idpicoctl group add admins && idpicoctl group add-member admins alice@example.com
   idpicoctl client add my-app -redirect http://localhost:3000/callback
+  idpicoctl backup /backups/idpico-nightly.db
 `
 
 func main() {

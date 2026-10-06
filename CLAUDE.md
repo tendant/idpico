@@ -8,7 +8,7 @@ Write **IDPico** in prose and headings, `idpico` for anything machine-facing (mo
 
 ## Project Status
 
-**IDPico** (module `github.com/tendant/idpico`, binaries `idpico` / `idpicoctl`, env prefix `IDPICO_`) is a tiny, self-contained Identity Provider for **local testing and development**. Phase 1 (File Storage) and the SQLite backend are complete. The IdP is fully functional with:
+**IDPico** (module `github.com/tendant/idpico`, binaries `idpico` / `idpicoctl`, env prefix `IDPICO_`) is a tiny, self-contained Identity Provider for **local development and small single-server deployments** (no MFA, no HA; see the README banner). Phase 1 (File Storage) and the SQLite backend are complete. The IdP is fully functional with:
 
 - Complete OIDC Authorization Code + PKCE flow
 - JWT ID tokens and access tokens (RS256)

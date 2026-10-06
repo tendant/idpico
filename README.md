@@ -5,11 +5,15 @@ OpenID Connect, stores everything in a single SQLite file, and ships with an adm
 a test client, groups, consent, and email flows — so you can develop and test against a real
 IdP without standing up Keycloak.
 
-> **⚠️ Development Use Only**
+> **What IDPico is for**
 >
-> IDPico is designed for **local testing and development**. It is deliberately small and is
-> not intended for production use. For production environments, use a battle-tested identity
-> provider.
+> Local development and testing, and **small single-server deployments** — internal tools, an
+> early product with a modest user base — where an outage of the one instance is survivable.
+> It is deliberately small. It has **no multi-factor authentication**, **no high availability**
+> (one instance, one data directory), no external security audit, and it is pre-1.0. Back up
+> the data directory (see [Data Storage](#data-storage)), keep it behind TLS, and read the known
+> limitations in [CONFORMANCE.md](CONFORMANCE.md). If you need MFA, HA, federation or
+> compliance guarantees, use Keycloak, Zitadel, Authentik or a hosted provider.
 
 ## Features
 
@@ -203,9 +207,14 @@ make build                          # builds ./idpico and ./idpicoctl
 ./idpicoctl client add my-app -redirect http://localhost:3000/callback   # prints the secret once
 ./idpicoctl client add spa -public -redirect http://localhost:5173/callback
 ./idpicoctl client add cli -redirect http://127.0.0.1/cb -access-ttl 5m -refresh-ttl 720h   # per-client lifetimes
+./idpicoctl client add kiosk -redirect https://kiosk.example.com/cb -grant-types authorization_code   # no refresh tokens
 ./idpicoctl key rotate -grace 24h
 ./idpicoctl user list | group list | client list | key list
 ```
+
+A client's grant types are enforced: without `refresh_token` it is never issued a refresh token
+(even with `offline_access`) and `/token` answers `unauthorized_client`; without
+`authorization_code` `/authorize` refuses it the same way.
 
 It takes `-driver`, `-data-dir` and `-dsn` like the server. With the SQLite driver it can run
 while the server is up; with the JSON file driver stop the server first.
@@ -255,18 +264,31 @@ Inspect it with any SQLite client, e.g. `sqlite3 data/idpico.db '.tables'`.
 **Backups.** The data directory is the whole state: database, signing keys, users, clients, sessions,
 consents. The safe ways to copy it:
 
-- **While running:** `sqlite3 data/idpico.db ".backup /backups/idpico-$(date +%F).db"` — SQLite's online
-  backup, consistent regardless of the WAL. (No `sqlite3` on the host? Any container with it works:
-  `docker run --rm -v $DATA:/data:ro -v /backups:/b alpine sh -c 'apk add -q sqlite && sqlite3 /data/idpico.db ".backup /b/idpico.db"'`.)
+- **While running:** `idpicoctl backup <file>` writes a consistent copy (SQLite `VACUUM INTO`, WAL
+  included) and never overwrites an existing file. It is in the image, so no `sqlite3` is needed:
+  `docker exec idpico ./idpicoctl -data-dir /app/data backup /app/data/backups/idpico-$(date +%F).db`.
+  `sqlite3 data/idpico.db ".backup <file>"` is equivalent.
 - **Stopped:** copy the directory. After a clean shutdown there is no `-wal`/`-shm` file and
   `idpico.db` is complete.
 - **Do not** copy `idpico.db` alone from a running server and assume it is complete: SQLite keeps
   recent writes in `idpico.db-wal` until a checkpoint. Maintenance checkpoints every run precisely so
-  that such a copy is not empty, but a `.backup` is the correct tool.
+  that such a copy is not empty, but `idpicoctl backup` is the correct tool.
+
+A backup on the same disk as the data is not a backup: schedule it and copy it off the host, e.g. a
+nightly cron entry on the Docker host:
+
+```bash
+15 3 * * * docker exec idpico ./idpicoctl -data-dir /app/data backup /app/data/backups/idpico-$(date +\%F).db \
+  && rclone move /srv/idpico/backups remote:idpico-backups   # or scp/restic/aws s3 cp
+```
+
+The backup holds the signing keys and client secret hashes: store it as you would a secret.
 
 Restore by placing the file at `<IDPICO_DATA_DIR>/idpico.db` (with no `-wal`/`-shm` beside it) before
-starting the server. Migrations are forward-only: restore a backup rather than running an older
-release on a migrated database.
+starting the server. `make validate-operational` rehearses exactly this (`TestOperationalOnlineBackup`):
+back up a running server, restore into an empty directory, and check keys, tokens and sessions.
+Migrations are forward-only: restore a backup rather than running an older release on a migrated
+database.
 
 ### JSON files (`IDPICO_STORE_DRIVER=file`)
 
@@ -384,9 +406,12 @@ A token can only be revoked by the client it was issued to. Per RFC 7009 the end
 same as a successful revocation.
 
 Access tokens are JWTs and nothing is stored when one is issued; revocation records what is no longer
-valid in `token_revocations` and `/userinfo` and `/introspect` check it. A resource server that only
-verifies the signature will not see a revocation — introspect, or keep `IDPICO_ACCESS_TOKEN_TTL`
-short. Revoking a refresh token also revokes the access tokens of the same user and client issued up
+valid in `token_revocations` and `/userinfo` and `/introspect` check it. **A resource server that only
+verifies the signature will not see a revocation** and keeps accepting a revoked token until it
+expires: `IDPICO_ACCESS_TOKEN_TTL`, 5 minutes by default. A resource server that must honour
+revocation immediately (an admin API, anything that moves money) should call `/introspect` instead
+of, or after, checking the signature; per-client lifetimes can be shortened further on the client's
+admin page. Revoking a refresh token also revokes the access tokens of the same user and client issued up
 to that moment (RFC 7009 §2.1), as does everything else that cuts off a grant: a replayed
 authorization code or refresh token, **Sign out everywhere** and a password change on `/account`,
 the admin console's revoke actions, `idpicoctl user passwd`. If the user has the same app open on a
@@ -419,6 +444,10 @@ Response for an active token:
 }
 ```
 
+Any authenticated client may introspect any token, so give introspection credentials only to
+resource servers you trust. `token_type_hint` is advisory: both token types are always searched.
+An ID token is never active — it is not a bearer credential, and `/userinfo` refuses it too.
+
 Response for an inactive/invalid token:
 ```json
 {
@@ -428,16 +457,21 @@ Response for an inactive/invalid token:
 
 ### OIDC Logout (end_session_endpoint)
 
-The `/logout` endpoint supports OIDC RP-Initiated Logout:
+The `/logout` endpoint implements OpenID Connect RP-Initiated Logout 1.0, by GET or form POST. It
+always ends the user's session at IDPico, then sends the browser back to the application:
 
 ```
-GET /logout?id_token_hint=<id-token>&post_logout_redirect_uri=/callback&state=abc123
+GET /logout?id_token_hint=<id-token>&post_logout_redirect_uri=https://app.example.com/callback&state=abc123
 ```
 
 Parameters:
-- `id_token_hint`: Optional. The ID token previously issued.
-- `post_logout_redirect_uri`: Optional. URL to redirect after logout (must be a relative path).
-- `state`: Optional. Opaque value passed through to the redirect.
+- `id_token_hint`: the ID token issued to the application. Recommended; it may have expired.
+- `client_id`: names the application when there is no `id_token_hint` (if both are sent they must agree).
+- `post_logout_redirect_uri`: where to send the browser afterwards. It must **exactly match one of
+  the client's registered redirect URIs** (there is no separate post-logout list), and the client is
+  the one named by `id_token_hint` or `client_id`. A path on IDPico itself (`/login`) is also
+  accepted. Anything else is not followed and the browser lands on `/login`.
+- `state`: passed back to `post_logout_redirect_uri` as a query parameter.
 
 ### Consent Screen
 

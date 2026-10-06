@@ -118,6 +118,31 @@ func (s *Store) Checkpoint(ctx context.Context) error {
 	return nil
 }
 
+// Backup writes a consistent copy of the database to path while it is in
+// use (VACUUM INTO: one read transaction, the WAL included). The copy is
+// written beside path and renamed into place, so path is either absent or
+// complete; an existing path is never overwritten. Missing directories are
+// created.
+func (s *Store) Backup(ctx context.Context, path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("%s already exists", path)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("sqlite backup: %w", err)
+	}
+	tmp := path + ".partial"
+	_ = os.Remove(tmp)
+	if _, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, tmp); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("sqlite backup: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("sqlite backup: %w", err)
+	}
+	return nil
+}
+
 // Keys returns the crypto.KeyRepository backed by this store's signing_keys table.
 func (s *Store) Keys() *KeyRepository { return s.keys }
 

@@ -1000,6 +1000,11 @@ func applyClientForm(r *http.Request, client *domain.Client) string {
 	if len(client.GrantTypes) == 0 {
 		client.GrantTypes = append([]string(nil), defaultClientGrantTypes...)
 	}
+	for _, g := range client.GrantTypes {
+		if g != "authorization_code" && g != "refresh_token" {
+			return "Unsupported grant type " + g + " (authorization_code, refresh_token)"
+		}
+	}
 	if client.Public {
 		client.Secret = ""
 	}

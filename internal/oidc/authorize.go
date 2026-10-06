@@ -186,6 +186,11 @@ func (s *AuthorizeService) ValidateClient(ctx contextInterface, req *AuthorizeRe
 	if req.ResponseType != "code" {
 		return nil, redirectErr("unsupported_response_type", "response_type must be 'code'")
 	}
+	// RFC 6749 §4.1.2.1: a client not registered for the code grant may not
+	// ask for a code it could never redeem.
+	if !client.AllowsGrant("authorization_code") {
+		return nil, redirectErr("unauthorized_client", "client is not allowed the authorization_code grant")
+	}
 
 	scopes := req.Scopes()
 	hasOpenID := false

@@ -39,7 +39,7 @@ type Config struct {
 	CookieDomain    string        `env:"IDPICO_COOKIE_DOMAIN" env-default:""`
 
 	// Token settings
-	AccessTokenTTL  time.Duration `env:"IDPICO_ACCESS_TOKEN_TTL" env-default:"15m"`
+	AccessTokenTTL  time.Duration `env:"IDPICO_ACCESS_TOKEN_TTL" env-default:"5m"`
 	RefreshTokenTTL time.Duration `env:"IDPICO_REFRESH_TOKEN_TTL" env-default:"168h"` // 7 days
 	AuthCodeTTL     time.Duration `env:"IDPICO_AUTH_CODE_TTL" env-default:"10m"`
 

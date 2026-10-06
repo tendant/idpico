@@ -96,6 +96,22 @@ func (f *revocationFixture) revoke(token, clientID, secret string) {
 	}
 }
 
+// An ID token is signed with the same key and issuer as an access token but
+// is not a bearer credential: /userinfo and introspection must refuse it.
+func TestIDTokenIsNotAnAccessToken(t *testing.T) {
+	f := newRevocationFixture(t)
+	resp, _ := f.issue("alice", "app-a", "secret-a")
+	if !f.accepted(resp.AccessToken) {
+		t.Fatal("access token should be accepted")
+	}
+	if f.accepted(resp.IDToken) {
+		t.Error("userinfo accepted an ID token as an access token")
+	}
+	if f.active(resp.IDToken, "app-a", "secret-a") {
+		t.Error("introspection reported an ID token active")
+	}
+}
+
 func TestRevokeAccessToken(t *testing.T) {
 	f := newRevocationFixture(t)
 	a, _ := f.issue("alice", "app-a", "secret-a")

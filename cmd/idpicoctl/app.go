@@ -30,6 +30,9 @@ type app struct {
 var errUsage = errors.New(strings.TrimSpace(usage))
 
 func (a *app) run(ctx context.Context, args []string) error {
+	if len(args) == 2 && args[0] == "backup" {
+		return a.backup(ctx, args[1])
+	}
 	if len(args) < 2 {
 		return errUsage
 	}
@@ -46,6 +49,23 @@ func (a *app) run(ctx context.Context, args []string) error {
 	default:
 		return fmt.Errorf("unknown resource %q\n\n%s", resource, strings.TrimSpace(usage))
 	}
+}
+
+// backup writes a consistent copy of the SQLite database while the server
+// keeps running. The file driver has no online equivalent: stop the server
+// and copy the directory.
+func (a *app) backup(ctx context.Context, path string) error {
+	b, ok := a.store.(interface {
+		Backup(ctx context.Context, path string) error
+	})
+	if !ok {
+		return fmt.Errorf("backup needs the sqlite driver; with -driver file, stop the server and copy the data directory")
+	}
+	if err := b.Backup(ctx, path); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.out, "backed up to %s\n", path)
+	return nil
 }
 
 // Users
@@ -301,6 +321,7 @@ func (a *app) client(ctx context.Context, cmd string, args []string) error {
 		skipConsent := fs.Bool("skip-consent", false, "first-party: skip the consent screen")
 		minimalIDToken := fs.Bool("minimal-id-token", false, "leave profile, email and groups claims out of the ID token (UserInfo only)")
 		scopes := fs.String("scopes", "openid profile email offline_access groups", "allowed scopes")
+		grantTypes := fs.String("grant-types", "authorization_code refresh_token", "allowed grant types")
 		accessTTL := fs.Duration("access-ttl", 0, "access/ID token lifetime (e.g. 5m); 0 = server default")
 		refreshTTL := fs.Duration("refresh-ttl", 0, "refresh token lifetime (e.g. 720h); 0 = server default")
 		id, err := parseOne(fs, args, "id")
@@ -310,10 +331,15 @@ func (a *app) client(ctx context.Context, cmd string, args []string) error {
 		if len(redirects) == 0 {
 			return fmt.Errorf("at least one -redirect URI is required")
 		}
+		for _, g := range strings.Fields(*grantTypes) {
+			if g != "authorization_code" && g != "refresh_token" {
+				return fmt.Errorf("unsupported grant type %q (authorization_code, refresh_token)", g)
+			}
+		}
 		c := &domain.Client{
 			ID: id, Name: *name, RedirectURIs: redirects, Public: *public, SkipConsent: *skipConsent, MinimalIDToken: *minimalIDToken,
 			Scopes:          strings.Fields(*scopes),
-			GrantTypes:      []string{"authorization_code", "refresh_token"},
+			GrantTypes:      strings.Fields(*grantTypes),
 			AccessTokenTTL:  *accessTTL,
 			RefreshTokenTTL: *refreshTTL,
 		}

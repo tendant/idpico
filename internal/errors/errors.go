@@ -23,6 +23,8 @@ const (
 	// malformed requests: the grant itself is bad, or the scope is.
 	CodeInvalidGrant = "invalid_grant"
 	CodeInvalidScope = "invalid_scope"
+	// The client is authenticated but may not use this grant type.
+	CodeUnauthorizedClient = "unauthorized_client"
 )
 
 // Error represents a structured error with a code and message.
@@ -104,6 +106,12 @@ func InvalidGrant(message string) *Error {
 // InvalidScope creates an error for a scope the grant does not allow.
 func InvalidScope(message string) *Error {
 	return &Error{Code: CodeInvalidScope, Message: message}
+}
+
+// UnauthorizedClient creates an error for a grant type the client is not
+// registered for (RFC 6749 §5.2 unauthorized_client).
+func UnauthorizedClient(message string) *Error {
+	return &Error{Code: CodeUnauthorizedClient, Message: message}
 }
 
 // Unauthorized creates an unauthorized error.

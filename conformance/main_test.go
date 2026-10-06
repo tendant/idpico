@@ -16,6 +16,11 @@ import (
 // cfg is the provider under test, set by TestMain.
 var cfg Config
 
+// defInst is the throwaway instance TestMain started; nil against an
+// external issuer. Tests that must provision their own clients (through
+// idpicoctl) skip without it.
+var defInst *instance
+
 // def is the default server every non-operational test talks to: the
 // throwaway instance TestMain starts, or the external issuer.
 var def *provider
@@ -47,6 +52,7 @@ func TestMain(m *testing.M) {
 	}
 	cfg.Issuer = inst.issuer
 	def = inst.provider()
+	defInst = inst
 
 	var once sync.Once
 	cleanup := func() {

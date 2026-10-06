@@ -681,6 +681,7 @@ func TestHandleRefreshToken(t *testing.T) {
 		{
 			name: "invalid refresh token",
 			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
+				seed(clientRepo, userRepo, true)
 			},
 			request: &TokenRequest{
 				GrantType:    "refresh_token",
@@ -802,6 +803,7 @@ func TestHandleRefreshToken(t *testing.T) {
 		{
 			name: "wrong client_id",
 			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository, userRepo *mockUserRepository) {
+				seed(clientRepo, userRepo, true)
 				tokenRepo.Create(ctx, &domain.Token{
 					ID:        "mismatch-token",
 					UserID:    "user-123",
@@ -814,7 +816,7 @@ func TestHandleRefreshToken(t *testing.T) {
 			request: &TokenRequest{
 				GrantType:    "refresh_token",
 				RefreshToken: "mismatch-token",
-				ClientID:     "wrong-client",
+				ClientID:     "test-app",
 				ClientSecret: "test-secret",
 			},
 			wantErr:     true,
@@ -886,6 +888,52 @@ func TestPerClientTokenTTLs(t *testing.T) {
 		if got := time.Until(newRT.ExpiresAt); got < tc.wantRefresh-time.Minute || got > tc.wantRefresh {
 			t.Errorf("%s: refresh token expires in %v, want ~%v", tc.client, got, tc.wantRefresh)
 		}
+	}
+}
+
+// RFC 6749 §5.2: a client using a grant type it is not registered for gets
+// unauthorized_client; a client that cannot refresh is not handed a refresh
+// token; a client stored with no grant types keeps both (pre-v0.0.9 rows).
+func TestClientGrantTypesEnforced(t *testing.T) {
+	svc, clientRepo, authCodeRepo, tokenRepo, userRepo := setupTokenService()
+	ctx := context.Background()
+	userRepo.Create(ctx, &domain.User{ID: "user-123", Email: "test@example.com", Active: true})
+	scopes := []string{"openid", "offline_access"}
+	clientRepo.Create(ctx, &domain.Client{ID: "code-only", Secret: "s", RedirectURIs: []string{"http://x/cb"}, Scopes: scopes, GrantTypes: []string{"authorization_code"}})
+	clientRepo.Create(ctx, &domain.Client{ID: "refresh-only", Secret: "s", RedirectURIs: []string{"http://x/cb"}, Scopes: scopes, GrantTypes: []string{"refresh_token"}})
+	clientRepo.Create(ctx, &domain.Client{ID: "legacy", Secret: "s", RedirectURIs: []string{"http://x/cb"}, Scopes: scopes})
+
+	code := func(client string) *TokenRequest {
+		authCodeRepo.Create(ctx, &domain.AuthCode{Code: "code-" + client, ClientID: client, UserID: "user-123", RedirectURI: "http://x/cb",
+			Scope: "openid offline_access", ExpiresAt: time.Now().Add(time.Minute)})
+		return &TokenRequest{GrantType: "authorization_code", Code: "code-" + client, RedirectURI: "http://x/cb", ClientID: client, ClientSecret: "s"}
+	}
+	refresh := func(client string) *TokenRequest {
+		tokenRepo.Create(ctx, &domain.Token{ID: "rt-" + client, UserID: "user-123", ClientID: client, Scope: "openid offline_access", ExpiresAt: time.Now().Add(time.Hour)})
+		return &TokenRequest{GrantType: "refresh_token", RefreshToken: "rt-" + client, ClientID: client, ClientSecret: "s"}
+	}
+
+	resp, err := svc.HandleAuthorizationCode(ctx, code("code-only"))
+	if err != nil {
+		t.Fatalf("code-only: authorization_code: %v", err)
+	}
+	if resp.RefreshToken != "" {
+		t.Error("code-only: issued a refresh token the client may not redeem")
+	}
+	if _, err := svc.HandleRefreshToken(ctx, refresh("code-only")); !idperrors.IsCode(err, idperrors.CodeUnauthorizedClient) {
+		t.Errorf("code-only: refresh_token error = %v, want unauthorized_client", err)
+	}
+	if _, err := svc.HandleAuthorizationCode(ctx, code("refresh-only")); !idperrors.IsCode(err, idperrors.CodeUnauthorizedClient) {
+		t.Errorf("refresh-only: authorization_code error = %v, want unauthorized_client", err)
+	}
+	if a, _ := authCodeRepo.GetByCode(ctx, "code-refresh-only"); a.Used {
+		t.Error("refresh-only: a refused code was marked used")
+	}
+	if resp, err := svc.HandleAuthorizationCode(ctx, code("legacy")); err != nil || resp.RefreshToken == "" {
+		t.Errorf("legacy: authorization_code = %+v, %v; want tokens with a refresh token", resp, err)
+	}
+	if _, err := svc.HandleRefreshToken(ctx, refresh("legacy")); err != nil {
+		t.Errorf("legacy: refresh_token: %v", err)
 	}
 }
 

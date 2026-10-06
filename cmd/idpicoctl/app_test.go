@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -172,4 +173,30 @@ func TestUsage(t *testing.T) {
 	mustFail(t, a, "user")
 	mustFail(t, a, "bogus list")
 	mustFail(t, a, "user bogus")
+}
+
+func TestBackup(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s, err := sqlite.NewStore(ctx, filepath.Join(dir, "idpico.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	out := &bytes.Buffer{}
+	a := &app{store: s, keys: crypto.NewKeyService(s.Keys()), keyRepo: s.Keys(), out: out}
+	run(t, a, out, "user add alice@example.com -password s3cret-pass")
+
+	dst := filepath.Join(dir, "backups", "backup.db") // directory created on demand
+	run(t, a, out, "backup "+dst)
+	mustFail(t, a, "backup "+dst) // never overwrites
+
+	restored, err := sqlite.NewStore(ctx, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	if _, err := restored.Users().GetByEmail(ctx, "alice@example.com"); err != nil {
+		t.Errorf("backup lacks the user: %v", err)
+	}
 }

@@ -515,9 +515,9 @@ func TestTokenTTLDefaults(t *testing.T) {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	// Access token: 15 minutes
-	if cfg.AccessTokenTTL.Minutes() != 15 {
-		t.Errorf("Expected access token TTL 15m, got %v", cfg.AccessTokenTTL)
+	// Access token: 5 minutes
+	if cfg.AccessTokenTTL.Minutes() != 5 {
+		t.Errorf("Expected access token TTL 5m, got %v", cfg.AccessTokenTTL)
 	}
 
 	// Refresh token: 7 days (168 hours)

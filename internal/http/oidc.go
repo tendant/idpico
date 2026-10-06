@@ -353,6 +353,8 @@ func (h *OIDCHandler) Token(w http.ResponseWriter, r *http.Request) {
 			errorCode = "invalid_grant"
 		case idperrors.IsCode(err, idperrors.CodeInvalidScope):
 			errorCode = "invalid_scope"
+		case idperrors.IsCode(err, idperrors.CodeUnauthorizedClient):
+			errorCode = "unauthorized_client"
 		}
 
 		errMsg := "request failed"

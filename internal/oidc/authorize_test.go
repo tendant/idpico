@@ -169,8 +169,16 @@ func TestValidateClient(t *testing.T) {
 		RedirectURIs: []string{"https://app.example.com/callback"},
 		Scopes:       []string{"openid", "profile"},
 	}
+	refreshOnlyClient := &domain.Client{
+		ID:           "refresh-only-app",
+		Secret:       "super-secret",
+		RedirectURIs: []string{"https://app.example.com/callback"},
+		Scopes:       []string{"openid"},
+		GrantTypes:   []string{"refresh_token"},
+	}
 	clientRepo.Create(context.Background(), publicClient)
 	clientRepo.Create(context.Background(), confidentialClient)
+	clientRepo.Create(context.Background(), refreshOnlyClient)
 
 	tests := []struct {
 		name        string
@@ -290,6 +298,19 @@ func TestValidateClient(t *testing.T) {
 			wantErr:     true,
 			errContains: "response_type must be 'code'",
 			wantCode:    "unsupported_response_type",
+		},
+		{
+			// RFC 6749 §4.1.2.1 unauthorized_client
+			name: "client without the authorization_code grant is reported to the client",
+			request: &AuthorizeRequest{
+				ResponseType: "code",
+				ClientID:     "refresh-only-app",
+				RedirectURI:  "https://app.example.com/callback",
+				Scope:        "openid",
+			},
+			wantErr:     true,
+			errContains: "authorization_code grant",
+			wantCode:    "unauthorized_client",
 		},
 		{
 			name: "missing openid scope is reported to the client",

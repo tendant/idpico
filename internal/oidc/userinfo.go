@@ -91,8 +91,8 @@ func NewUserInfoService(users store.UserRepository, tokenGenerator *crypto.Token
 // GetUserInfo returns user info for the given access token.
 func (s *UserInfoService) GetUserInfo(ctx context.Context, accessToken string) (*UserInfoResponse, error) {
 	// Parse and validate the access token
-	token, claims, err := s.tokenGenerator.ParseToken(accessToken)
-	if err != nil || !token.Valid {
+	claims, err := s.tokenGenerator.ValidateAccessToken(accessToken)
+	if err != nil {
 		metrics.RecordTokenRejected("invalid")
 		return nil, idperrors.New(idperrors.CodeTokenInvalid, "invalid access token")
 	}
@@ -103,11 +103,7 @@ func (s *UserInfoService) GetUserInfo(ctx context.Context, accessToken string) (
 		return nil, idperrors.New(idperrors.CodeTokenInvalid, "access token has been revoked")
 	}
 
-	// Get user ID from token subject
-	subject, err := token.Claims.GetSubject()
-	if err != nil {
-		return nil, idperrors.New(idperrors.CodeTokenInvalid, "invalid token subject")
-	}
+	subject := claims.Subject
 
 	// Get user from database
 	user, err := s.users.GetByID(ctx, subject)

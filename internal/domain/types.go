@@ -42,6 +42,21 @@ type Client struct {
 	UpdatedAt       time.Time     `json:"updated_at"`
 }
 
+// AllowsGrant reports whether the client may use an OAuth 2.0 grant type
+// (authorization_code, refresh_token). A client stored without any grant
+// types — rows written before v0.0.9 enforced them — allows both.
+func (c *Client) AllowsGrant(grantType string) bool {
+	if len(c.GrantTypes) == 0 {
+		return grantType == "authorization_code" || grantType == "refresh_token"
+	}
+	for _, g := range c.GrantTypes {
+		if g == grantType {
+			return true
+		}
+	}
+	return false
+}
+
 // Group is a named set of users, exposed to clients through the "groups"
 // claim so applications can map memberships to their own permissions.
 type Group struct {

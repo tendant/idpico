@@ -39,7 +39,7 @@ IDPICO_COOKIE_SECURE=           # Unset: true when IDPICO_ISSUER_URL is https://
 
 # Tokens (server defaults; each client can override both on its admin page)
 IDPICO_SIGNING_ALGORITHM=RS256  # or EdDSA (Ed25519); changing it rotates the key at the next start
-IDPICO_ACCESS_TOKEN_TTL=15m
+IDPICO_ACCESS_TOKEN_TTL=5m      # also the ID token lifetime; bounds how long a revoked token works at a resource server that does not introspect
 IDPICO_REFRESH_TOKEN_TTL=168h   # 7 days
 IDPICO_AUTH_CODE_TTL=10m
 
