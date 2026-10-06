@@ -4,8 +4,36 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+## [0.0.9] - 2026-10-06
+
+Safer for a small production deployment. Logout, introspection and grant types joined the black-box
+conformance suite, which found an ID token accepted as an access token, a logout that could never
+return to the application, and a `token_type_hint` that could hide a token. Backups are one command
+in the running container and rehearsed in CI. **No migration.** Two behaviour changes to check
+before upgrading: the default access-token (and ID-token) lifetime drops from 15 to 5 minutes, and a
+client's `grant_types` are now enforced.
+
+### Security
+
+- `/userinfo` and `/introspect` no longer accept an **ID token as an access token**. Both are signed with the same key and issuer; access tokens are now recognised by their `client_id` claim, which ID tokens have not carried since v0.0.6. The existing conformance case altered the ID token and so never caught this; `TestUserInfo` and `TestIntrospection` now send it unaltered.
+- `IDPICO_ACCESS_TOKEN_TTL` defaults to **5m** (was 15m). A resource server that verifies JWTs itself does not see revocations, so this bounds how long a revoked token keeps working there. Set `IDPICO_ACCESS_TOKEN_TTL=15m`, or a per-client lifetime, to keep the old behaviour.
+
+### Added
+
+- `idpicoctl backup <file>`: a consistent copy of the SQLite database while the server runs (`VACUUM INTO`, WAL included), written to `<file>.partial` and renamed, never overwriting. It is in the image, so `docker exec idpico ./idpicoctl -data-dir /app/data backup …` needs no `sqlite3`. `TestOperationalOnlineBackup` restores such a backup into an empty directory and checks keys, tokens and sessions on every CI run. The README shows a nightly, off-host schedule.
+- `idpicoctl client add -grant-types "authorization_code refresh_token"`.
+- Conformance: `TestLogout`, `TestIntrospection`, `TestGrantTypes`; logout and introspection are now in the declared profile.
+
+### Changed
+
+- **Client grant types are enforced.** A client without `refresh_token` is not issued refresh tokens (even with `offline_access`) and gets `unauthorized_client` at `/token`; one without `authorization_code` gets `error=unauthorized_client` at its redirect URI. Clients stored without any grant types keep both. Every client IDPico creates (admin console, `idpicoctl`, bootstrap) has both by default, so nothing changes unless you narrowed them; the admin console rejects unknown grant types.
+- RP-Initiated Logout: `post_logout_redirect_uri` may be any redirect URI registered for the client named by `id_token_hint` (which may have expired) or `client_id` — exact match, and both must agree when sent together. Before, only paths on IDPico were accepted and `id_token_hint` was ignored. Parameters are read from a form POST too, and `state` is added to an existing query string correctly.
+- The refresh-token grant authenticates the client before looking at the token, like the code grant.
+- README: the "development use only" banner now says what IDPico is for — development and small single-server deployments — and what it lacks (MFA, high availability, an external audit).
+
 ### Fixed
 
+- Introspection and revocation search both token types whatever `token_type_hint` says (RFC 7662 / RFC 7009 §2.1); a wrong hint made an active token look inactive or left it unrevoked.
 - Maintenance checkpoints the SQLite write-ahead log every run (`PRAGMA wal_checkpoint(TRUNCATE)`). SQLite only does this by itself at 1000 WAL pages, which a small, long-running instance never reaches: a live server was found with a 4 KB `idpico.db` and everything in `idpico.db-wal`, so a copy of `idpico.db` alone would have been empty. The README now documents `sqlite3 .backup` as the way to back up a running server.
 
 ## [0.0.8] - 2026-09-20
@@ -207,7 +235,8 @@ client, and an audit trail.
 - Initial file-backed IdP: Authorization Code + PKCE, RS256 JWTs, refresh token rotation,
   revocation, introspection, RP-initiated logout, rate limiting, lockout, CORS, metrics.
 
-[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.8...HEAD
+[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.9...HEAD
+[0.0.9]: https://github.com/tendant/idpico/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/tendant/idpico/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/tendant/idpico/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/tendant/idpico/compare/v0.0.5...v0.0.6
