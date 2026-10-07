@@ -4,6 +4,11 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+## [0.0.10] - 2026-10-07
+
+Upgrades protect themselves: a start that would migrate the schema backs the database up first. No
+migration in this release, so upgrading from v0.0.9 takes no copy.
+
 ### Added
 
 - A start that has a schema migration to apply first copies the database, unmigrated, to `<IDPICO_DATA_DIR>/backups/idpico-pre-migration-v<from>-to-v<to>-<time>.db` and logs the path. If the copy fails, nothing is migrated and the server does not start, so the previous release can still open the database. A new database or one already current takes no copy; `idpicoctl` (which opens the same store) does the same. `TestOperationalUpgrade` checks the copy exists at the old schema version whenever an upgrade migrated.
@@ -239,7 +244,8 @@ client, and an audit trail.
 - Initial file-backed IdP: Authorization Code + PKCE, RS256 JWTs, refresh token rotation,
   revocation, introspection, RP-initiated logout, rate limiting, lockout, CORS, metrics.
 
-[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.9...HEAD
+[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.10...HEAD
+[0.0.10]: https://github.com/tendant/idpico/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/tendant/idpico/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/tendant/idpico/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/tendant/idpico/compare/v0.0.6...v0.0.7
