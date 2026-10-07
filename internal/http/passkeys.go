@@ -19,6 +19,13 @@ import (
 // maxPasskeyResponse bounds the credential JSON the browser posts.
 const maxPasskeyResponse = 64 << 10
 
+// isLockedError reports the account-lockout refusal (as opposed to a CSRF
+// failure, which shares CodeForbidden).
+func isLockedError(err error) bool {
+	var e *idperrors.Error
+	return errors.As(err, &e) && e.Code == idperrors.CodeForbidden && e.Message == "account is temporarily locked"
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -41,6 +48,8 @@ func passkeyFailure(w http.ResponseWriter, err error) {
 		passkeyError(w, http.StatusBadRequest, "That took too long. Please try again.")
 	case errors.Is(err, auth.ErrPasskeysUnavailable):
 		passkeyError(w, http.StatusNotFound, "Passkeys are not available on this server.")
+	case idperrors.IsCode(err, idperrors.CodeForbidden):
+		passkeyError(w, http.StatusForbidden, "This page has expired. Reload it and try again.")
 	case idperrors.IsCode(err, idperrors.CodeInvalidInput), idperrors.IsCode(err, idperrors.CodeAlreadyExists):
 		msg := "The passkey could not be added."
 		if e, ok := err.(*idperrors.Error); ok && idperrors.IsCode(err, idperrors.CodeInvalidInput) {
@@ -156,7 +165,7 @@ func (h *LoginHandler) PasskeyFinish(w http.ResponseWriter, r *http.Request) {
 			q.Set("return_url", returnURL)
 		}
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Your sign-in expired.", "redirect": "/login?" + q.Encode()})
-	case idperrors.IsCode(err, idperrors.CodeForbidden):
+	case isLockedError(err):
 		passkeyError(w, http.StatusForbidden, "Account is temporarily locked due to too many failed attempts. Please try again later.")
 	case err != nil:
 		h.logger.Info("passkey login failed", "error", err)

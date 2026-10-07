@@ -170,3 +170,19 @@ func TestIntegration_PasskeyAssertionReplay(t *testing.T) {
 		t.Error("an assertion was accepted after its challenge had been used")
 	}
 }
+
+// Requests without a CSRF token or pending login are client errors, never 500.
+func TestIntegration_PasskeyEndpointsRejectBareRequests(t *testing.T) {
+	env := setupTestEnv(t, "sqlite")
+	defer env.cleanup()
+	for _, path := range []string{"/login/passkey/begin", "/login/passkey/finish"} {
+		resp, err := http.Post(env.server.URL+path, "application/x-www-form-urlencoded", strings.NewReader(""))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode < 400 || resp.StatusCode >= 500 {
+			t.Errorf("POST %s without CSRF or pending login: HTTP %d, want 4xx", path, resp.StatusCode)
+		}
+	}
+}
