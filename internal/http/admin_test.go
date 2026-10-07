@@ -87,6 +87,10 @@ func TestAdmin_Access(t *testing.T) {
 		if status != http.StatusOK || !strings.Contains(body, "Dashboard") || !strings.Contains(body, "admin@example.com") {
 			t.Errorf("admin should see dashboard, got %d", status)
 		}
+		// No playground mounted (as in production): the nav must not link to it.
+		if strings.Contains(body, `href="/playground"`) {
+			t.Error("admin nav links to /playground although it is not mounted")
+		}
 
 		// Landing page routes admins to /admin and others to a status page
 		resp, _ = admin.Get(base + "/")

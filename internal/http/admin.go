@@ -37,6 +37,8 @@ type AdminConfig struct {
 	// a per-client override replaces.
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
+	// PlaygroundEnabled is set by the server when /playground is mounted.
+	PlaygroundEnabled bool
 }
 
 // AdminHandler serves the server-rendered administration UI under /admin.
@@ -153,11 +155,12 @@ func currentAdmin(r *http.Request) *domain.User {
 
 // adminBase carries what the admin layout needs; page data structs embed it.
 type adminBase struct {
-	Section     string
-	CurrentUser *domain.User
-	CSRFToken   string
-	Flash       string
-	Error       string
+	Section           string
+	CurrentUser       *domain.User
+	CSRFToken         string
+	Flash             string
+	Error             string
+	PlaygroundEnabled bool
 }
 
 func (h *AdminHandler) base(w http.ResponseWriter, r *http.Request, section string) adminBase {
@@ -166,10 +169,11 @@ func (h *AdminHandler) base(w http.ResponseWriter, r *http.Request, section stri
 		h.logger.Error("failed to generate CSRF token", "error", err)
 	}
 	return adminBase{
-		Section:     section,
-		CurrentUser: currentAdmin(r),
-		CSRFToken:   token,
-		Flash:       r.URL.Query().Get("flash"),
+		Section:           section,
+		CurrentUser:       currentAdmin(r),
+		CSRFToken:         token,
+		Flash:             r.URL.Query().Get("flash"),
+		PlaygroundEnabled: h.cfg.PlaygroundEnabled,
 	}
 }
 

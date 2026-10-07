@@ -20,7 +20,7 @@
                 <a href="/admin/clients"{{if eq .Section "clients"}} class="active"{{end}}>Clients</a>
                 <a href="/admin/keys"{{if eq .Section "keys"}} class="active"{{end}}>Signing Keys</a>
                 <a href="/admin/audit"{{if eq .Section "audit"}} class="active"{{end}}>Audit</a>
-                <a href="/playground">Playground</a>
+                {{if .PlaygroundEnabled}}<a href="/playground">Playground</a>{{end}}
             </nav>
         </div>
         <div class="user"><a href="/account">{{.CurrentUser.Email}}</a> <a href="/logout">Sign out</a></div>

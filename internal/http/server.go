@@ -367,7 +367,7 @@ func NewServer(addr string, opts ...Option) *Server {
 		}
 		landing := messagePageData{
 			Title:     "IDPico",
-			Message:   "This is an OpenID Connect identity provider for local development.",
+			Message:   "This is an OpenID Connect identity provider.",
 			BackURL:   "/login",
 			BackLabel: "Sign in",
 		}
@@ -378,12 +378,14 @@ func NewServer(addr string, opts ...Option) *Server {
 	})
 
 	// OIDC playground (built-in relying party)
+	playgroundMounted := false
 	if s.playground && s.authService != nil && s.issuerURL != "" {
 		pg, err := NewPlaygroundHandler(context.Background(), s.playgroundClients, s.authService.CSRF(), r, templates, s.issuerURL, s.logger)
 		if err != nil {
 			s.logger.Error("failed to enable playground", "error", err)
 		} else {
 			r.Route("/playground", pg.Routes)
+			playgroundMounted = true
 			s.logger.Info("OIDC playground enabled at /playground")
 		}
 	}
@@ -397,7 +399,9 @@ func NewServer(addr string, opts ...Option) *Server {
 
 	// Admin UI
 	if s.adminConfig != nil && s.authService != nil {
-		admin := NewAdminHandler(*s.adminConfig, templates, s.logger)
+		cfg := *s.adminConfig
+		cfg.PlaygroundEnabled = playgroundMounted // the nav links to it only when it exists
+		admin := NewAdminHandler(cfg, templates, s.logger)
 		admin.audit = s.audit
 		r.Route("/admin", admin.Routes)
 		s.logger.Info("admin UI enabled at /admin")
