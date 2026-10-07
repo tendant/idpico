@@ -201,9 +201,12 @@ what is accepted, with a reason each. Anything else — a failure, a new warning
 run exit non-zero. `KEEP_SUITE=1` leaves the suite up at <https://localhost.emobix.co.uk:8443/> to browse
 the logs and screenshots. It is not run in CI (docker, ~1.3 GB of images, ~90 s).
 
-### Results — 2026-09-20, suite `440eec8b`, Basic OP profile
+### Results — 2026-10-07 (v0.0.9), suite `440eec8b`, Basic OP profile
 
-36 modules, 1717 conditions: **0 failures**, 5 warnings, 4 skips, 4 screenshots for review.
+36 modules, 1717 conditions: **0 failures**, 5 warnings, 4 skips, 4 screenshots for review. Identical
+to the v0.0.8 run of 2026-09-20 module for module: the v0.0.9 changes (ID tokens refused as bearer
+tokens, logout redirects, grant-type enforcement, `token_type_hint`) are outside what Basic OP tests,
+and none disturbed it.
 
 | Result | Modules | Classification |
 |---|---|---|
