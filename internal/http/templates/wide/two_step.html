@@ -1,0 +1,31 @@
+{{define "title"}}Two-step sign-in{{end}}
+{{define "content"}}
+<h1>Two-step sign-in</h1>
+{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+
+{{if .RecoveryCodes}}
+<div class="card">
+    <p><strong>Save these recovery codes now.</strong> Each one signs you in once if you lose your authenticator. They are not shown again; anyone who has them can use them, so keep them as safely as your password.</p>
+    <pre class="nowrap">{{range .RecoveryCodes}}{{.}}
+{{end}}</pre>
+    <p><a href="/account">Back to your account</a></p>
+</div>
+{{else}}
+<p class="muted">After your password, IDPico will ask for a 6-digit code from an authenticator app on your phone (Google Authenticator, 1Password, Authy, Bitwarden, …).</p>
+<div class="card">
+    <p><strong>1.</strong> Scan this code with the app:</p>
+    <p><img src="{{.QRDataURI}}" alt="QR code for your authenticator app" width="200" height="200" class="qr"></p>
+    <p class="help">Can't scan it? Enter this key by hand: <code>{{.SecretDisplay}}</code> (time-based, 6 digits, 30 seconds).</p>
+    <form method="POST" action="/account/two-step/enable">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="secret" value="{{.Secret}}">
+        <div class="form-row">
+            <label for="code"><strong>2.</strong> Enter the code it shows</label>
+            <input type="text" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus>
+        </div>
+        <button type="submit">Turn on</button>
+        <a href="/account" class="muted" style="margin-left:12px">Cancel</a>
+    </form>
+</div>
+{{end}}
+{{end}}

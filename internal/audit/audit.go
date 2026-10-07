@@ -27,6 +27,11 @@ const (
 	PasswordChanged        = "password.changed"
 	EmailVerified          = "email.verified"
 
+	TOTPEnabled              = "totp.enabled"
+	TOTPDisabled             = "totp.disabled"
+	TOTPRecoveryCodeUsed     = "totp.recovery_code_used"
+	TOTPRecoveryCodesRenewed = "totp.recovery_codes_renewed"
+
 	KeyRotated = "key.rotated"
 
 	UserCreated         = "user.created"

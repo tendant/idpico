@@ -296,6 +296,8 @@ func NewServer(addr string, opts ...Option) *Server {
 
 		// Apply rate limiting to login POST to prevent brute-force attacks
 		limited(interactive).Post("/login", login.Login)
+		r.Get("/login/code", login.CodePage)
+		limited(interactive).Post("/login/code", login.Code)
 		if interactive != nil {
 			s.logger.Info("rate limiting enabled", "interactive_per_min", s.loginRateLimit, "api_per_min", s.loginRateLimit*10)
 		}

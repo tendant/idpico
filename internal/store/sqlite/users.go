@@ -14,11 +14,17 @@ type userRepository struct {
 	db *sql.DB
 }
 
-const userColumns = "id, email, password_hash, display_name, given_name, family_name, active, email_verified, admin, created_at, updated_at"
+const userColumns = "id, email, password_hash, display_name, given_name, family_name, active, email_verified, admin, totp_secret, totp_last_step, recovery_codes, created_at, updated_at"
 
 func scanUser(row interface{ Scan(...any) error }) (*domain.User, error) {
 	var u domain.User
-	if err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.DisplayName, &u.GivenName, &u.FamilyName, &u.Active, &u.EmailVerified, &u.Admin, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	var recovery string
+	if err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.DisplayName, &u.GivenName, &u.FamilyName, &u.Active, &u.EmailVerified, &u.Admin,
+		&u.TOTPSecret, &u.TOTPLastStep, &recovery, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		return nil, err
+	}
+	var err error
+	if u.RecoveryCodes, err = unmarshalStrings(recovery); err != nil {
 		return nil, err
 	}
 	return &u, nil
@@ -29,9 +35,14 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 	user.CreatedAt = now
 	user.UpdatedAt = now
 
-	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO users (`+userColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		user.ID, user.Email, user.PasswordHash, user.DisplayName, user.GivenName, user.FamilyName, user.Active, user.EmailVerified, user.Admin, utc(user.CreatedAt), utc(user.UpdatedAt),
+	recovery, err := marshalStrings(user.RecoveryCodes)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx,
+		`INSERT INTO users (`+userColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		user.ID, user.Email, user.PasswordHash, user.DisplayName, user.GivenName, user.FamilyName, user.Active, user.EmailVerified, user.Admin,
+		user.TOTPSecret, user.TOTPLastStep, recovery, utc(user.CreatedAt), utc(user.UpdatedAt),
 	)
 	if err != nil {
 		if violatesUserEmail(err) {
@@ -70,9 +81,15 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	user.UpdatedAt = time.Now()
 
+	recovery, err := marshalStrings(user.RecoveryCodes)
+	if err != nil {
+		return err
+	}
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE users SET email = ?, password_hash = ?, display_name = ?, given_name = ?, family_name = ?, active = ?, email_verified = ?, admin = ?, updated_at = ? WHERE id = ?`,
-		user.Email, user.PasswordHash, user.DisplayName, user.GivenName, user.FamilyName, user.Active, user.EmailVerified, user.Admin, utc(user.UpdatedAt), user.ID,
+		`UPDATE users SET email = ?, password_hash = ?, display_name = ?, given_name = ?, family_name = ?, active = ?, email_verified = ?, admin = ?,
+			totp_secret = ?, totp_last_step = ?, recovery_codes = ?, updated_at = ? WHERE id = ?`,
+		user.Email, user.PasswordHash, user.DisplayName, user.GivenName, user.FamilyName, user.Active, user.EmailVerified, user.Admin,
+		user.TOTPSecret, user.TOTPLastStep, recovery, utc(user.UpdatedAt), user.ID,
 	)
 	if err != nil {
 		if violatesUserEmail(err) {

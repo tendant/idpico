@@ -9,10 +9,11 @@ IdP without standing up Keycloak.
 >
 > Local development and testing, and **small single-server deployments** — internal tools, an
 > early product with a modest user base — where an outage of the one instance is survivable.
-> It is deliberately small. It has **no multi-factor authentication**, **no high availability**
-> (one instance, one data directory), no external security audit, and it is pre-1.0. Back up
+> It is deliberately small. Two-step sign-in (an authenticator app) is optional per user, with no
+> passkeys or WebAuthn; there is **no high availability** (one instance, one data directory), no
+> external security audit, and it is pre-1.0. Back up
 > the data directory (see [Data Storage](#data-storage)), keep it behind TLS, and read the known
-> limitations in [CONFORMANCE.md](CONFORMANCE.md). If you need MFA, HA, federation or
+> limitations in [CONFORMANCE.md](CONFORMANCE.md). If you need enforced MFA, passkeys, HA, federation or
 > compliance guarantees, use Keycloak, Zitadel, Authentik or a hosted provider.
 
 ## Features
@@ -24,6 +25,7 @@ IdP without standing up Keycloak.
 - **Token introspection** (RFC 7662)
 - **OIDC logout** (end_session_endpoint)
 - **Argon2id password hashing**
+- **Two-step sign-in** with an authenticator app (TOTP), optional per user, with recovery codes
 - **Secure session cookies** (HttpOnly, Secure, SameSite)
 - **CSRF protection** on login forms
 - **CORS support** with configurable origins
@@ -107,12 +109,13 @@ lockout, CORS, security headers, logging, bootstrap formats — is in
 |----------|-------------|
 | `GET /login` | Login page |
 | `POST /login` | Process login |
+| `GET/POST /login/code` | Second step for users with an authenticator: the 6-digit code or a recovery code |
 | `GET /logout` | Logout |
 | `POST /consent` | Records the user's allow/deny decision from the consent screen |
 | `GET/POST /forgot-password` | Request a password reset link by email |
 | `GET/POST /reset-password` | Choose a new password from an emailed link |
 | `GET /verify-email` | Confirm an email address from an emailed link |
-| `GET /account` | The signed-in user's own sessions, refresh tokens, consents and password change |
+| `GET /account` | The signed-in user's own sessions, refresh tokens, consents, password change and two-step sign-in |
 
 ### Playground
 
@@ -350,6 +353,27 @@ Self-service password reset is additionally throttled per address: at most one e
 `IDPICO_PASSWORD_RESET_INTERVAL` (default 2m) to the same mailbox, regardless of source IP.
 Admin-triggered sends are not throttled.
 
+### Two-step sign-in
+
+Any user can add an authenticator app (Google Authenticator, 1Password, Authy, Bitwarden, … —
+TOTP, RFC 6238: SHA-1, 6 digits, 30 s) from **Two-step sign-in** on `/account`: scan the QR code,
+enter one code to prove it works, and save the ten one-time recovery codes shown once. From then on
+`/login` asks for the code after the password, for every app and for `/admin`. It is optional:
+nothing forces a user, or an admin, to set it up.
+
+- A code is accepted for the current 30-second step and one either side, and **never twice**.
+- One password entry allows five wrong codes; then the password is needed again. Wrong codes also
+  count towards the account lockout below. The half-finished sign-in is held in memory for five
+  minutes, so a restart means typing the password again.
+- A recovery code works once, typed with or without the dash. New codes (and turning it off) need
+  a current code or a recovery code, not just an open session.
+- A **password reset by email does not remove it**: someone who takes over the mailbox still needs
+  the authenticator.
+- Lost the phone and the recovery codes? An admin resets it on the user's page in `/admin`, or
+  `idpicoctl user reset-two-step <email>`; the user then signs in with the password and sets up a new one.
+- The secret is stored unencrypted in the database, like the signing keys: protect backups accordingly.
+- ID tokens do not yet say which methods were used (no `amr`/`acr` claim).
+
 ### Account Lockout
 
 Accounts are temporarily locked after too many failed login attempts:
@@ -378,7 +402,7 @@ Security headers are enabled by default and include:
 
 | Header | Default Value |
 |--------|---------------|
-| Content-Security-Policy | `default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'` |
+| Content-Security-Policy | `default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'` |
 | X-Frame-Options | `DENY` |
 | X-Content-Type-Options | `nosniff` |
 | Referrer-Policy | `strict-origin-when-cross-origin` |

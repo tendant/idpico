@@ -79,9 +79,9 @@ func (a *app) user(ctx context.Context, cmd string, args []string) error {
 			return err
 		}
 		tw := a.table()
-		fmt.Fprintln(tw, "EMAIL\tNAME\tACTIVE\tVERIFIED\tADMIN\tID")
+		fmt.Fprintln(tw, "EMAIL\tNAME\tACTIVE\tVERIFIED\tADMIN\tTWO-STEP\tID")
 		for _, u := range list {
-			fmt.Fprintf(tw, "%s\t%s\t%v\t%v\t%v\t%s\n", u.Email, u.DisplayName, u.Active, u.EmailVerified, u.Admin, u.ID)
+			fmt.Fprintf(tw, "%s\t%s\t%v\t%v\t%v\t%v\t%s\n", u.Email, u.DisplayName, u.Active, u.EmailVerified, u.Admin, u.TOTPEnabled(), u.ID)
 		}
 		return tw.Flush()
 
@@ -148,6 +148,21 @@ func (a *app) user(ctx context.Context, cmd string, args []string) error {
 		_ = a.store.Sessions().DeleteByUserID(ctx, u.ID)
 		_ = a.store.Tokens().RevokeByUserID(ctx, u.ID)
 		fmt.Fprintf(a.out, "password updated for %s; sessions and refresh tokens revoked\n", u.Email)
+		return nil
+
+	case "reset-two-step":
+		if len(args) != 1 {
+			return fmt.Errorf("usage: user reset-two-step <email>")
+		}
+		u, err := users.GetByEmail(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		auth.ClearTOTP(u)
+		if err := users.Update(ctx, u); err != nil {
+			return err
+		}
+		fmt.Fprintf(a.out, "two-step sign-in reset for %s: authenticator and recovery codes removed\n", u.Email)
 		return nil
 
 	case "set-admin":

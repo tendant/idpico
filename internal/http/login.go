@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -86,6 +87,14 @@ func (h *LoginHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Attempt login
 	_, err := h.authService.Login(r.Context(), w, r, email, password)
+	if errors.Is(err, auth.ErrSecondFactorRequired) {
+		next := "/login/code"
+		if returnURL != "" && isValidReturnURL(returnURL) {
+			next += "?return_url=" + url.QueryEscape(returnURL)
+		}
+		http.Redirect(w, r, next, http.StatusFound)
+		return
+	}
 	if err != nil {
 		h.logger.Info("login failed", "email", email, "error", err)
 
@@ -158,6 +167,67 @@ func (h *LoginHandler) resolvePostLogoutRedirect(r *http.Request, uri, state str
 		return "", fmt.Errorf("only same-origin paths are allowed")
 	}
 	return h.postLogoutRedirect(r.Context(), r.FormValue("id_token_hint"), r.FormValue("client_id"), uri, state)
+}
+
+// CodePage handles GET /login/code - the second step for a user with an
+// authenticator, after the password was accepted.
+func (h *LoginHandler) CodePage(w http.ResponseWriter, r *http.Request) {
+	returnURL := r.URL.Query().Get("return_url")
+	if !h.authService.HasPendingLogin(r) {
+		h.restartLogin(w, r, returnURL)
+		return
+	}
+	h.renderCodePage(w, http.StatusOK, returnURL, "")
+}
+
+// Code handles POST /login/code.
+func (h *LoginHandler) Code(w http.ResponseWriter, r *http.Request) {
+	returnURL := r.FormValue("return_url")
+	user, err := h.authService.CompleteSecondFactor(r.Context(), w, r, r.FormValue("code"))
+	switch {
+	case errors.Is(err, auth.ErrInvalidCode):
+		h.renderCodePage(w, http.StatusUnauthorized, returnURL, "That code is not valid. Check the time on your device, or use a recovery code.")
+		return
+	case errors.Is(err, auth.ErrPendingLoginExpired):
+		h.restartLogin(w, r, returnURL)
+		return
+	case idperrors.IsCode(err, idperrors.CodeForbidden):
+		msg := "Invalid request. Please try again."
+		if e, ok := err.(*idperrors.Error); ok && e.Message == "account is temporarily locked" {
+			msg = "Account is temporarily locked due to too many failed attempts. Please try again later."
+		}
+		h.renderCodePage(w, http.StatusForbidden, returnURL, msg)
+		return
+	case err != nil:
+		h.logger.Error("second factor failed", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	h.logger.Info("second factor accepted", "user_id", user.ID)
+	if returnURL == "" || !isValidReturnURL(returnURL) {
+		returnURL = "/"
+	}
+	http.Redirect(w, r, returnURL, http.StatusFound)
+}
+
+// restartLogin sends the browser back to the password form when there is no
+// pending login (expired, too many wrong codes, or a restart).
+func (h *LoginHandler) restartLogin(w http.ResponseWriter, r *http.Request, returnURL string) {
+	q := url.Values{"message": {"Your sign-in expired. Please enter your password again."}}
+	if returnURL != "" && isValidReturnURL(returnURL) {
+		q.Set("return_url", returnURL)
+	}
+	http.Redirect(w, r, "/login?"+q.Encode(), http.StatusFound)
+}
+
+func (h *LoginHandler) renderCodePage(w http.ResponseWriter, status int, returnURL, errMsg string) {
+	csrfToken, err := h.authService.CSRF().GenerateToken(w)
+	if err != nil {
+		h.logger.Error("failed to generate CSRF token", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	h.templates.Render(w, status, "login_code", loginPageData{CSRFToken: csrfToken, ReturnURL: returnURL, Error: errMsg})
 }
 
 func (h *LoginHandler) renderLoginError(w http.ResponseWriter, errMsg, returnURL string) {

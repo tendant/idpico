@@ -88,6 +88,30 @@ Everything on this page is yours alone: the browsers you are signed in on, the a
 <div class="card muted">You have not approved any app yet.</div>
 {{end}}
 
+<h2>Two-step sign-in</h2>
+{{if .CurrentUser.TOTPEnabled}}
+<div class="card">
+    <p><span class="badge on">on</span> Signing in asks for a code from your authenticator app after your password.
+    You have <strong>{{len .CurrentUser.RecoveryCodes}}</strong> unused recovery code{{if ne (len .CurrentUser.RecoveryCodes) 1}}s{{end}}.</p>
+    <p class="help">Both actions need a current code from the app, or a recovery code.</p>
+    <form class="inline" method="POST" action="/account/two-step/recovery-codes">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="text" name="code" placeholder="Code" inputmode="numeric" autocomplete="one-time-code" required style="width:140px">
+        <button type="submit" class="secondary">New recovery codes</button>
+    </form>
+    <form class="inline" method="POST" action="/account/two-step/disable" style="margin-left:12px">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="text" name="code" placeholder="Code" inputmode="numeric" autocomplete="one-time-code" required style="width:140px">
+        <button type="submit" class="secondary">Turn off</button>
+    </form>
+</div>
+{{else}}
+<div class="card">
+    <p class="muted">Off. Add a code from an authenticator app to your sign-in, so a stolen password alone is not enough.</p>
+    <a href="/account/two-step" class="button">Set up</a>
+</div>
+{{end}}
+
 {{if .CanChangePassword}}
 <h2>Change password</h2>
 <div class="card">

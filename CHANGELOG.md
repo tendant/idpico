@@ -4,6 +4,15 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Added
+
+- **Two-step sign-in** with an authenticator app (TOTP, RFC 6238), optional per user. Set up on `/account` from a server-rendered QR code (no JavaScript), confirmed with one code, with ten one-time recovery codes shown once and stored as hashes. `/login` then continues to `/login/code`; a code is never accepted twice, one password entry allows five wrong codes, and failures count towards lockout. Renewing recovery codes or turning it off needs a current code. An admin can reset it from the user's page; `idpicoctl user reset-two-step <email>`; `idpicoctl user list` shows it. Audit events `totp.enabled`, `totp.disabled`, `totp.recovery_code_used`, `totp.recovery_codes_renewed`. **Migration `00005`** adds three columns to `users`; the start that applies it backs the database up first (v0.0.10).
+- Conformance `TestTwoStepSignIn`: an authorization request for a user with an authenticator passes through the code step (no session before it: `prompt=none` gives `login_required`), then consent and an ordinary code exchange; codes computed by the suite's own TOTP.
+
+### Changed
+
+- Default Content-Security-Policy adds `img-src 'self' data:` for the inline QR image.
+
 ## [0.0.10] - 2026-10-07
 
 Upgrades protect themselves: a start that would migrate the schema backs the database up first. No

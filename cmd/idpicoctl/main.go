@@ -29,6 +29,7 @@ Resources and commands:
           add <email> [-name NAME] [-given-name N] [-family-name N] [-password PW] [-admin] [-verified] [-inactive]
           passwd <email> <password>
           set-admin <email> true|false
+          reset-two-step <email>    remove the authenticator and recovery codes (lost device)
           delete <email>
   group   list
           add <name> [-desc TEXT]

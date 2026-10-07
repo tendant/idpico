@@ -83,6 +83,7 @@ func (h *AdminHandler) Routes(r chi.Router) {
 	r.Post("/users/{id}/send-reset", h.SendUserReset)
 	r.Post("/users/{id}/send-verification", h.SendUserVerification)
 	r.Post("/users/{id}/revoke-sessions", h.RevokeUserSessions)
+	r.Post("/users/{id}/two-step/reset", h.ResetUserTwoStep)
 	r.Post("/users/{id}/sessions/{sessionID}/revoke", h.RevokeUserSession)
 	r.Post("/users/{id}/tokens/{tokenID}/revoke", h.RevokeUserToken)
 	r.Post("/users/{id}/consents/{clientID}/revoke", h.RevokeUserConsent)
@@ -626,6 +627,26 @@ func (h *AdminHandler) RevokeUserSessions(w http.ResponseWriter, r *http.Request
 	}
 	h.record(r, audit.UserSessionsRevoked, "user", user.ID, user.Email)
 	h.redirect(w, r, "/admin/users/"+user.ID, "Sessions and tokens revoked")
+}
+
+// ResetUserTwoStep removes a user's authenticator and recovery codes, for
+// one who lost both; they sign in with the password and set it up again.
+func (h *AdminHandler) ResetUserTwoStep(w http.ResponseWriter, r *http.Request) {
+	if !h.checkCSRF(w, r) {
+		return
+	}
+	user, ok := h.loadUser(w, r)
+	if !ok {
+		return
+	}
+	auth.ClearTOTP(user)
+	if err := h.cfg.Store.Users().Update(r.Context(), user); err != nil {
+		h.logger.Error("failed to reset two-step sign-in", "error", err)
+		h.redirect(w, r, "/admin/users/"+user.ID, "Failed to reset two-step sign-in")
+		return
+	}
+	h.record(r, audit.TOTPDisabled, "user", user.ID, user.Email+" (reset by admin)")
+	h.redirect(w, r, "/admin/users/"+user.ID, "Two-step sign-in reset")
 }
 
 func (h *AdminHandler) RevokeUserConsent(w http.ResponseWriter, r *http.Request) {

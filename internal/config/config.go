@@ -97,7 +97,7 @@ type Config struct {
 
 	// Security headers
 	SecurityHeadersEnabled bool   `env:"IDPICO_SECURITY_HEADERS_ENABLED" env-default:"true"`
-	ContentSecurityPolicy  string `env:"IDPICO_CONTENT_SECURITY_POLICY" env-default:"default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"`
+	ContentSecurityPolicy  string `env:"IDPICO_CONTENT_SECURITY_POLICY" env-default:"default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"`
 	HSTSMaxAge             int    `env:"IDPICO_HSTS_MAX_AGE" env-default:"0"` // 0 = disabled, recommended: 31536000 (1 year)
 
 	// Metrics

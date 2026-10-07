@@ -7,18 +7,28 @@ import (
 
 // User represents an identity in the system.
 type User struct {
-	ID            string    `json:"id"`
-	Email         string    `json:"email"`
-	PasswordHash  string    `json:"password_hash,omitempty"`
-	DisplayName   string    `json:"display_name,omitempty"` // the `name` claim
-	GivenName     string    `json:"given_name,omitempty"`
-	FamilyName    string    `json:"family_name,omitempty"`
-	Active        bool      `json:"active"`
-	EmailVerified bool      `json:"email_verified"`
-	Admin         bool      `json:"admin"` // May sign in to the admin UI
+	ID            string `json:"id"`
+	Email         string `json:"email"`
+	PasswordHash  string `json:"password_hash,omitempty"`
+	DisplayName   string `json:"display_name,omitempty"` // the `name` claim
+	GivenName     string `json:"given_name,omitempty"`
+	FamilyName    string `json:"family_name,omitempty"`
+	Active        bool   `json:"active"`
+	EmailVerified bool   `json:"email_verified"`
+	Admin         bool   `json:"admin"` // May sign in to the admin UI
+	// Two-step sign-in with an authenticator app (TOTP, RFC 6238); on when
+	// TOTPSecret is set. TOTPLastStep is the last time step accepted, so a
+	// code is never accepted twice. RecoveryCodes holds the hashes of the
+	// unused one-time recovery codes.
+	TOTPSecret    string    `json:"totp_secret,omitempty"`
+	TOTPLastStep  int64     `json:"totp_last_step,omitempty"`
+	RecoveryCodes []string  `json:"recovery_codes,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
+
+// TOTPEnabled reports whether signing in also needs an authenticator code.
+func (u *User) TOTPEnabled() bool { return u.TOTPSecret != "" }
 
 // Client represents an OAuth 2.0 / OIDC client application.
 type Client struct {

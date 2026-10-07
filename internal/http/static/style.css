@@ -22,6 +22,7 @@
   --code-bg: #f3f4f6;
   --pre-bg: #0f172a;
   --pre-text: #e2e8f0;
+  --qr-bg: #ffffff; /* scanners need dark-on-light; deliberately not overridden for dark mode */
   --ok-bg: #d1fae5;   --ok-text: #065f46;
   --err-bg: #fee2e2;  --err-text: #991b1b;
   --warn-bg: #fef3c7; --warn-text: #92400e;
@@ -230,3 +231,6 @@ body.centered button, body.centered .button { width: 100%; padding: 12px; font-s
 ul.scopes { list-style: none; padding: 0; margin: 0 0 8px 0; }
 ul.scopes li { padding: 10px 12px; border: 1px solid var(--border); border-radius: 4px; margin-bottom: 8px; }
 ul.scopes li code { color: var(--muted); font-size: 12px; display: block; margin-top: 2px; background: transparent; padding: 0; }
+
+/* QR code for authenticator setup: always dark-on-white, whatever the theme */
+img.qr { background: var(--qr-bg); padding: 8px; border-radius: 6px; }

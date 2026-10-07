@@ -200,3 +200,23 @@ func TestBackup(t *testing.T) {
 		t.Errorf("backup lacks the user: %v", err)
 	}
 }
+
+func TestResetTwoStep(t *testing.T) {
+	a, s, out := newTestApp(t)
+	ctx := context.Background()
+	run(t, a, out, "user add carol@example.com -password s3cret-pass")
+	u, _ := s.Users().GetByEmail(ctx, "carol@example.com")
+	u.TOTPSecret, u.RecoveryCodes = "JBSWY3DPEHPK3PXP", []string{"h"}
+	if err := s.Users().Update(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	if got := run(t, a, out, "user list"); !strings.Contains(got, "true") {
+		t.Errorf("list does not show two-step on:\n%s", got)
+	}
+	run(t, a, out, "user reset-two-step carol@example.com")
+	u, _ = s.Users().GetByEmail(ctx, "carol@example.com")
+	if u.TOTPEnabled() || len(u.RecoveryCodes) != 0 {
+		t.Errorf("not reset: %+v", u)
+	}
+	mustFail(t, a, "user reset-two-step nobody@example.com")
+}

@@ -134,7 +134,7 @@ All production code goes under `internal/` to prevent accidental coupling.
 
 ### Public Endpoints
 - OIDC: `/.well-known/openid-configuration`, `/authorize`, `/token`, `/userinfo`, `/.well-known/jwks.json`
-- Auth UI: `/login`, `/logout`, `/consent`, `/forgot-password`, `/reset-password`, `/verify-email`
+- Auth UI: `/login`, `/login/code` (TOTP second step), `/logout`, `/consent`, `/forgot-password`, `/reset-password`, `/verify-email`, `/account` (incl. two-step setup)
 - Admin UI: `/admin` (users, groups, clients, signing keys; requires `User.Admin`, granted via `IDPICO_ADMIN_EMAILS`)
 - Playground: `/playground` is a built-in relying party (client `playground`) that drives the IdP's own endpoints in-process via the router; disable with `IDPICO_PLAYGROUND_ENABLED=false`
 - Groups: `groups` scope releases memberships as the `groups` claim (`IDPICO_GROUPS_CLAIM` renames it). No separate role model — a role is a group.
@@ -149,6 +149,7 @@ All production code goes under `internal/` to prevent accidental coupling.
 ## Security Requirements
 
 - Argon2id password hashing
+- Optional TOTP two-step sign-in (`internal/auth/totp.go`, `secondfactor.go`); pending logins are in memory (single instance)
 - HttpOnly/Secure/SameSite cookies with session ID rotation on login
 - CSRF protection on login forms
 - Exact redirect URI matching (no wildcards)

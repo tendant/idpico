@@ -139,7 +139,7 @@ type SecurityHeadersConfig struct {
 func DefaultSecurityHeadersConfig() *SecurityHeadersConfig {
 	return &SecurityHeadersConfig{
 		// Default CSP allows self-origin, inline styles for the login form
-		ContentSecurityPolicy: "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
+		ContentSecurityPolicy: "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
 		XFrameOptions:         "DENY",
 		XContentTypeOptions:   "nosniff",
 		ReferrerPolicy:        "strict-origin-when-cross-origin",

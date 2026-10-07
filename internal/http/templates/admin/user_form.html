@@ -72,6 +72,20 @@
     {{end}}
 </div>
 
+<h2>Two-step sign-in</h2>
+<div class="card">
+    {{if .User.TOTPEnabled}}
+    <p><span class="badge on">on</span> {{len .User.RecoveryCodes}} unused recovery code{{if ne (len .User.RecoveryCodes) 1}}s{{end}}.</p>
+    <p class="help">Reset only for a user who lost their authenticator and their recovery codes, after confirming who they are: they can then sign in with the password alone and set up a new authenticator on their account page.</p>
+    <form class="inline" method="POST" action="/admin/users/{{.User.ID}}/two-step/reset">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="secondary">Reset two-step sign-in</button>
+    </form>
+    {{else}}
+    <p class="muted">Off. Users turn it on themselves on their account page.</p>
+    {{end}}
+</div>
+
 <h2>Groups</h2>
 <div class="card">
     {{if .AllGroups}}

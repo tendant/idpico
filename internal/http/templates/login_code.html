@@ -1,0 +1,20 @@
+{{define "title"}}Verification code{{end}}
+{{define "content"}}
+<h1>Verification code</h1>
+{{if .Error}}
+<div class="error">{{.Error}}</div>
+{{end}}
+<p>Enter the 6-digit code from your authenticator app.</p>
+<form method="POST" action="/login/code">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    {{if .ReturnURL}}
+    <input type="hidden" name="return_url" value="{{.ReturnURL}}">
+    {{end}}
+    <div class="form-group">
+        <label for="code">Code</label>
+        <input type="text" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus>
+    </div>
+    <button type="submit">Verify</button>
+</form>
+<div class="links">Lost your device? Enter one of your recovery codes instead. <a href="/login{{if .ReturnURL}}?return_url={{.ReturnURL}}{{end}}">Start over</a></div>
+{{end}}

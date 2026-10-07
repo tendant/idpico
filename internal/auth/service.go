@@ -22,6 +22,7 @@ type Service struct {
 	lockout  *LockoutService
 	logger   *slog.Logger
 	audit    *audit.Recorder
+	pending  *pendingLogins // password accepted, authenticator code still due
 }
 
 // ServiceOption configures the Service.
@@ -55,6 +56,7 @@ func NewService(users store.UserRepository, sessions *SessionService, csrf *CSRF
 		sessions: sessions,
 		csrf:     csrf,
 		logger:   slog.Default(),
+		pending:  newPendingLogins(),
 	}
 
 	for _, opt := range opts {
@@ -133,9 +135,29 @@ func (s *Service) Login(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		return nil, err
 	}
 
+	// The password alone is not enough for a user with an authenticator:
+	// remember the half-finished login and ask for the code. Failed attempts
+	// are not cleared until the code is right.
+	if user.TOTPEnabled() {
+		token, err := s.pending.add(user)
+		if err != nil {
+			return nil, err
+		}
+		s.setPendingCookie(w, token)
+		s.csrf.ClearToken(w)
+		metrics.RecordLogin("second_factor_required")
+		return user, ErrSecondFactorRequired
+	}
+
+	return user, s.startSession(ctx, w, r, user)
+}
+
+// startSession finishes a successful login: a fresh session (rotating any
+// existing one), the cookie, and the record of it.
+func (s *Service) startSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *domain.User) error {
 	// Clear failed attempts on successful login
 	if s.lockout != nil {
-		s.lockout.RecordSuccess(email)
+		s.lockout.RecordSuccess(user.Email)
 	}
 
 	// Get existing session token for rotation
@@ -147,7 +169,7 @@ func (s *Service) Login(ctx context.Context, w http.ResponseWriter, r *http.Requ
 	// Create new session (with rotation)
 	_, token, err := s.sessions.RotateSession(ctx, oldToken, user.ID, r.UserAgent(), getClientIP(r))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create session: %w", err)
+		return fmt.Errorf("failed to create session: %w", err)
 	}
 
 	// Set session cookie
@@ -160,7 +182,7 @@ func (s *Service) Login(ctx context.Context, w http.ResponseWriter, r *http.Requ
 	s.audit.Record(ctx, audit.Event{Actor: user, Action: audit.LoginSuccess, TargetType: "user", TargetID: user.ID, IP: audit.ClientIP(r)})
 	metrics.RecordLogin("success")
 
-	return user, nil
+	return nil
 }
 
 // Logout terminates the user's session.

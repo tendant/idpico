@@ -83,7 +83,7 @@ IDPICO_CORS_ALLOW_CREDENTIALS=true
 
 # Security headers
 IDPICO_SECURITY_HEADERS_ENABLED=true
-IDPICO_CONTENT_SECURITY_POLICY=default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'
+IDPICO_CONTENT_SECURITY_POLICY=default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'
 IDPICO_HSTS_MAX_AGE=31536000    # 1 year, 0 = disabled
 
 # Bootstrap a single client

@@ -49,6 +49,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"VerificationTokenRepository_Lifecycle", VerificationTokenRepository_Lifecycle},
 		{"VerificationTokenRepository_DeleteByUserAndExpired", VerificationTokenRepository_DeleteByUserAndExpired},
 		{"UserRepository_FlagsRoundTrip", UserRepository_FlagsRoundTrip},
+		{"UserRepository_TOTPRoundTrip", UserRepository_TOTPRoundTrip},
 		{"ClientRepository_SkipConsentRoundTrip", ClientRepository_SkipConsentRoundTrip},
 		{"GroupRepository_CRUD", GroupRepository_CRUD},
 		{"GroupRepository_Membership", GroupRepository_Membership},
@@ -822,6 +823,40 @@ func UserRepository_FlagsRoundTrip(t *testing.T, newStore Factory) {
 	}
 	if got.GivenName != "Augusta" || got.FamilyName != "" {
 		t.Errorf("names not round-tripped on update: given=%q family=%q", got.GivenName, got.FamilyName)
+	}
+}
+
+func UserRepository_TOTPRoundTrip(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	ctx := context.Background()
+
+	u := &domain.User{ID: "u1", Email: "u1@example.com", Active: true,
+		TOTPSecret: "JBSWY3DPEHPK3PXP", TOTPLastStep: 42, RecoveryCodes: []string{"h1", "h2"}}
+	if err := store.Users().Create(ctx, u); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	got, _ := store.Users().GetByID(ctx, "u1")
+	if !got.TOTPEnabled() || got.TOTPSecret != u.TOTPSecret || got.TOTPLastStep != 42 || len(got.RecoveryCodes) != 2 {
+		t.Errorf("TOTP not round-tripped on create: %+v", got)
+	}
+
+	got.TOTPLastStep = 43
+	got.RecoveryCodes = got.RecoveryCodes[1:]
+	if err := store.Users().Update(ctx, got); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	got, _ = store.Users().GetByEmail(ctx, "u1@example.com")
+	if got.TOTPLastStep != 43 || len(got.RecoveryCodes) != 1 || got.RecoveryCodes[0] != "h2" {
+		t.Errorf("TOTP not round-tripped on update: step=%d codes=%v", got.TOTPLastStep, got.RecoveryCodes)
+	}
+
+	got.TOTPSecret, got.TOTPLastStep, got.RecoveryCodes = "", 0, nil
+	if err := store.Users().Update(ctx, got); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	got, _ = store.Users().GetByID(ctx, "u1")
+	if got.TOTPEnabled() || len(got.RecoveryCodes) != 0 {
+		t.Errorf("TOTP not cleared: %+v", got)
 	}
 }
 
