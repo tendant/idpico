@@ -65,7 +65,7 @@ taken, change the port mapping *and* tell idpico its public address — that URL
 docker run -p 8090:8080 -e IDPICO_ISSUER_URL=http://localhost:8090 --env-file idpico.env -v idpico-data:/app/data wang/idpico:latest
 ```
 
-Images are multi-arch (amd64, arm64); pin a version (`wang/idpico:v0.0.11`) for anything you keep.
+Images are multi-arch (amd64, arm64); pin a version (`wang/idpico:v0.0.12`) for anything you keep.
 
 ### From source
 

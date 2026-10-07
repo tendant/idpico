@@ -4,6 +4,12 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+## [0.0.12] - 2026-10-07
+
+Passkeys as a second sign-in step, and the admin console stops linking to a playground that is not
+there. **Adds migration `00006`** (the `passkeys` table; applied at startup after the automatic
+backup). No other behaviour changes: users without a passkey sign in exactly as before.
+
 ### Fixed
 
 - The admin console's navigation linked to `/playground` even when the playground is off (the default with an `https://` issuer), leading to a 404 in production; the link now appears only when the playground is mounted. The landing page no longer calls the server "for local development".
@@ -297,7 +303,8 @@ client, and an audit trail.
 - Initial file-backed IdP: Authorization Code + PKCE, RS256 JWTs, refresh token rotation,
   revocation, introspection, RP-initiated logout, rate limiting, lockout, CORS, metrics.
 
-[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.11...HEAD
+[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.12...HEAD
+[0.0.12]: https://github.com/tendant/idpico/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/tendant/idpico/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/tendant/idpico/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/tendant/idpico/compare/v0.0.8...v0.0.9
