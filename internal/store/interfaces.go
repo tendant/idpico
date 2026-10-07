@@ -42,6 +42,8 @@ type SessionRepository interface {
 type AuthCodeRepository interface {
 	Create(ctx context.Context, code *domain.AuthCode) error
 	GetByCode(ctx context.Context, code string) (*domain.AuthCode, error)
+	// MarkUsed consumes the code atomically: a code already used (e.g. by a
+	// concurrent exchange) fails with CodeConflict.
 	MarkUsed(ctx context.Context, code string) error
 	Delete(ctx context.Context, code string) error
 	DeleteExpired(ctx context.Context) error
@@ -62,7 +64,9 @@ type TokenRepository interface {
 	RevokeByClientID(ctx context.Context, clientID string) error
 	// Rotate retires a refresh token that has just been exchanged for a new
 	// one: it is refused from now on (and its reuse detected), but the
-	// grant's access tokens are left alone, unlike Revoke.
+	// grant's access tokens are left alone, unlike Revoke. It is atomic: a
+	// token already revoked (e.g. by a concurrent refresh) fails with
+	// CodeConflict, so only one of two simultaneous refreshes succeeds.
 	Rotate(ctx context.Context, id string) error
 	DeleteExpired(ctx context.Context) error
 	// ListByUserID returns the user's unexpired tokens (revoked included), newest first.

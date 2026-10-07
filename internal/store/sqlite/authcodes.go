@@ -61,7 +61,7 @@ func (r *authCodeRepository) GetByCode(ctx context.Context, code string) (*domai
 }
 
 func (r *authCodeRepository) MarkUsed(ctx context.Context, code string) error {
-	res, err := r.db.ExecContext(ctx, `UPDATE auth_codes SET used = TRUE WHERE code = ?`, code)
+	res, err := r.db.ExecContext(ctx, `UPDATE auth_codes SET used = TRUE WHERE code = ? AND used = FALSE`, code)
 	if err != nil {
 		return idperrors.Internal("failed to mark auth code used", err)
 	}
@@ -70,6 +70,10 @@ func (r *authCodeRepository) MarkUsed(ctx context.Context, code string) error {
 		return idperrors.Internal("failed to mark auth code used", err)
 	}
 	if !ok {
+		var exists int
+		if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM auth_codes WHERE code = ?`, code).Scan(&exists); err == nil && exists > 0 {
+			return idperrors.Conflict("auth code already used")
+		}
 		return idperrors.NotFound("auth code", code)
 	}
 	return nil

@@ -33,6 +33,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"ClientRepository_CRUD", ClientRepository_CRUD},
 		{"SessionRepository_CRUD", SessionRepository_CRUD},
 		{"SessionRepository_DeleteByUserID", SessionRepository_DeleteByUserID},
+		{"ConsumeOnce", ConsumeOnce},
 		{"SessionAndAuthCode_AMRRoundTrip", SessionAndAuthCode_AMRRoundTrip},
 		{"SessionRepository_DeleteExpired", SessionRepository_DeleteExpired},
 		{"SessionRepository_ListByUserID", SessionRepository_ListByUserID},
@@ -361,6 +362,38 @@ func SessionAndAuthCode_AMRRoundTrip(t *testing.T, newStore Factory) {
 	c, err := store.AuthCodes().GetByCode(ctx, "c-amr")
 	if err != nil || len(c.AMR) != 1 || c.AMR[0] != "pwd" {
 		t.Errorf("auth code AMR = %v, %v", c, err)
+	}
+}
+
+// MarkUsed and Rotate consume once: the second call fails with
+// CodeConflict, which is how the token endpoint detects a concurrent reuse.
+func ConsumeOnce(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	ctx := context.Background()
+	seedUsers(t, store, "user-c")
+	seedClients(t, store, "client-c")
+
+	if err := store.AuthCodes().Create(ctx, &domain.AuthCode{Code: "code-c", ClientID: "client-c", UserID: "user-c", RedirectURI: "http://x/cb", Scope: "openid", ExpiresAt: time.Now().Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AuthCodes().MarkUsed(ctx, "code-c"); err != nil {
+		t.Fatalf("first MarkUsed: %v", err)
+	}
+	if err := store.AuthCodes().MarkUsed(ctx, "code-c"); !idperrors.IsCode(err, idperrors.CodeConflict) {
+		t.Errorf("second MarkUsed = %v, want CodeConflict", err)
+	}
+	if err := store.AuthCodes().MarkUsed(ctx, "nope"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("MarkUsed unknown = %v, want CodeNotFound", err)
+	}
+
+	if err := store.Tokens().Create(ctx, &domain.Token{ID: "rt-c", UserID: "user-c", ClientID: "client-c", Scope: "openid", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Tokens().Rotate(ctx, "rt-c"); err != nil {
+		t.Fatalf("first Rotate: %v", err)
+	}
+	if err := store.Tokens().Rotate(ctx, "rt-c"); !idperrors.IsCode(err, idperrors.CodeConflict) {
+		t.Errorf("second Rotate = %v, want CodeConflict", err)
 	}
 }
 

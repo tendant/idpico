@@ -25,6 +25,10 @@ const (
 	CodeInvalidScope = "invalid_scope"
 	// The client is authenticated but may not use this grant type.
 	CodeUnauthorizedClient = "unauthorized_client"
+
+	// CodeConflict: a consume-once record (authorization code, refresh
+	// token) was already consumed, possibly by a concurrent request.
+	CodeConflict = "conflict"
 )
 
 // Error represents a structured error with a code and message.
@@ -112,6 +116,11 @@ func InvalidScope(message string) *Error {
 // registered for (RFC 6749 §5.2 unauthorized_client).
 func UnauthorizedClient(message string) *Error {
 	return &Error{Code: CodeUnauthorizedClient, Message: message}
+}
+
+// Conflict creates an error for a consume-once record already consumed.
+func Conflict(message string) *Error {
+	return &Error{Code: CodeConflict, Message: message}
 }
 
 // Unauthorized creates an unauthorized error.

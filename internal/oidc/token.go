@@ -205,6 +205,12 @@ func (s *TokenService) HandleAuthorizationCode(ctx context.Context, req *TokenRe
 		return nil, err
 	}
 
+	// A code belongs to one client; another client presenting it learns
+	// nothing and must not be able to cut off that client's grant below.
+	if authCode.ClientID != req.ClientID {
+		return nil, idperrors.InvalidGrant("client_id mismatch")
+	}
+
 	// Validate code. A code presented twice has leaked (or the client is
 	// broken); RFC 6749 §4.1.2 says the server SHOULD then revoke every
 	// token issued from it, so the grant is cut off as for refresh reuse.
@@ -217,9 +223,6 @@ func (s *TokenService) HandleAuthorizationCode(ctx context.Context, req *TokenRe
 	if authCode.IsExpired() {
 		return nil, idperrors.InvalidGrant("code expired")
 	}
-	if authCode.ClientID != req.ClientID {
-		return nil, idperrors.InvalidGrant("client_id mismatch")
-	}
 	if authCode.RedirectURI != req.RedirectURI {
 		return nil, idperrors.InvalidGrant("redirect_uri mismatch")
 	}
@@ -229,8 +232,15 @@ func (s *TokenService) HandleAuthorizationCode(ctx context.Context, req *TokenRe
 		return nil, idperrors.InvalidGrant("invalid code_verifier")
 	}
 
-	// Mark code as used
+	// Consume the code. MarkUsed is atomic: if a concurrent exchange got
+	// there first, this one is the reuse and the grant is cut off.
 	if err := s.authCodes.MarkUsed(ctx, req.Code); err != nil {
+		if idperrors.IsCode(err, idperrors.CodeConflict) {
+			if err := s.revokeGrant(ctx, authCode.UserID, authCode.ClientID); err != nil {
+				return nil, fmt.Errorf("failed to revoke tokens after code reuse: %w", err)
+			}
+			return nil, idperrors.InvalidGrant("code already used; all tokens for this client were revoked")
+		}
 		return nil, fmt.Errorf("failed to mark code as used: %w", err)
 	}
 
@@ -308,6 +318,14 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 	// Retire the old refresh token (rotation). Not Revoke: the access tokens
 	// of this grant — including the one issued below — stay valid.
 	if err := s.tokens.Rotate(ctx, req.RefreshToken); err != nil {
+		// Rotate is atomic: a concurrent refresh with the same token won,
+		// so this is reuse — cut off the grant as above.
+		if idperrors.IsCode(err, idperrors.CodeConflict) {
+			if err := s.revokeGrant(ctx, token.UserID, token.ClientID); err != nil {
+				return nil, fmt.Errorf("failed to revoke tokens after refresh token reuse: %w", err)
+			}
+			return nil, idperrors.InvalidGrant("refresh_token has already been used; all tokens for this client were revoked")
+		}
 		return nil, fmt.Errorf("failed to rotate old token: %w", err)
 	}
 

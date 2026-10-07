@@ -79,7 +79,7 @@ func (r *tokenRepository) Revoke(ctx context.Context, id string) error {
 
 // Rotate marks the refresh token revoked without touching access tokens.
 func (r *tokenRepository) Rotate(ctx context.Context, id string) error {
-	res, err := r.db.ExecContext(ctx, `UPDATE tokens SET revoked = TRUE WHERE id = ?`, id)
+	res, err := r.db.ExecContext(ctx, `UPDATE tokens SET revoked = TRUE WHERE id = ? AND revoked = FALSE`, id)
 	if err != nil {
 		return idperrors.Internal("failed to rotate token", err)
 	}
@@ -88,6 +88,10 @@ func (r *tokenRepository) Rotate(ctx context.Context, id string) error {
 		return idperrors.Internal("failed to rotate token", err)
 	}
 	if !ok {
+		var exists int
+		if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tokens WHERE id = ?`, id).Scan(&exists); err == nil && exists > 0 {
+			return idperrors.Conflict("refresh token already used")
+		}
 		return idperrors.NotFound("token", id)
 	}
 	return nil

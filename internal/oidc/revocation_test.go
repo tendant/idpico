@@ -2,6 +2,7 @@ package oidc
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -304,4 +305,65 @@ func TestIDTokenClaimsByScope(t *testing.T) {
 			t.Errorf("userinfo still carries them for a minimal-ID-token client: %+v", ui)
 		}
 	})
+}
+
+// Concurrent uses of one refresh token or one code: exactly one wins, the
+// others are treated as reuse, and the winner's grant is then cut off too.
+func TestConcurrentReuseDetected(t *testing.T) {
+	f := newRevocationFixture(t)
+
+	race := func(n int, fn func() error) (wins int) {
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		for i := 0; i < n; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if fn() == nil {
+					mu.Lock()
+					wins++
+					mu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+		return wins
+	}
+
+	first, _ := f.issue("alice", "app-a", "secret-a")
+	if wins := race(8, func() error {
+		_, err := f.tokens.HandleRefreshToken(f.ctx, &TokenRequest{GrantType: "refresh_token", RefreshToken: first.RefreshToken, ClientID: "app-a", ClientSecret: "secret-a"})
+		return err
+	}); wins != 1 {
+		t.Errorf("concurrent refreshes with one token: %d succeeded, want 1", wins)
+	}
+	if f.accepted(first.AccessToken) {
+		t.Error("grant not cut off after concurrent refresh-token reuse")
+	}
+
+	code := uuid.New().String()
+	if err := f.store.AuthCodes().Create(f.ctx, &domain.AuthCode{Code: code, ClientID: "app-b", UserID: "bob", RedirectURI: "http://b/cb",
+		Scope: "openid", ExpiresAt: time.Now().Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	if wins := race(8, func() error {
+		_, err := f.tokens.HandleAuthorizationCode(f.ctx, &TokenRequest{GrantType: "authorization_code", Code: code, RedirectURI: "http://b/cb", ClientID: "app-b", ClientSecret: "secret-b"})
+		return err
+	}); wins != 1 {
+		t.Errorf("concurrent exchanges of one code: %d succeeded, want 1", wins)
+	}
+}
+
+// A client presenting another client's used code is refused without
+// touching that client's grant.
+func TestUsedCodeOfAnotherClientRevokesNothing(t *testing.T) {
+	f := newRevocationFixture(t)
+	resp, code := f.issue("alice", "app-a", "secret-a")
+	_, err := f.tokens.HandleAuthorizationCode(f.ctx, &TokenRequest{GrantType: "authorization_code", Code: code, RedirectURI: "http://a/cb", ClientID: "app-b", ClientSecret: "secret-b"})
+	if err == nil {
+		t.Fatal("another client redeemed the code")
+	}
+	if !f.accepted(resp.AccessToken) {
+		t.Error("app-a's grant was revoked by app-b presenting its used code")
+	}
 }

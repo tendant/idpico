@@ -21,6 +21,9 @@ import (
 type Store struct {
 	dataDir string
 	mu      sync.RWMutex
+	// consume serialises the read-check-write of consume-once records
+	// (MarkUsed, Rotate), which readFile/writeFile alone do not make atomic.
+	consume sync.Mutex
 
 	users       *userRepository
 	clients     *clientRepository
@@ -497,6 +500,8 @@ func (r *authCodeRepository) GetByCode(ctx context.Context, code string) (*domai
 }
 
 func (r *authCodeRepository) MarkUsed(ctx context.Context, code string) error {
+	r.store.consume.Lock()
+	defer r.store.consume.Unlock()
 	data, err := r.load()
 	if err != nil {
 		return idperrors.Internal("failed to load auth codes", err)
@@ -504,6 +509,9 @@ func (r *authCodeRepository) MarkUsed(ctx context.Context, code string) error {
 
 	for _, ac := range data.AuthCodes {
 		if ac.Code == code {
+			if ac.Used {
+				return idperrors.Conflict("auth code already used")
+			}
 			ac.Used = true
 			return r.save(data)
 		}
@@ -615,12 +623,17 @@ func (r *tokenRepository) Revoke(ctx context.Context, id string) error {
 }
 
 func (r *tokenRepository) Rotate(ctx context.Context, id string) error {
+	r.store.consume.Lock()
+	defer r.store.consume.Unlock()
 	data, err := r.load()
 	if err != nil {
 		return idperrors.Internal("failed to load tokens", err)
 	}
 	for _, t := range data.Tokens {
 		if t.ID == id {
+			if t.Revoked {
+				return idperrors.Conflict("refresh token already used")
+			}
 			t.Revoked = true
 			return r.save(data)
 		}
