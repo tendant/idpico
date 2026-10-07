@@ -4,6 +4,16 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+## [0.0.11] - 2026-10-07
+
+Optional two-step sign-in with an authenticator app, an `amr` claim that says when it was used, and
+the fixes from a security review of the whole code base. **Adds migration `00005`** (applied at
+startup; the database is backed up to `backups/` first). Behaviour changes to check before upgrading:
+`/revoke` needs a `client_id`, `/introspect` needs a confidential client, access-token lifetimes above
+24h and `IDPICO_CORS_ALLOWED_ORIGINS=*` with credentials refuse to start, a custom
+`IDPICO_CONTENT_SECURITY_POLICY` needs `img-src 'self' data:` for the setup QR code, and behind https
+the CSRF cookie is renamed (forms open during the upgrade fail once).
+
 ### Added
 
 - **Two-step sign-in** with an authenticator app (TOTP, RFC 6238), optional per user. Set up on `/account` from a server-rendered QR code (no JavaScript), confirmed with one code, with ten one-time recovery codes shown once and stored as hashes. `/login` then continues to `/login/code`; a code is never accepted twice, one password entry allows five wrong codes, and failures count towards lockout. Renewing recovery codes or turning it off needs a current code. An admin can reset it from the user's page; `idpicoctl user reset-two-step <email>`; `idpicoctl user list` shows it. Audit events `totp.enabled`, `totp.disabled`, `totp.recovery_code_used`, `totp.recovery_codes_renewed`. **Migration `00005`** adds three columns to `users`; the start that applies it backs the database up first (v0.0.10).
@@ -278,7 +288,8 @@ client, and an audit trail.
 - Initial file-backed IdP: Authorization Code + PKCE, RS256 JWTs, refresh token rotation,
   revocation, introspection, RP-initiated logout, rate limiting, lockout, CORS, metrics.
 
-[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.10...HEAD
+[Unreleased]: https://github.com/tendant/idpico/compare/v0.0.11...HEAD
+[0.0.11]: https://github.com/tendant/idpico/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/tendant/idpico/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/tendant/idpico/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/tendant/idpico/compare/v0.0.7...v0.0.8
