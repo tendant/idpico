@@ -4,6 +4,7 @@ package storetest
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +33,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"ClientRepository_CRUD", ClientRepository_CRUD},
 		{"SessionRepository_CRUD", SessionRepository_CRUD},
 		{"SessionRepository_DeleteByUserID", SessionRepository_DeleteByUserID},
+		{"SessionAndAuthCode_AMRRoundTrip", SessionAndAuthCode_AMRRoundTrip},
 		{"SessionRepository_DeleteExpired", SessionRepository_DeleteExpired},
 		{"SessionRepository_ListByUserID", SessionRepository_ListByUserID},
 		{"AuthCodeRepository_CRUD", AuthCodeRepository_CRUD},
@@ -332,6 +334,33 @@ func SessionRepository_CRUD(t *testing.T, newStore Factory) {
 	_, err = repo.GetByID(ctx, "session-1")
 	if !idperrors.IsCode(err, idperrors.CodeNotFound) {
 		t.Error("GetByID should return not found after delete")
+	}
+}
+
+func SessionAndAuthCode_AMRRoundTrip(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	ctx := context.Background()
+	seedUsers(t, store, "user-amr")
+	seedClients(t, store, "client-amr")
+
+	if err := store.Sessions().Create(ctx, &domain.Session{ID: "s-amr", UserID: "user-amr", ExpiresAt: time.Now().Add(time.Hour), AMR: []string{"pwd", "otp", "mfa"}}); err != nil {
+		t.Fatalf("Create session: %v", err)
+	}
+	s, err := store.Sessions().GetByID(ctx, "s-amr")
+	if err != nil || strings.Join(s.AMR, " ") != "pwd otp mfa" {
+		t.Errorf("session AMR = %v, %v", s, err)
+	}
+	if list, _ := store.Sessions().ListByUserID(ctx, "user-amr"); len(list) != 1 || len(list[0].AMR) != 3 {
+		t.Errorf("listed session AMR lost: %+v", list)
+	}
+
+	if err := store.AuthCodes().Create(ctx, &domain.AuthCode{Code: "c-amr", ClientID: "client-amr", UserID: "user-amr", RedirectURI: "http://x/cb", Scope: "openid",
+		ExpiresAt: time.Now().Add(time.Minute), AMR: []string{"pwd"}}); err != nil {
+		t.Fatalf("Create code: %v", err)
+	}
+	c, err := store.AuthCodes().GetByCode(ctx, "c-amr")
+	if err != nil || len(c.AMR) != 1 || c.AMR[0] != "pwd" {
+		t.Errorf("auth code AMR = %v, %v", c, err)
 	}
 }
 

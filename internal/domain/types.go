@@ -133,6 +133,9 @@ type Session struct {
 	ExpiresAt time.Time `json:"expires_at"`
 	UserAgent string    `json:"user_agent,omitempty"`
 	IPAddress string    `json:"ip_address,omitempty"`
+	// AMR lists how the user authenticated (RFC 8176 values: "pwd", plus
+	// "otp" and "mfa" after an authenticator code); carried into ID tokens.
+	AMR []string `json:"amr,omitempty"`
 }
 
 // IsExpired checks if the session has expired.
@@ -151,6 +154,7 @@ type AuthCode struct {
 	CodeChallengeMethod string    `json:"code_challenge_method,omitempty"` // plain or S256
 	Nonce               string    `json:"nonce,omitempty"`
 	AuthTime            time.Time `json:"auth_time,omitempty"` // When the user last authenticated (session start)
+	AMR                 []string  `json:"amr,omitempty"`       // The session's authentication methods, for the ID token
 	CreatedAt           time.Time `json:"created_at"`
 	ExpiresAt           time.Time `json:"expires_at"`
 	Used                bool      `json:"used"`

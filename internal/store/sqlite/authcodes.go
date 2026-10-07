@@ -14,15 +14,19 @@ type authCodeRepository struct {
 	db *sql.DB
 }
 
-const authCodeColumns = "code, client_id, user_id, redirect_uri, scope, code_challenge, code_challenge_method, nonce, auth_time, created_at, expires_at, used"
+const authCodeColumns = "code, client_id, user_id, redirect_uri, scope, code_challenge, code_challenge_method, nonce, auth_time, amr, created_at, expires_at, used"
 
 func (r *authCodeRepository) Create(ctx context.Context, code *domain.AuthCode) error {
 	code.CreatedAt = time.Now()
 
-	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO auth_codes (`+authCodeColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	amr, err := marshalStrings(code.AMR)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx,
+		`INSERT INTO auth_codes (`+authCodeColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		code.Code, code.ClientID, code.UserID, code.RedirectURI, code.Scope,
-		code.CodeChallenge, code.CodeChallengeMethod, code.Nonce, utc(code.AuthTime),
+		code.CodeChallenge, code.CodeChallengeMethod, code.Nonce, utc(code.AuthTime), amr,
 		utc(code.CreatedAt), utc(code.ExpiresAt), code.Used,
 	)
 	if err != nil {
@@ -39,14 +43,18 @@ func (r *authCodeRepository) Create(ctx context.Context, code *domain.AuthCode) 
 
 func (r *authCodeRepository) GetByCode(ctx context.Context, code string) (*domain.AuthCode, error) {
 	var ac domain.AuthCode
+	var amr string
 	err := r.db.QueryRowContext(ctx, `SELECT `+authCodeColumns+` FROM auth_codes WHERE code = ?`, code).
 		Scan(&ac.Code, &ac.ClientID, &ac.UserID, &ac.RedirectURI, &ac.Scope,
-			&ac.CodeChallenge, &ac.CodeChallengeMethod, &ac.Nonce, &ac.AuthTime,
+			&ac.CodeChallenge, &ac.CodeChallengeMethod, &ac.Nonce, &ac.AuthTime, &amr,
 			&ac.CreatedAt, &ac.ExpiresAt, &ac.Used)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, idperrors.NotFound("auth code", code)
 	}
 	if err != nil {
+		return nil, idperrors.Internal("failed to load auth code", err)
+	}
+	if ac.AMR, err = unmarshalStrings(amr); err != nil {
 		return nil, idperrors.Internal("failed to load auth code", err)
 	}
 	return &ac, nil

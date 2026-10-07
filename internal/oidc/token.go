@@ -241,7 +241,7 @@ func (s *TokenService) HandleAuthorizationCode(ctx context.Context, req *TokenRe
 	}
 
 	// Generate tokens
-	return s.generateTokens(ctx, user, client, authCode.Scope, authCode.Nonce, authCode.AuthTime, "authorization_code")
+	return s.generateTokens(ctx, user, client, authCode.Scope, authCode.Nonce, authCode.AuthTime, authCode.AMR, "authorization_code")
 }
 
 // HandleRefreshToken handles the refresh_token grant type.
@@ -312,7 +312,7 @@ func (s *TokenService) HandleRefreshToken(ctx context.Context, req *TokenRequest
 	}
 
 	// Generate new tokens
-	return s.generateTokens(ctx, user, client, scope, "", time.Time{}, "refresh_token")
+	return s.generateTokens(ctx, user, client, scope, "", time.Time{}, nil, "refresh_token")
 }
 
 // ttlsFor returns the access and refresh token lifetimes for a client: its
@@ -561,7 +561,7 @@ func (s *TokenService) introspect(ctx context.Context, req *IntrospectionRequest
 	return &IntrospectionResponse{Active: false}, nil
 }
 
-func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, client *domain.Client, scope, nonce string, authTime time.Time, grantType string) (*TokenResponse, error) {
+func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, client *domain.Client, scope, nonce string, authTime time.Time, amr []string, grantType string) (*TokenResponse, error) {
 	// Build claims for ID token. OIDC Core §5.4 puts the scope claims in the
 	// UserInfo response for the code flow; they are also placed in the ID
 	// token — gated by the scopes granted — because many relying parties
@@ -582,6 +582,11 @@ func (s *TokenService) generateTokens(ctx context.Context, user *domain.User, cl
 	// auth_time lets clients enforce max_age themselves
 	if !authTime.IsZero() {
 		idTokenClaims.SetExtra("auth_time", authTime.Unix())
+	}
+	// amr (OIDC Core §2, RFC 8176) from the session that authorized the code;
+	// like auth_time, not repeated on refresh.
+	if len(amr) > 0 {
+		idTokenClaims.SetExtra("amr", amr)
 	}
 
 	// Group memberships go in both tokens: the ID token for the client, the

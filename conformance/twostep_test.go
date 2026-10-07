@@ -129,4 +129,32 @@ func TestTwoStepSignIn(t *testing.T) {
 	if claims["email"] != email {
 		t.Errorf("ID token email = %v, want %s", claims["email"], email)
 	}
+	// amr (OIDC Core §2, RFC 8176) says a second factor was used.
+	if got := amrOf(claims); !contains(got, "pwd") || !contains(got, "otp") || !contains(got, "mfa") {
+		t.Errorf("amr = %v, want pwd, otp and mfa", got)
+	}
+}
+
+func amrOf(claims map[string]any) []string {
+	var out []string
+	list, _ := claims["amr"].([]any)
+	for _, v := range list {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// A password-only sign-in says so: amr is ["pwd"].
+func TestAMRPasswordOnly(t *testing.T) {
+	code, _ := obtainCode(t, authzParams(cfg.ClientID, cfg.RedirectURI, "openid", "st", "nn", ""), cfg.RedirectURI)
+	tr := exchange(t, code, "", cfg.ClientID, cfg.ClientSecret, cfg.RedirectURI)
+	if tr.Status != http.StatusOK {
+		t.Fatalf("token: HTTP %d", tr.Status)
+	}
+	claims := mustVerifyIDToken(t, tr.str("id_token"), idTokenExpectation{Issuer: discovery(t).Issuer, ClientID: cfg.ClientID, Nonce: "nn"})
+	if got := amrOf(claims); len(got) != 1 || got[0] != "pwd" {
+		t.Errorf("amr = %v, want [pwd]", got)
+	}
 }

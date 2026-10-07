@@ -372,7 +372,10 @@ nothing forces a user, or an admin, to set it up.
 - Lost the phone and the recovery codes? An admin resets it on the user's page in `/admin`, or
   `idpicoctl user reset-two-step <email>`; the user then signs in with the password and sets up a new one.
 - The secret is stored unencrypted in the database, like the signing keys: protect backups accordingly.
-- ID tokens do not yet say which methods were used (no `amr`/`acr` claim).
+- ID tokens carry `amr` (RFC 8176): `["pwd"]` after a password-only sign-in, `["pwd","otp","mfa"]`
+  after the code step (a recovery code counts as `otp`). An app that wants a second factor checks for
+  `mfa`. It comes from the code flow's sign-in and is not repeated on refresh, like `auth_time`. There
+  is no `acr`, and `acr_values` cannot demand two-step sign-in from a user who has not set it up.
 
 ### Account Lockout
 

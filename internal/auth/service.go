@@ -149,12 +149,12 @@ func (s *Service) Login(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		return user, ErrSecondFactorRequired
 	}
 
-	return user, s.startSession(ctx, w, r, user)
+	return user, s.startSession(ctx, w, r, user, AMRPassword)
 }
 
 // startSession finishes a successful login: a fresh session (rotating any
 // existing one), the cookie, and the record of it.
-func (s *Service) startSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *domain.User) error {
+func (s *Service) startSession(ctx context.Context, w http.ResponseWriter, r *http.Request, user *domain.User, amr ...string) error {
 	// Clear failed attempts on successful login
 	if s.lockout != nil {
 		s.lockout.RecordSuccess(user.Email)
@@ -167,7 +167,7 @@ func (s *Service) startSession(ctx context.Context, w http.ResponseWriter, r *ht
 	}
 
 	// Create new session (with rotation)
-	_, token, err := s.sessions.RotateSession(ctx, oldToken, user.ID, r.UserAgent(), getClientIP(r))
+	_, token, err := s.sessions.RotateSession(ctx, oldToken, user.ID, r.UserAgent(), getClientIP(r), amr...)
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
 	}

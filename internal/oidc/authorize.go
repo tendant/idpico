@@ -236,7 +236,7 @@ func (s *AuthorizeService) ValidateClient(ctx contextInterface, req *AuthorizeRe
 // CreateAuthCode creates an authorization code for the user. authTime is
 // when the user's current session was established and is carried into the
 // ID token's auth_time claim.
-func (s *AuthorizeService) CreateAuthCode(ctx contextInterface, req *AuthorizeRequest, userID string, authTime time.Time) (*domain.AuthCode, error) {
+func (s *AuthorizeService) CreateAuthCode(ctx contextInterface, req *AuthorizeRequest, userID string, authTime time.Time, amr []string) (*domain.AuthCode, error) {
 	code := &domain.AuthCode{
 		Code:                uuid.New().String(),
 		ClientID:            req.ClientID,
@@ -247,6 +247,7 @@ func (s *AuthorizeService) CreateAuthCode(ctx contextInterface, req *AuthorizeRe
 		CodeChallengeMethod: req.CodeChallengeMethod,
 		Nonce:               req.Nonce,
 		AuthTime:            authTime,
+		AMR:                 amr,
 		ExpiresAt:           time.Now().Add(s.codeTTL),
 		Used:                false,
 	}

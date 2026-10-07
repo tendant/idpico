@@ -7,7 +7,8 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 ### Added
 
 - **Two-step sign-in** with an authenticator app (TOTP, RFC 6238), optional per user. Set up on `/account` from a server-rendered QR code (no JavaScript), confirmed with one code, with ten one-time recovery codes shown once and stored as hashes. `/login` then continues to `/login/code`; a code is never accepted twice, one password entry allows five wrong codes, and failures count towards lockout. Renewing recovery codes or turning it off needs a current code. An admin can reset it from the user's page; `idpicoctl user reset-two-step <email>`; `idpicoctl user list` shows it. Audit events `totp.enabled`, `totp.disabled`, `totp.recovery_code_used`, `totp.recovery_codes_renewed`. **Migration `00005`** adds three columns to `users`; the start that applies it backs the database up first (v0.0.10).
-- Conformance `TestTwoStepSignIn`: an authorization request for a user with an authenticator passes through the code step (no session before it: `prompt=none` gives `login_required`), then consent and an ordinary code exchange; codes computed by the suite's own TOTP.
+- `amr` claim in ID tokens (OIDC Core §2, RFC 8176): `["pwd"]`, or `["pwd","otp","mfa"]` after the code step; recorded on the session and the authorization code (migration `00005` also adds `sessions.amr` and `auth_codes.amr`), advertised in `claims_supported`, not repeated on refresh.
+- Conformance `TestTwoStepSignIn` (now also checks `amr`) and `TestAMRPasswordOnly`: an authorization request for a user with an authenticator passes through the code step (no session before it: `prompt=none` gives `login_required`), then consent and an ordinary code exchange; codes computed by the suite's own TOTP.
 
 ### Changed
 

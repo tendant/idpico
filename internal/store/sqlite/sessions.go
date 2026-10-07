@@ -14,14 +14,18 @@ type sessionRepository struct {
 	db *sql.DB
 }
 
-const sessionColumns = "id, user_id, created_at, expires_at, user_agent, ip_address"
+const sessionColumns = "id, user_id, created_at, expires_at, user_agent, ip_address, amr"
 
 func (r *sessionRepository) Create(ctx context.Context, session *domain.Session) error {
 	session.CreatedAt = time.Now()
 
-	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO sessions (`+sessionColumns+`) VALUES (?, ?, ?, ?, ?, ?)`,
-		session.ID, session.UserID, utc(session.CreatedAt), utc(session.ExpiresAt), session.UserAgent, session.IPAddress,
+	amr, err := marshalStrings(session.AMR)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx,
+		`INSERT INTO sessions (`+sessionColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		session.ID, session.UserID, utc(session.CreatedAt), utc(session.ExpiresAt), session.UserAgent, session.IPAddress, amr,
 	)
 	if err != nil {
 		if isForeignKeyViolation(err) {
@@ -36,14 +40,25 @@ func (r *sessionRepository) Create(ctx context.Context, session *domain.Session)
 }
 
 func (r *sessionRepository) GetByID(ctx context.Context, id string) (*domain.Session, error) {
-	var s domain.Session
-	err := r.db.QueryRowContext(ctx, `SELECT `+sessionColumns+` FROM sessions WHERE id = ?`, id).
-		Scan(&s.ID, &s.UserID, &s.CreatedAt, &s.ExpiresAt, &s.UserAgent, &s.IPAddress)
+	s, err := scanSession(r.db.QueryRowContext(ctx, `SELECT `+sessionColumns+` FROM sessions WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, idperrors.NotFound("session", id)
 	}
 	if err != nil {
 		return nil, idperrors.Internal("failed to load session", err)
+	}
+	return s, nil
+}
+
+func scanSession(row interface{ Scan(...any) error }) (*domain.Session, error) {
+	var s domain.Session
+	var amr string
+	if err := row.Scan(&s.ID, &s.UserID, &s.CreatedAt, &s.ExpiresAt, &s.UserAgent, &s.IPAddress, &amr); err != nil {
+		return nil, err
+	}
+	var err error
+	if s.AMR, err = unmarshalStrings(amr); err != nil {
+		return nil, err
 	}
 	return &s, nil
 }
@@ -88,11 +103,11 @@ func (r *sessionRepository) ListByUserID(ctx context.Context, userID string) ([]
 
 	sessions := []*domain.Session{}
 	for rows.Next() {
-		var s domain.Session
-		if err := rows.Scan(&s.ID, &s.UserID, &s.CreatedAt, &s.ExpiresAt, &s.UserAgent, &s.IPAddress); err != nil {
+		s, err := scanSession(rows)
+		if err != nil {
 			return nil, idperrors.Internal("failed to scan session", err)
 		}
-		sessions = append(sessions, &s)
+		sessions = append(sessions, s)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, idperrors.Internal("failed to list sessions", err)

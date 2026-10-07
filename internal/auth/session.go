@@ -70,7 +70,8 @@ func NewSessionService(sessions store.SessionRepository, cookieSecret string, op
 }
 
 // CreateSession creates a new session for a user and returns the session token.
-func (s *SessionService) CreateSession(ctx context.Context, userID, userAgent, ipAddress string) (*domain.Session, string, error) {
+// amr records how the user authenticated (RFC 8176 values).
+func (s *SessionService) CreateSession(ctx context.Context, userID, userAgent, ipAddress string, amr ...string) (*domain.Session, string, error) {
 	// Generate session token
 	tokenBytes := make([]byte, SessionTokenLength)
 	if _, err := rand.Read(tokenBytes); err != nil {
@@ -86,6 +87,7 @@ func (s *SessionService) CreateSession(ctx context.Context, userID, userAgent, i
 		ExpiresAt: time.Now().Add(s.sessionTTL),
 		UserAgent: userAgent,
 		IPAddress: ipAddress,
+		AMR:       amr,
 	}
 
 	if err := s.sessions.Create(ctx, session); err != nil {
@@ -161,12 +163,12 @@ func (s *SessionService) GetSessionFromRequest(ctx context.Context, r *http.Requ
 
 // RotateSession creates a new session and invalidates the old one.
 // This should be called after login for security.
-func (s *SessionService) RotateSession(ctx context.Context, oldToken, userID, userAgent, ipAddress string) (*domain.Session, string, error) {
+func (s *SessionService) RotateSession(ctx context.Context, oldToken, userID, userAgent, ipAddress string, amr ...string) (*domain.Session, string, error) {
 	// Delete old session
 	if oldToken != "" {
 		_ = s.sessions.Delete(ctx, oldToken)
 	}
 
 	// Create new session
-	return s.CreateSession(ctx, userID, userAgent, ipAddress)
+	return s.CreateSession(ctx, userID, userAgent, ipAddress, amr...)
 }

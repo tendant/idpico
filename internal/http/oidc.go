@@ -123,7 +123,7 @@ func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.issueCode(w, r, authReq, user.ID, authTime)
+	h.issueCode(w, r, authReq, user.ID, authTime, session.AMR)
 }
 
 // Consent handles POST /consent - the user allowed or denied the client.
@@ -181,14 +181,14 @@ func (h *OIDCHandler) Consent(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("consent granted", "client_id", client.ID, "user_id", user.ID, "scope", authReq.Scope)
 	h.audit.Record(ctx, audit.Event{Actor: user, Action: audit.ConsentGranted, TargetType: "client", TargetID: client.ID, Detail: authReq.Scope, IP: audit.ClientIP(r)})
 
-	h.issueCode(w, r, authReq, user.ID, session.CreatedAt)
+	h.issueCode(w, r, authReq, user.ID, session.CreatedAt, session.AMR)
 }
 
 // issueCode creates an authorization code and redirects back to the client.
-func (h *OIDCHandler) issueCode(w http.ResponseWriter, r *http.Request, authReq *oidc.AuthorizeRequest, userID string, authTime time.Time) {
+func (h *OIDCHandler) issueCode(w http.ResponseWriter, r *http.Request, authReq *oidc.AuthorizeRequest, userID string, authTime time.Time, amr []string) {
 	ctx := r.Context()
 
-	authCode, err := h.authorizeService.CreateAuthCode(ctx, authReq, userID, authTime)
+	authCode, err := h.authorizeService.CreateAuthCode(ctx, authReq, userID, authTime, amr)
 	if err != nil {
 		h.logger.Error("failed to create auth code", "error", err)
 		redirectURL := h.authorizeService.BuildErrorResponse(

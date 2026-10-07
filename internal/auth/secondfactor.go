@@ -36,6 +36,14 @@ const (
 	pendingLoginAttempts = 5
 )
 
+// Authentication method references (RFC 8176) recorded on the session and
+// released as the ID token's amr claim. A recovery code counts as "otp".
+const (
+	AMRPassword        = "pwd"
+	AMROneTimePassword = "otp"
+	AMRMultiFactor     = "mfa"
+)
+
 var (
 	// ErrSecondFactorRequired: the password was right; a code is due.
 	ErrSecondFactorRequired = errors.New("second factor required")
@@ -189,7 +197,7 @@ func (s *Service) CompleteSecondFactor(ctx context.Context, w http.ResponseWrite
 
 	s.pending.remove(c.Value)
 	s.clearPendingCookie(w)
-	if err := s.startSession(ctx, w, r, user); err != nil {
+	if err := s.startSession(ctx, w, r, user, AMRPassword, AMROneTimePassword, AMRMultiFactor); err != nil {
 		return nil, err
 	}
 	return user, nil
