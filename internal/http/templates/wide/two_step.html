@@ -19,9 +19,15 @@
     <form method="POST" action="/account/two-step/enable">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <input type="hidden" name="secret" value="{{.Secret}}">
-        <div class="form-row">
-            <label for="code"><strong>2.</strong> Enter the code it shows</label>
-            <input type="text" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus>
+        <div class="form-row two">
+            <div>
+                <label for="code"><strong>2.</strong> Enter the code it shows</label>
+                <input type="text" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus>
+            </div>
+            <div>
+                <label for="current_password"><strong>3.</strong> Your current password</label>
+                <input type="password" id="current_password" name="current_password" required autocomplete="current-password">
+            </div>
         </div>
         <button type="submit">Turn on</button>
         <a href="/account" class="muted" style="margin-left:12px">Cancel</a>

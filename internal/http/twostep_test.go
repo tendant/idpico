@@ -119,11 +119,15 @@ func TestIntegration_TwoStepSignIn(t *testing.T) {
 			t.Errorf("setup page Cache-Control = %q, want no-store", cc)
 		}
 		secret := m[1]
-		if resp, _ := c.post("/account/two-step/enable", url.Values{"secret": {secret}, "code": {"000000"}}); resp.StatusCode != http.StatusBadRequest {
+		if resp, _ := c.post("/account/two-step/enable", url.Values{"secret": {secret}, "code": {"000000"}, "current_password": {"password123"}}); resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("wrong enrollment code: HTTP %d, want 400", resp.StatusCode)
 		}
 		now, _ := auth.GenerateTOTP(secret, time.Now())
-		resp, body = c.post("/account/two-step/enable", url.Values{"secret": {secret}, "code": {now}})
+		// An open session alone cannot attach an authenticator.
+		if resp, _ := c.post("/account/two-step/enable", url.Values{"secret": {secret}, "code": {now}, "current_password": {"wrong-password"}}); resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("enrollment with a wrong password: HTTP %d, want 400", resp.StatusCode)
+		}
+		resp, body = c.post("/account/two-step/enable", url.Values{"secret": {secret}, "code": {now}, "current_password": {"password123"}})
 		var recovery []string
 		if pre := preRe.FindStringSubmatch(body); pre != nil {
 			recovery = recoveryRe.FindAllString(pre[1], -1)
@@ -254,5 +258,37 @@ func TestIntegration_LoginPageReturnURLWhenSignedIn(t *testing.T) {
 		if got := resp.Header.Get("Location"); resp.StatusCode != http.StatusFound || got != want {
 			t.Errorf("return_url=%q: HTTP %d to %q, want %q", target, resp.StatusCode, got, want)
 		}
+	}
+}
+
+// A stolen session cannot guess its way to turning two-step off: wrong
+// codes on /account count towards lockout (5 in the test env), after which
+// even the right code is refused.
+func TestIntegration_TwoStepAccountGuessingLocks(t *testing.T) {
+	env := setupTestEnv(t, "sqlite")
+	defer env.cleanup()
+	ctx := context.Background()
+	secret, _ := auth.NewTOTPSecret()
+	u, _ := env.store.Users().GetByEmail(ctx, "test@example.com")
+	u.TOTPSecret = secret
+	env.store.Users().Update(ctx, u)
+
+	c := &twoStepClient{t: t, env: env, http: newClientWithCookies()}
+	c.password("")
+	first, _ := auth.GenerateTOTP(secret, time.Now())
+	if resp := c.code(first); resp.StatusCode != http.StatusFound {
+		t.Fatalf("sign in: HTTP %d", resp.StatusCode)
+	}
+	for i := 0; i < 5; i++ {
+		c.get("/account")
+		c.post("/account/two-step/disable", url.Values{"code": {"000000"}})
+	}
+	next, _ := auth.GenerateTOTP(secret, time.Now().Add(30*time.Second))
+	c.get("/account")
+	if resp, _ := c.post("/account/two-step/disable", url.Values{"code": {next}}); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("after 5 wrong codes the right one: HTTP %d, want 403 (locked)", resp.StatusCode)
+	}
+	if u, _ := env.store.Users().GetByID(ctx, u.ID); !u.TOTPEnabled() {
+		t.Error("two-step turned off while locked")
 	}
 }

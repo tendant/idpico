@@ -389,7 +389,7 @@ func NewServer(addr string, opts ...Option) *Server {
 	// Self-service account page
 	if s.accountStore != nil && s.authService != nil {
 		account := NewAccountPageHandler(s.accountStore, s.authService, s.accountService, templates, s.logger, s.audit)
-		account.Routes(r)
+		account.Routes(r, interactive)
 		s.logger.Info("account page enabled at /account")
 	}
 

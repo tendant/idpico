@@ -58,8 +58,14 @@ func (h *AccountPageHandler) TwoStepEnable(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	secret := r.FormValue("secret")
-	codes, err := h.auth.EnableTOTP(r.Context(), r, h.user(r), secret, r.FormValue("code"))
+	codes, err := h.auth.EnableTOTP(r.Context(), r, h.user(r), r.FormValue("current_password"), secret, r.FormValue("code"))
 	switch {
+	case errors.Is(err, auth.ErrInvalidPassword):
+		h.renderTwoStepSetup(w, r, http.StatusBadRequest, secret, "Your current password is incorrect.")
+		return
+	case errors.Is(err, auth.ErrAccountLocked):
+		h.renderTwoStepSetup(w, r, http.StatusForbidden, secret, lockedMessage)
+		return
 	case errors.Is(err, auth.ErrInvalidCode):
 		h.renderTwoStepSetup(w, r, http.StatusBadRequest, secret, "That code did not match. Check that the app added the account and that your phone's clock is right, then try the current code.")
 		return
@@ -99,6 +105,10 @@ func (h *AccountPageHandler) twoStepError(w http.ResponseWriter, r *http.Request
 		h.render(w, r, http.StatusBadRequest, "That code is not valid. Use the current code from your app, or a recovery code.")
 		return
 	}
+	if errors.Is(err, auth.ErrAccountLocked) {
+		h.render(w, r, http.StatusForbidden, lockedMessage)
+		return
+	}
 	h.logger.Error("two-step sign-in change failed", "error", err)
 	h.render(w, r, http.StatusInternalServerError, "Failed to change two-step sign-in")
 }
@@ -109,6 +119,8 @@ func (h *AccountPageHandler) renderRecoveryCodes(w http.ResponseWriter, r *http.
 	w.Header().Set("Cache-Control", "no-store")
 	h.templates.Render(w, http.StatusOK, "wide/two_step", data)
 }
+
+const lockedMessage = "Too many failed attempts. Please try again later."
 
 func groupsOf4(s string) string {
 	var parts []string

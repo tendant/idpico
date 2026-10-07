@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 
 	"github.com/tendant/idpico/internal/audit"
 	"github.com/tendant/idpico/internal/domain"
@@ -23,6 +24,8 @@ type Service struct {
 	logger   *slog.Logger
 	audit    *audit.Recorder
 	pending  *pendingLogins // password accepted, authenticator code still due
+	// userLocks serialises second-factor checks per user (see consumeSecondFactor).
+	userLocks sync.Map
 }
 
 // ServiceOption configures the Service.

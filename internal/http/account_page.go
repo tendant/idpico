@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -32,19 +33,27 @@ func NewAccountPageHandler(st store.Store, authService *auth.Service, account *a
 }
 
 // Routes mounts the page and its actions; every route requires a session.
-func (h *AccountPageHandler) Routes(r chi.Router) {
+// limit (nil for none) is applied to the actions that re-check a password
+// or an authenticator code.
+func (h *AccountPageHandler) Routes(r chi.Router, limit func(http.Handler) http.Handler) {
 	r.Group(func(r chi.Router) {
 		r.Use(h.requireUser)
 		r.Get("/account", h.Page)
-		r.Post("/account/password", h.ChangePassword)
 		r.Get("/account/two-step", h.TwoStepSetup)
-		r.Post("/account/two-step/enable", h.TwoStepEnable)
-		r.Post("/account/two-step/disable", h.TwoStepDisable)
-		r.Post("/account/two-step/recovery-codes", h.TwoStepRecoveryCodes)
 		r.Post("/account/sessions/{sessionID}/revoke", h.RevokeSession)
 		r.Post("/account/sessions/revoke-others", h.RevokeOtherSessions)
 		r.Post("/account/tokens/{tokenID}/revoke", h.RevokeToken)
 		r.Post("/account/consents/{clientID}/revoke", h.RevokeConsent)
+	})
+	r.Group(func(r chi.Router) {
+		if limit != nil {
+			r.Use(limit)
+		}
+		r.Use(h.requireUser)
+		r.Post("/account/password", h.ChangePassword)
+		r.Post("/account/two-step/enable", h.TwoStepEnable)
+		r.Post("/account/two-step/disable", h.TwoStepDisable)
+		r.Post("/account/two-step/recovery-codes", h.TwoStepRecoveryCodes)
 	})
 }
 
@@ -285,7 +294,11 @@ func (h *AccountPageHandler) ChangePassword(w http.ResponseWriter, r *http.Reque
 	user := h.user(r)
 	current, next, confirm := r.FormValue("current_password"), r.FormValue("new_password"), r.FormValue("confirm_password")
 
-	if ok, err := auth.VerifyPassword(current, user.PasswordHash); err != nil || !ok {
+	if err := h.auth.VerifyCurrentPassword(user, current); err != nil {
+		if errors.Is(err, auth.ErrAccountLocked) {
+			h.render(w, r, http.StatusForbidden, lockedMessage)
+			return
+		}
 		h.render(w, r, http.StatusBadRequest, "Current password is incorrect")
 		return
 	}

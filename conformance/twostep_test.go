@@ -68,7 +68,7 @@ func TestTwoStepSignIn(t *testing.T) {
 	}
 	secret := string(m[1])
 	resp, body := postForm(t, c, base+"/account/two-step/enable", url.Values{
-		"csrf_token": {formValue(body, "csrf_token")}, "secret": {secret}, "code": {totp(t, secret, time.Now())},
+		"csrf_token": {formValue(body, "csrf_token")}, "secret": {secret}, "code": {totp(t, secret, time.Now())}, "current_password": {password},
 	})
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "recovery codes") {
 		t.Fatalf("enable: HTTP %d: %s", resp.StatusCode, snippet(body))

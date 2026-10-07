@@ -155,9 +155,22 @@ func Middleware(next http.Handler) http.Handler {
 		duration := time.Since(start).Seconds()
 		path := normalizePath(r.URL.Path)
 
-		httpRequestsTotal.WithLabelValues(r.Method, path, strconv.Itoa(wrapped.statusCode)).Inc()
-		httpRequestDuration.WithLabelValues(r.Method, path).Observe(duration)
+		method := normalizeMethod(r.Method)
+		httpRequestsTotal.WithLabelValues(method, path, strconv.Itoa(wrapped.statusCode)).Inc()
+		httpRequestDuration.WithLabelValues(method, path).Observe(duration)
 	})
+}
+
+// normalizeMethod maps the request method to a fixed set. net/http accepts
+// any token as a method, so using it as sent would let anyone create
+// unbounded time series (one per invented method) and exhaust memory.
+func normalizeMethod(m string) string {
+	switch m {
+	case http.MethodGet, http.MethodPost, http.MethodHead, http.MethodOptions,
+		http.MethodPut, http.MethodDelete, http.MethodPatch:
+		return m
+	}
+	return "OTHER"
 }
 
 type responseWriter struct {

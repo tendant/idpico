@@ -280,6 +280,12 @@ func TestRealIPFromTrustedProxies(t *testing.T) {
 		{"public peer: header stripped", private, "198.51.100.7:4444", "203.0.113.9", "198.51.100.7:4444", ""},
 		{"no trusted proxies: header stripped", nil, "10.0.0.2:4444", "203.0.113.9", "10.0.0.2:4444", ""},
 		{"private peer without header: unchanged", private, "10.0.0.2:4444", "", "10.0.0.2:4444", "https"},
+		// A client-supplied XFF is extended by the proxy: only the hop the
+		// proxy appended counts.
+		{"spoofed leftmost hop ignored", private, "10.0.0.2:4444", "1.2.3.4, 203.0.113.9", "203.0.113.9", "https"},
+		{"trusted hops skipped from the right", private, "10.0.0.2:4444", "1.2.3.4, 203.0.113.9, 10.0.0.5", "203.0.113.9", "https"},
+		{"all hops trusted: leftmost", private, "10.0.0.2:4444", "10.0.0.7, 10.0.0.5", "10.0.0.7", "https"},
+		{"garbage hop: peer kept", private, "10.0.0.2:4444", "1.2.3.4, not-an-ip", "10.0.0.2:4444", "https"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -290,6 +296,8 @@ func TestRealIPFromTrustedProxies(t *testing.T) {
 				req.Header.Set("X-Forwarded-For", tc.xff)
 			}
 			req.Header.Set("X-Forwarded-Proto", "https")
+			req.Header.Set("True-Client-IP", "6.6.6.6") // never believed
+			req.Header.Set("X-Real-IP", "6.6.6.6")
 			RealIPFromTrustedProxies(tc.trusted)(next).ServeHTTP(httptest.NewRecorder(), req)
 			if seen != tc.want {
 				t.Errorf("RemoteAddr = %q, want %q", seen, tc.want)

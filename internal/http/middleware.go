@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5/middleware"
 )
 
 // CORSConfig holds CORS configuration.
@@ -157,17 +156,26 @@ func DefaultSecurityHeadersConfig() *SecurityHeadersConfig {
 // client claiming to be behind a proxy.
 var forwardingHeaders = []string{"X-Forwarded-For", "X-Forwarded-Proto", "X-Forwarded-Host", "X-Real-IP", "True-Client-IP"}
 
-// RealIPFromTrustedProxies rewrites r.RemoteAddr from the forwarding headers
-// (as chi's RealIP does) only when the connecting peer is one of the trusted
-// proxies; otherwise the headers are stripped. With no trusted proxies every
-// request is attributed to its connecting address.
+// RealIPFromTrustedProxies rewrites r.RemoteAddr from X-Forwarded-For only
+// when the connecting peer is one of the trusted proxies; otherwise the
+// forwarding headers are stripped. With no trusted proxies every request is
+// attributed to its connecting address.
+//
+// The client is the rightmost X-Forwarded-For entry that is not itself a
+// trusted proxy: proxies append the address they received the request from,
+// so everything to the left of that is whatever the client chose to send.
+// X-Real-IP and True-Client-IP are never believed (a proxy that does not
+// overwrite them passes the client's own values through) and are removed.
 func RealIPFromTrustedProxies(trusted []netip.Prefix) func(http.Handler) http.Handler {
-	fromProxy := middleware.RealIP
 	return func(next http.Handler) http.Handler {
-		proxied := fromProxy(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if len(trusted) > 0 && peerIsTrusted(r.RemoteAddr, trusted) {
-				proxied.ServeHTTP(w, r)
+				if ip, ok := clientFromForwardedFor(r.Header.Values("X-Forwarded-For"), trusted); ok {
+					r.RemoteAddr = ip
+				}
+				r.Header.Del("X-Real-IP")
+				r.Header.Del("True-Client-IP")
+				next.ServeHTTP(w, r)
 				return
 			}
 			for _, h := range forwardingHeaders {
@@ -176,6 +184,41 @@ func RealIPFromTrustedProxies(trusted []netip.Prefix) func(http.Handler) http.Ha
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// clientFromForwardedFor walks the X-Forwarded-For hops from the right and
+// returns the first that is not a trusted proxy (or the leftmost, if every
+// hop is trusted). An unparsable hop ends the walk: nothing to its left can
+// be attributed.
+func clientFromForwardedFor(values []string, trusted []netip.Prefix) (string, bool) {
+	var hops []string
+	for _, v := range values {
+		for _, h := range strings.Split(v, ",") {
+			if h = strings.TrimSpace(h); h != "" {
+				hops = append(hops, h)
+			}
+		}
+	}
+	for i := len(hops) - 1; i >= 0; i-- {
+		addr, err := netip.ParseAddr(hops[i])
+		if err != nil {
+			return "", false
+		}
+		addr = addr.Unmap()
+		if i == 0 || !prefixesContain(trusted, addr) {
+			return addr.String(), true
+		}
+	}
+	return "", false
+}
+
+func prefixesContain(prefixes []netip.Prefix, addr netip.Addr) bool {
+	for _, p := range prefixes {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 // isHTTPS reports whether the request reached the user over TLS, either on
@@ -200,13 +243,7 @@ func peerIsTrusted(remoteAddr string, trusted []netip.Prefix) bool {
 	if err != nil {
 		return false
 	}
-	addr = addr.Unmap()
-	for _, p := range trusted {
-		if p.Contains(addr) {
-			return true
-		}
-	}
-	return false
+	return prefixesContain(trusted, addr.Unmap())
 }
 
 // SecurityHeadersMiddleware returns a middleware that sets security headers.

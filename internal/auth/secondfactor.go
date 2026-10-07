@@ -52,6 +52,11 @@ var (
 	ErrPendingLoginExpired = errors.New("sign-in expired; enter your password again")
 	// ErrInvalidCode: the code was wrong; the pending login is still usable.
 	ErrInvalidCode = errors.New("invalid code")
+	// ErrInvalidPassword: the current password, re-entered for a sensitive
+	// change, was wrong.
+	ErrInvalidPassword = errors.New("current password is incorrect")
+	// ErrAccountLocked: too many failed password or code checks; try later.
+	ErrAccountLocked = errors.New("account is temporarily locked")
 )
 
 type pendingLogin struct {
@@ -99,20 +104,19 @@ func (p *pendingLogins) get(token string) (pendingLogin, bool) {
 	return *e, true
 }
 
-// fail counts a wrong code and reports whether the pending login survives.
-func (p *pendingLogins) fail(token string) bool {
+// reserve counts an attempt before the code is checked, so concurrent
+// submissions cannot exceed the limit; it reports false when the pending
+// login is gone or used up.
+func (p *pendingLogins) reserve(token string) (pendingLogin, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	e, ok := p.entries[token]
-	if !ok {
-		return false
+	if !ok || time.Now().After(e.expires) || e.attempts >= pendingLoginAttempts {
+		delete(p.entries, token)
+		return pendingLogin{}, false
 	}
 	e.attempts++
-	if e.attempts >= pendingLoginAttempts {
-		delete(p.entries, token)
-		return false
-	}
-	return true
+	return *e, true
 }
 
 func (p *pendingLogins) remove(token string) {
@@ -157,7 +161,7 @@ func (s *Service) CompleteSecondFactor(ctx context.Context, w http.ResponseWrite
 	if err != nil {
 		return nil, ErrPendingLoginExpired
 	}
-	p, ok := s.pending.get(c.Value)
+	p, ok := s.pending.reserve(c.Value)
 	if !ok {
 		s.clearPendingCookie(w)
 		return nil, ErrPendingLoginExpired
@@ -188,7 +192,8 @@ func (s *Service) CompleteSecondFactor(ctx context.Context, w http.ResponseWrite
 		}
 		s.audit.Record(ctx, audit.Event{ActorEmail: user.Email, Action: audit.LoginFailure, TargetType: "user", TargetID: user.ID, Detail: "wrong authenticator or recovery code", IP: audit.ClientIP(r)})
 		metrics.RecordLogin("failure")
-		if !s.pending.fail(c.Value) {
+		if p.attempts >= pendingLoginAttempts {
+			s.pending.remove(c.Value)
 			s.clearPendingCookie(w)
 			return nil, ErrPendingLoginExpired
 		}
@@ -208,7 +213,20 @@ func (s *Service) CompleteSecondFactor(ctx context.Context, w http.ResponseWrite
 // neither works twice. It reports false for a wrong code.
 func (s *Service) consumeSecondFactor(ctx context.Context, r *http.Request, user *domain.User, code string) (bool, error) {
 	code = strings.TrimSpace(code)
-	if code == "" || !user.TOTPEnabled() {
+	if code == "" {
+		return false, nil
+	}
+	// Check and record under a per-user lock, against the stored user: two
+	// concurrent requests with the same code must not both pass the
+	// last-step check (single instance, so a process lock suffices).
+	unlock := s.lockUser(user.ID)
+	defer unlock()
+	fresh, err := s.users.GetByID(ctx, user.ID)
+	if err != nil {
+		return false, err
+	}
+	*user = *fresh
+	if !user.TOTPEnabled() {
 		return false, nil
 	}
 	if step, ok := VerifyTOTP(user.TOTPSecret, code, time.Now(), user.TOTPLastStep); ok {
@@ -230,12 +248,54 @@ func (s *Service) consumeSecondFactor(ctx context.Context, r *http.Request, user
 	return false, nil
 }
 
+func (s *Service) lockUser(id string) func() {
+	m, _ := s.userLocks.LoadOrStore(id, &sync.Mutex{})
+	mu := m.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
+
+// guarded runs a password or code check made from a signed-in session for
+// a sensitive change. It refuses while the account is locked and counts a
+// failed check towards lockout, so a stolen session cannot be used to
+// guess the password or the authenticator code without limit.
+func (s *Service) guarded(user *domain.User, check func() (bool, error), wrong error) error {
+	if s.lockout != nil && s.lockout.IsLocked(user.Email) {
+		return ErrAccountLocked
+	}
+	ok, err := check()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		if s.lockout != nil && s.lockout.RecordFailure(user.Email) {
+			s.logger.Warn("account locked due to failed attempts", "email", user.Email)
+			metrics.RecordAccountLockout()
+		}
+		return wrong
+	}
+	return nil
+}
+
+// VerifyCurrentPassword re-checks the signed-in user's password before a
+// sensitive change, counting failures towards lockout.
+func (s *Service) VerifyCurrentPassword(user *domain.User, password string) error {
+	return s.guarded(user, func() (bool, error) {
+		ok, err := VerifyPassword(password, user.PasswordHash)
+		return err == nil && ok, nil
+	}, ErrInvalidPassword)
+}
+
 // EnableTOTP turns on two-step sign-in with secret once code proves the
-// user's authenticator holds it. It returns the recovery codes, which are
-// shown once and stored only as hashes.
-func (s *Service) EnableTOTP(ctx context.Context, r *http.Request, user *domain.User, secret, code string) ([]string, error) {
+// user's authenticator holds it; the current password is required too, so
+// an open session alone cannot attach an attacker's authenticator. It
+// returns the recovery codes, which are shown once and stored only as hashes.
+func (s *Service) EnableTOTP(ctx context.Context, r *http.Request, user *domain.User, password, secret, code string) ([]string, error) {
 	if user.TOTPEnabled() {
 		return nil, idperrors.InvalidInput("an authenticator is already set up; turn it off first")
+	}
+	if err := s.VerifyCurrentPassword(user, password); err != nil {
+		return nil, err
 	}
 	step, ok := VerifyTOTP(secret, code, time.Now(), 0)
 	if !ok {
@@ -256,12 +316,8 @@ func (s *Service) EnableTOTP(ctx context.Context, r *http.Request, user *domain.
 // DisableTOTP turns two-step sign-in off; it takes a current code or a
 // recovery code, so a session left open is not enough.
 func (s *Service) DisableTOTP(ctx context.Context, r *http.Request, user *domain.User, code string) error {
-	ok, err := s.consumeSecondFactor(ctx, r, user, code)
-	if err != nil {
+	if err := s.guarded(user, func() (bool, error) { return s.consumeSecondFactor(ctx, r, user, code) }, ErrInvalidCode); err != nil {
 		return err
-	}
-	if !ok {
-		return ErrInvalidCode
 	}
 	ClearTOTP(user)
 	if err := s.users.Update(ctx, user); err != nil {
@@ -274,12 +330,8 @@ func (s *Service) DisableTOTP(ctx context.Context, r *http.Request, user *domain
 // RenewRecoveryCodes replaces the recovery codes (all old ones stop
 // working); it takes a current code or a recovery code.
 func (s *Service) RenewRecoveryCodes(ctx context.Context, r *http.Request, user *domain.User, code string) ([]string, error) {
-	ok, err := s.consumeSecondFactor(ctx, r, user, code)
-	if err != nil {
+	if err := s.guarded(user, func() (bool, error) { return s.consumeSecondFactor(ctx, r, user, code) }, ErrInvalidCode); err != nil {
 		return nil, err
-	}
-	if !ok {
-		return nil, ErrInvalidCode
 	}
 	codes, hashes, err := NewRecoveryCodes()
 	if err != nil {

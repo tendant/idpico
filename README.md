@@ -336,11 +336,13 @@ trusted-proxy list.
 Per-IP limits guard every endpoint that accepts a guessable secret. `IDPICO_LOGIN_RATE_LIMIT`
 (default 5) sets the interactive limit; API endpoints get 10× that. Set to `0` to disable.
 
-The client IP is taken from `X-Forwarded-For` / `X-Real-IP` only when the connection comes from
-a trusted proxy (`IDPICO_TRUSTED_PROXIES`, default `private`: loopback and private-network
-peers, which covers an ingress or sidecar in front of the pod). Set it to your load balancer's
-addresses or CIDRs when it has a public IP, or `none` when IDPico is reached directly; otherwise
-a client could spoof a fresh address on every request and sidestep the limit.
+The client IP is taken from `X-Forwarded-For` only when the connection comes from a trusted proxy
+(`IDPICO_TRUSTED_PROXIES`, default `private`: loopback and private-network peers, which covers an
+ingress, kamal-proxy or a sidecar in front of the container). It is the **rightmost** hop that is
+not itself a trusted proxy — the address the proxy received the request from — so values a client
+puts in the header itself are ignored. `X-Real-IP` and `True-Client-IP` are never believed. Set
+`IDPICO_TRUSTED_PROXIES` to your load balancer's addresses or CIDRs when it has a public IP, or
+`none` when IDPico is reached directly.
 
 | Endpoints | Default Limit | Window |
 |-----------|---------------|--------|

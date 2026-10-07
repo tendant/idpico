@@ -71,7 +71,7 @@ IDPICO_LOG_FORMAT=json          # json or text
 
 # Rate limiting
 IDPICO_LOGIN_RATE_LIMIT=5       # requests per minute per IP (0 = disabled)
-IDPICO_TRUSTED_PROXIES=private  # peers whose X-Forwarded-For/X-Real-IP name the client: private | none | IPs/CIDRs
+IDPICO_TRUSTED_PROXIES=private  # peers whose X-Forwarded-For names the client (rightmost untrusted hop): private | none | IPs/CIDRs
 
 # Account lockout
 IDPICO_LOCKOUT_MAX_ATTEMPTS=5   # failed attempts before lockout (0 = disabled)
