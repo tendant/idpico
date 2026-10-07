@@ -1076,8 +1076,9 @@ func TestHandleRevocation(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "revoke without client auth (should succeed for public tokens)",
+			name: "public client names itself (no secret)",
 			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository) {
+				clientRepo.Create(ctx, &domain.Client{ID: "public-app", Public: true})
 				tokenRepo.Create(ctx, &domain.Token{
 					ID:        "public-token",
 					UserID:    "user-123",
@@ -1087,9 +1088,22 @@ func TestHandleRevocation(t *testing.T) {
 				})
 			},
 			request: &RevocationRequest{
-				Token: "public-token",
+				Token:    "public-token",
+				ClientID: "public-app",
 			},
 			wantErr: false,
+		},
+		{
+			// RFC 7009 §2.1: the client identifies itself; anonymous
+			// revocation is refused.
+			name: "anonymous revocation refused",
+			setupFn: func(clientRepo *mockClientRepository, tokenRepo *mockTokenRepository) {
+				tokenRepo.Create(ctx, &domain.Token{ID: "anon-token", UserID: "user-123", ClientID: "public-app", ExpiresAt: time.Now().Add(time.Hour)})
+			},
+			request: &RevocationRequest{
+				Token: "anon-token",
+			},
+			wantErr: true,
 		},
 		{
 			name: "revoke with invalid client credentials",

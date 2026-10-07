@@ -13,6 +13,7 @@ import (
 
 	"github.com/ilyakaznacheev/cleanenv"
 	"github.com/tendant/idpico/internal/crypto"
+	"github.com/tendant/idpico/internal/domain"
 )
 
 // Config holds all configuration for the IdP.
@@ -159,6 +160,20 @@ func Load() (*Config, error) {
 	}
 	if _, set := os.LookupEnv("IDPICO_PLAYGROUND_ENABLED"); !set && httpsIssuer {
 		cfg.PlaygroundEnabled = false
+	}
+
+	if cfg.AccessTokenTTL <= 0 || cfg.AccessTokenTTL > domain.MaxAccessTokenTTL {
+		return nil, fmt.Errorf("IDPICO_ACCESS_TOKEN_TTL: %v is out of range (at most %v)", cfg.AccessTokenTTL, domain.MaxAccessTokenTTL)
+	}
+
+	// A wildcard that also sends credentials would let any site read
+	// signed-in pages (the middleware echoes the Origin for "*").
+	if cfg.CORSAllowCredentials {
+		for _, o := range cfg.ParseCORSAllowedOrigins() {
+			if o == "*" {
+				return nil, fmt.Errorf("IDPICO_CORS_ALLOWED_ORIGINS=* cannot be combined with IDPICO_CORS_ALLOW_CREDENTIALS=true; list the origins")
+			}
+		}
 	}
 
 	if err := cfg.validateStore(); err != nil {

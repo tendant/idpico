@@ -367,7 +367,11 @@ func bootstrapGroups(ctx context.Context, cfg *config.Config, store store.Store,
 }
 
 // grantAdmins flags the users listed in IDPICO_ADMIN_EMAILS as administrators.
+// grantAdmins makes every IDPICO_ADMIN_EMAILS user an admin, on every start:
+// demoting a listed user in the console lasts only until the next restart,
+// so remove them from the list too. Each grant is audited.
 func grantAdmins(ctx context.Context, cfg *config.Config, store store.Store, logger *slog.Logger) {
+	rec := audit.NewRecorder(store.Audit(), logger)
 	for _, email := range cfg.ParseAdminEmails() {
 		user, err := store.Users().GetByEmail(ctx, email)
 		if err != nil {
@@ -382,7 +386,9 @@ func grantAdmins(ctx context.Context, cfg *config.Config, store store.Store, log
 			logger.Error("failed to grant admin", "email", email, "error", err)
 			continue
 		}
-		logger.Info("granted admin access", "email", email)
+		logger.Warn("granted admin access from IDPICO_ADMIN_EMAILS", "email", email)
+		rec.Record(ctx, audit.Event{ActorEmail: "IDPICO_ADMIN_EMAILS", Action: audit.UserUpdated, TargetType: "user", TargetID: user.ID,
+			Detail: email + " admin: false -> true (IDPICO_ADMIN_EMAILS at startup)"})
 	}
 }
 
@@ -457,6 +463,10 @@ func bootstrapData(ctx context.Context, cfg *config.Config, store store.Store, l
 		if _, err := store.Clients().GetByID(ctx, c.ID); err == nil {
 			continue
 		}
+		if invalid := firstInvalidRedirect(c.RedirectURIs); invalid != nil {
+			logger.Error("skipping bootstrap client", "client_id", c.ID, "error", invalid)
+			continue
+		}
 
 		secretHash := ""
 		if c.Secret != "" {
@@ -484,4 +494,13 @@ func bootstrapData(ctx context.Context, cfg *config.Config, store store.Store, l
 			logger.Info("created bootstrap client", "client_id", c.ID, "public", c.Public)
 		}
 	}
+}
+
+func firstInvalidRedirect(uris []string) error {
+	for _, uri := range uris {
+		if err := domain.ValidateRedirectURI(uri); err != nil {
+			return err
+		}
+	}
+	return nil
 }

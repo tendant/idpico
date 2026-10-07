@@ -13,6 +13,11 @@ import (
 const (
 	// CSRFCookieName is the name of the CSRF cookie.
 	CSRFCookieName = "idpico_csrf"
+	// csrfHostCookieName is used instead when cookies are Secure and
+	// host-only: browsers refuse a __Host- cookie set by any other host, so
+	// a sibling subdomain cannot plant a CSRF token of its own ("cookie
+	// tossing") for the double-submit check to accept.
+	csrfHostCookieName = "__Host-idpico_csrf"
 	// CSRFTokenLength is the length of the CSRF token in bytes.
 	CSRFTokenLength = 32
 	// CSRFFormField is the form field name for CSRF token.
@@ -58,7 +63,7 @@ func (s *CSRFService) GenerateToken(w http.ResponseWriter) (string, error) {
 
 	// Set cookie
 	http.SetCookie(w, &http.Cookie{
-		Name:     CSRFCookieName,
+		Name:     s.cookieName(),
 		Value:    token,
 		Path:     "/",
 		Domain:   s.cookieDomain,
@@ -84,7 +89,7 @@ func (s *CSRFService) ValidateToken(r *http.Request) error {
 	}
 
 	// Get token from cookie
-	cookie, err := r.Cookie(CSRFCookieName)
+	cookie, err := r.Cookie(s.cookieName())
 	if err != nil {
 		return fmt.Errorf("missing CSRF cookie")
 	}
@@ -137,7 +142,7 @@ func (s *CSRFService) validateTokenFormat(token string) error {
 // ClearToken clears the CSRF cookie.
 func (s *CSRFService) ClearToken(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     CSRFCookieName,
+		Name:     s.cookieName(),
 		Value:    "",
 		Path:     "/",
 		Domain:   s.cookieDomain,
@@ -146,4 +151,11 @@ func (s *CSRFService) ClearToken(w http.ResponseWriter) {
 		Secure:   s.cookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	})
+}
+
+func (s *CSRFService) cookieName() string {
+	if s.cookieSecure && s.cookieDomain == "" {
+		return csrfHostCookieName
+	}
+	return CSRFCookieName
 }

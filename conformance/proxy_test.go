@@ -81,17 +81,19 @@ func TestOperationalReverseProxy(t *testing.T) {
 		if hsts := resp.Header.Get("Strict-Transport-Security"); !strings.Contains(hsts, "max-age=300") {
 			t.Errorf("Strict-Transport-Security = %q, want max-age=300", hsts)
 		}
+		// Behind https the CSRF cookie is a __Host- cookie (Secure, Path=/,
+		// no Domain), which no other host on the site can set.
 		var csrf *http.Cookie
 		for _, c := range resp.Cookies() {
-			if c.Name == "idpico_csrf" {
+			if c.Name == "__Host-idpico_csrf" {
 				csrf = c
 			}
 		}
 		if csrf == nil {
-			t.Fatal("no idpico_csrf cookie")
+			t.Fatal("no __Host-idpico_csrf cookie")
 		}
-		if !csrf.Secure || !csrf.HttpOnly && csrf.Name == "idpico_session" {
-			t.Errorf("csrf cookie flags: Secure=%v", csrf.Secure)
+		if !csrf.Secure || csrf.Path != "/" || csrf.Domain != "" {
+			t.Errorf("csrf cookie: Secure=%v Path=%q Domain=%q, want Secure, / and none", csrf.Secure, csrf.Path, csrf.Domain)
 		}
 
 		plain := newProvider(publicIssuer, &proxyTransport{target: target, noProto: true})

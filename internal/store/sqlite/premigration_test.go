@@ -120,3 +120,26 @@ func TestNewStore_FailedBackupBlocksMigration(t *testing.T) {
 		t.Errorf("schema version = %d, %v; want 3 (unmigrated)", version, err)
 	}
 }
+
+func TestDatabaseAndBackupAreOwnerOnly(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "idpico.db")
+	if err := os.WriteFile(path, nil, 0o644); err != nil { // as a permissive umask would leave it
+		t.Fatal(err)
+	}
+	s, err := NewStore(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if fi, _ := os.Stat(path); fi.Mode().Perm() != 0o600 {
+		t.Errorf("database mode %v, want 0600", fi.Mode().Perm())
+	}
+	dst := filepath.Join(dir, "b.db")
+	if err := s.Backup(context.Background(), dst); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := os.Stat(dst); fi.Mode().Perm() != 0o600 {
+		t.Errorf("backup mode %v, want 0600", fi.Mode().Perm())
+	}
+}

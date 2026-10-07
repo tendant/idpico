@@ -687,3 +687,26 @@ func TestParseBootstrapGroups(t *testing.T) {
 		t.Error("empty config should yield nil")
 	}
 }
+
+func TestLoad_RejectsUnsafeSettings(t *testing.T) {
+	for name, env := range map[string]map[string]string{
+		"access token TTL over 24h":      {"IDPICO_ACCESS_TOKEN_TTL": "25h"},
+		"CORS wildcard with credentials": {"IDPICO_CORS_ALLOWED_ORIGINS": "*"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for k, v := range env {
+				t.Setenv(k, v)
+			}
+			if _, err := Load(); err == nil {
+				t.Error("Load accepted it")
+			}
+		})
+	}
+	t.Run("CORS wildcard without credentials is allowed", func(t *testing.T) {
+		t.Setenv("IDPICO_CORS_ALLOWED_ORIGINS", "*")
+		t.Setenv("IDPICO_CORS_ALLOW_CREDENTIALS", "false")
+		if _, err := Load(); err != nil {
+			t.Error(err)
+		}
+	})
+}

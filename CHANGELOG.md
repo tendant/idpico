@@ -10,7 +10,31 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 - `amr` claim in ID tokens (OIDC Core §2, RFC 8176): `["pwd"]`, or `["pwd","otp","mfa"]` after the code step; recorded on the session and the authorization code (migration `00005` also adds `sessions.amr` and `auth_codes.amr`), advertised in `claims_supported`, not repeated on refresh.
 - Conformance `TestTwoStepSignIn` (now also checks `amr`) and `TestAMRPasswordOnly`: an authorization request for a user with an authenticator passes through the code step (no session before it: `prompt=none` gives `login_required`), then consent and an ordinary code exchange; codes computed by the suite's own TOTP.
 
+### Security
+
+From a code review of sessions/login/two-step, the authorization front channel, the token endpoint and keys, and the admin console (details in CONFORMANCE.md, "Security review"):
+
+- Two concurrent uses of one refresh token (or one authorization code) both succeeded and skipped reuse detection; consumption is now atomic in both stores and the loser triggers the grant cut-off.
+- The client IP behind a trusted proxy came from `True-Client-IP`, `X-Real-IP` or the leftmost `X-Forwarded-For` hop, all client-controlled, so per-IP rate limits could be bypassed and audit IPs forged. It is now the rightmost `X-Forwarded-For` hop that is not a trusted proxy.
+- Unauthenticated requests with invented HTTP methods created unbounded `/metrics` series (memory exhaustion); methods outside the standard set are recorded as `OTHER`.
+- With only a session cookie, `/account` allowed unlimited guesses of the current password and the authenticator code; those checks now count towards lockout and are rate-limited. Turning on two-step sign-in requires the current password; `/login/code` counts attempts before checking and serialises the replay check.
+- Disabling a user now ends their sessions and revokes their tokens, and `/userinfo`, introspection and the code exchange refuse a disabled user.
+- `GET /login` with a session redirected to any `return_url` (open redirect).
+- Account lockout was case-sensitive while user lookup is not.
+- Introspection accepted any public client's ID as credentials; it now requires a confidential client. Revocation requires `client_id` (authenticated when confidential).
+- A client presenting another client's used code could revoke that client's grant.
+- `max_age=0` (and small values) looped between `/authorize` and `/login`; the consent POST now re-checks `max_age`.
+- Login for an unknown or disabled account returned before the Argon2id check (user enumeration by timing).
+- The database and backups are made owner-only (0600).
+- The CSRF cookie is `__Host-idpico_csrf` when cookies are Secure and host-only, so a sibling subdomain cannot plant one.
+- Redirect URIs are validated at registration (no fragment, no `javascript:`/`data:`/`file:` and similar).
+- Admin pages are `Cache-Control: no-store`; admin-sent reset emails, startup grants from `IDPICO_ADMIN_EMAILS` and admin/active changes are audited.
+
 ### Changed
+
+- **Access-token lifetimes are capped at 24h** (`IDPICO_ACCESS_TOKEN_TTL` above that fails at startup; per-client values are refused), so revocation records always outlive the tokens they cover.
+- `IDPICO_CORS_ALLOWED_ORIGINS=*` with `IDPICO_CORS_ALLOW_CREDENTIALS=true` fails at startup.
+- `/revoke` without a `client_id` answers 401 `invalid_client` (it was silently accepted).
 
 - Default Content-Security-Policy adds `img-src 'self' data:` for the inline QR image.
 

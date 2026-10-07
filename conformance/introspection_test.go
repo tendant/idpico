@@ -115,6 +115,10 @@ func TestIntrospection(t *testing.T) {
 		if status, _ := introspect(t, access, "", &[2]string{cfg.ClientID, "wrong"}); status != http.StatusUnauthorized {
 			t.Errorf("wrong secret: HTTP %d, want 401", status)
 		}
+		// A public client's ID is no credential.
+		if status, _ := introspect(t, access, "", &[2]string{cfg.PublicClientID, ""}); status != http.StatusUnauthorized {
+			t.Errorf("public client: HTTP %d, want 401", status)
+		}
 	})
 
 	t.Run("rotated_refresh_token_is_inactive", func(t *testing.T) {
@@ -145,5 +149,19 @@ func TestIntrospection(t *testing.T) {
 		}
 		afterRevocation()
 		inactive(t, tok)
+	})
+
+	// RFC 7009 §2.1: the caller identifies itself; anonymous revocation is
+	// refused and the token stays active.
+	t.Run("anonymous_revocation_refused", func(t *testing.T) {
+		ep, _ := discovery(t).raw["revocation_endpoint"].(string)
+		code, _ := obtainCode(t, authzParams(cfg.ClientID, cfg.RedirectURI, "openid", "st", "", ""), cfg.RedirectURI)
+		tok := exchange(t, code, "", cfg.ClientID, cfg.ClientSecret, cfg.RedirectURI).str("access_token")
+		req, _ := http.NewRequest(http.MethodPost, ep, strings.NewReader(url.Values{"token": {tok}}.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if resp, _ := send(t, def.client, req); resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("anonymous revoke: HTTP %d, want 401", resp.StatusCode)
+		}
+		active(t, tok, "")
 	})
 }

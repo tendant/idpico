@@ -137,6 +137,9 @@ func (h *AdminHandler) requireAdmin(next http.Handler) http.Handler {
 			})
 			return
 		}
+		// Admin pages show personal data and one-time client secrets: never
+		// from a cache or the back-forward cache.
+		w.Header().Set("Cache-Control", "no-store")
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), adminUserKey{}, user)))
 	})
 }
@@ -609,6 +612,7 @@ func (h *AdminHandler) SendUserReset(w http.ResponseWriter, r *http.Request) {
 		h.redirect(w, r, "/admin/users/"+user.ID, "Failed to send password reset email")
 		return
 	}
+	h.record(r, audit.PasswordResetRequested, "user", user.ID, user.Email+" (sent by admin)")
 	h.redirect(w, r, "/admin/users/"+user.ID, "Password reset email sent to "+user.Email)
 }
 
@@ -1032,6 +1036,9 @@ func applyClientForm(r *http.Request, client *domain.Client) string {
 		if err != nil || u.Scheme == "" || (u.Host == "" && u.Scheme != "urn") {
 			return "Invalid redirect URI: " + uri
 		}
+		if err := domain.ValidateRedirectURI(uri); err != nil {
+			return "Invalid redirect URI: " + err.Error()
+		}
 	}
 	if len(client.Scopes) == 0 {
 		client.Scopes = append([]string(nil), defaultClientScopes...)
@@ -1050,6 +1057,9 @@ func applyClientForm(r *http.Request, client *domain.Client) string {
 	var msg string
 	if client.AccessTokenTTL, msg = parseTTLField(r.FormValue("access_token_ttl")); msg != "" {
 		return "Access token lifetime: " + msg
+	}
+	if client.AccessTokenTTL > domain.MaxAccessTokenTTL {
+		return "Access token lifetime: at most 24h"
 	}
 	if client.RefreshTokenTTL, msg = parseTTLField(r.FormValue("refresh_token_ttl")); msg != "" {
 		return "Refresh token lifetime: " + msg

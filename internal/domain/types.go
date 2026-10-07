@@ -2,6 +2,9 @@
 package domain
 
 import (
+	"fmt"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -65,6 +68,28 @@ func (c *Client) AllowsGrant(grantType string) bool {
 		}
 	}
 	return false
+}
+
+// ValidateRedirectURI checks a redirect URI at registration (RFC 6749
+// §3.1.2): absolute, no fragment, and not a scheme that runs or embeds
+// content in the browser. Custom schemes (native apps) are allowed.
+func ValidateRedirectURI(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" {
+		return fmt.Errorf("redirect URI %q must be an absolute URI", raw)
+	}
+	if u.Fragment != "" || strings.Contains(raw, "#") {
+		return fmt.Errorf("redirect URI %q must not contain a fragment", raw)
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "javascript", "data", "vbscript", "file", "blob":
+		return fmt.Errorf("redirect URI %q uses a forbidden scheme", raw)
+	case "http", "https":
+		if u.Host == "" {
+			return fmt.Errorf("redirect URI %q has no host", raw)
+		}
+	}
+	return nil
 }
 
 // Group is a named set of users, exposed to clients through the "groups"
@@ -177,6 +202,11 @@ const (
 // is kept. It only needs to outlive the longest access-token lifetime;
 // tokens are minutes, the margin is generous.
 const RevocationRetention = 7 * 24 * time.Hour
+
+// MaxAccessTokenTTL caps access (and ID) token lifetimes, server default
+// and per client, well inside RevocationRetention: a revocation record must
+// outlive every token it covers, or purging it would revive them.
+const MaxAccessTokenTTL = 24 * time.Hour
 
 // UserClientKey is the key of a RevocationUserClient row.
 func UserClientKey(userID, clientID string) string { return userID + "\x00" + clientID }

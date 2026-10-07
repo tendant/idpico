@@ -96,11 +96,13 @@ func (h *OIDCHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		}
 		if err == nil {
 			// Drop the session and strip the prompt so the post-login
-			// redirect does not loop back here (max_age is satisfied by the
-			// fresh session and can stay).
+			// redirect does not loop back here.
 			_ = h.authService.Logout(ctx, w, r)
 		}
-		loginURL := "/login?return_url=" + url.QueryEscape(withoutPrompt(requestURL, "login", "select_account"))
+		// max_age is satisfied by the sign-in about to happen; left in, a
+		// small value (0 above all) would find even that session too old by
+		// the time the browser returns, and loop.
+		loginURL := "/login?return_url=" + url.QueryEscape(withoutParams(withoutPrompt(requestURL, "login", "select_account"), "max_age"))
 		http.Redirect(w, r, loginURL, http.StatusFound)
 		return
 	}
@@ -161,6 +163,12 @@ func (h *OIDCHandler) Consent(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		loginURL := "/login?return_url=" + url.QueryEscape("/authorize?"+query.Encode())
 		http.Redirect(w, r, loginURL, http.StatusFound)
+		return
+	}
+	// A consent page left open can outlive max_age (OIDC Core §3.1.2.1):
+	// start the request over, which signs the user in again.
+	if authReq.MaxAge >= 0 && authReq.RequiresFreshLogin(session.CreatedAt) {
+		http.Redirect(w, r, "/authorize?"+query.Encode(), http.StatusFound)
 		return
 	}
 
@@ -306,6 +314,19 @@ func withoutPrompt(u *url.URL, values ...string) string {
 		q.Del("prompt")
 	} else {
 		q.Set("prompt", strings.Join(kept, " "))
+	}
+	return u.Path + "?" + q.Encode()
+}
+
+// withoutParams returns the path?query string with the named parameters removed.
+func withoutParams(pathAndQuery string, names ...string) string {
+	u, err := url.Parse(pathAndQuery)
+	if err != nil {
+		return pathAndQuery
+	}
+	q := u.Query()
+	for _, n := range names {
+		q.Del(n)
 	}
 	return u.Path + "?" + q.Encode()
 }

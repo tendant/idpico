@@ -6,7 +6,6 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
-
 )
 
 // CORSConfig holds CORS configuration.

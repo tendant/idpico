@@ -1622,7 +1622,9 @@ func TestIntegration_MaxAgeAndAuthTime(t *testing.T) {
 			t.Errorf("max_age=3600 should be satisfied, got %d %s", resp.StatusCode, resp.Header.Get("Location"))
 		}
 
-		// Age the session past max_age: re-authentication is required and max_age survives the round trip
+		// Age the session past max_age: re-authentication is required. The
+		// return URL drops max_age (the new sign-in satisfies it); kept, a
+		// max_age of 0 would loop forever.
 		p.Set("max_age", "0")
 		time.Sleep(1100 * time.Millisecond) // session is now > 0s old
 		resp, _ = client.Get(base + "/authorize?" + p.Encode())
@@ -1631,13 +1633,21 @@ func TestIntegration_MaxAgeAndAuthTime(t *testing.T) {
 		if resp.StatusCode != http.StatusFound || !strings.HasPrefix(loc, "/login") {
 			t.Fatalf("stale session should require login, got %d %s", resp.StatusCode, loc)
 		}
-		ret := mustParseURL(mustParseURL(loc).Query().Get("return_url"))
-		if ret.Query().Get("max_age") != "0" {
-			t.Error("max_age should be preserved in return_url")
+		retRaw := mustParseURL(loc).Query().Get("return_url")
+		ret := mustParseURL(retRaw)
+		if ret.Query().Has("max_age") {
+			t.Error("max_age should be dropped from return_url")
 		}
 		// The old session was dropped
 		if _, err := env.store.Sessions().GetByID(ctx, sessions[0].ID); !idperrors.IsCode(err, idperrors.CodeNotFound) {
 			t.Error("stale session should be terminated before re-login")
+		}
+		// Signing in and returning completes the request instead of looping.
+		loginAs(t, client, base, "test@example.com", "password123")
+		resp, _ = client.Get(base + retRaw)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusFound || mustParseURL(resp.Header.Get("Location")).Query().Get("code") == "" {
+			t.Errorf("after re-login with max_age=0: %d %s, want a code", resp.StatusCode, resp.Header.Get("Location"))
 		}
 
 		// prompt=none with a stale session -> login_required

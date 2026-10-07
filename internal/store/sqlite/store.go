@@ -71,6 +71,14 @@ func NewStore(ctx context.Context, path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("failed to connect to sqlite database: %w", err)
 	}
+	// The database holds signing keys, password hashes and refresh tokens:
+	// owner-only, whatever the umask (SQLite gives -wal/-shm the same mode).
+	if !isMemory(path) && !strings.HasPrefix(path, "file:") {
+		if err := os.Chmod(path, 0o600); err != nil {
+			// Not fatal: a file restored by another owner must still open.
+			slog.WarnContext(ctx, "could not make the database owner-only", "path", path, "error", err)
+		}
+	}
 
 	// Migrations are forward-only, so a database file that is about to be
 	// migrated is first copied to backups/ beside it; restoring that copy is
@@ -155,6 +163,10 @@ func backup(ctx context.Context, db *sql.DB, path string) error {
 	tmp := path + ".partial"
 	_ = os.Remove(tmp)
 	if _, err := db.ExecContext(ctx, `VACUUM INTO ?`, tmp); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("sqlite backup: %w", err)
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil { // a full copy of the secrets
 		_ = os.Remove(tmp)
 		return fmt.Errorf("sqlite backup: %w", err)
 	}

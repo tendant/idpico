@@ -432,16 +432,17 @@ func (s *TokenService) ParseRevocationRequest(r *http.Request) (*RevocationReque
 // the token was valid, revoked, or never existed - this prevents token
 // enumeration attacks.
 func (s *TokenService) HandleRevocation(ctx context.Context, req *RevocationRequest) error {
-	// Validate client credentials if provided
-	if req.ClientID != "" {
-		client, err := s.clients.GetByID(ctx, req.ClientID)
-		if err != nil {
-			// Don't reveal client existence
-			return nil
-		}
-		if !authenticateClient(ctx, s.clients, client, req.ClientSecret) {
-			return idperrors.Unauthorized("invalid client credentials")
-		}
+	// The caller must identify itself (RFC 7009 §2.1); a confidential
+	// client must also authenticate. Anonymous revocation is refused.
+	if req.ClientID == "" {
+		return idperrors.Unauthorized("client authentication required")
+	}
+	client, err := s.clients.GetByID(ctx, req.ClientID)
+	if err != nil {
+		return idperrors.Unauthorized("invalid client credentials")
+	}
+	if !authenticateClient(ctx, s.clients, client, req.ClientSecret) {
+		return idperrors.Unauthorized("invalid client credentials")
 	}
 
 	// A token is only revoked by the client it was issued to (RFC 7009
@@ -536,6 +537,11 @@ func (s *TokenService) introspect(ctx context.Context, req *IntrospectionRequest
 	client, err := s.clients.GetByID(ctx, req.ClientID)
 	if err != nil {
 		return nil, idperrors.Unauthorized("invalid client credentials")
+	}
+	// Only a confidential client (a resource server with a secret) may
+	// introspect: a public client's ID is no credential (RFC 7662 §2.1).
+	if client.Public {
+		return nil, idperrors.Unauthorized("introspection requires a confidential client")
 	}
 	if !authenticateClient(ctx, s.clients, client, req.ClientSecret) {
 		return nil, idperrors.Unauthorized("invalid client credentials")

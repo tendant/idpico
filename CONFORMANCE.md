@@ -191,6 +191,37 @@ Fixed while writing the suite and running the OIDF tests (v0.0.4):
 - `/userinfo` did not accept `access_token` in a form-encoded POST body (RFC 6750 §2.2), and answered a
   request with no credentials with `error="invalid_token"` instead of a bare `Bearer` challenge (§3.1).
 
+## Security review
+
+**2026-10-07, before v0.0.11.** A source review in four parallel parts — browser authentication
+(sessions, CSRF, login, lockout, two-step sign-in, password reset), the authorization front channel
+(`/authorize`, consent, logout, redirects, templates), the token endpoint and keys (client
+authentication, code and refresh handling, revocation, introspection, JWT validation, key storage),
+and the admin console and configuration (authorization, CSRF, XSS, CORS, proxies, ops endpoints).
+Every finding was checked against the code before it was acted on. It is not an external audit.
+
+Fixed (see CHANGELOG 0.0.11 "Security"): refresh-token and code consumption races; client-IP
+spoofing behind trusted proxies; `/metrics` label cardinality; unlimited password/code guessing from
+`/account`; tokens of disabled users; open redirect on `GET /login`; case-sensitive lockout;
+introspection by public clients and anonymous revocation; cross-client revocation via a used code;
+`max_age` loop and consent re-check; login timing; file permissions; `__Host-` CSRF cookie; redirect URI
+registration checks; admin `no-store` and audit gaps; access-token lifetime cap; CORS wildcard with
+credentials.
+
+Known and accepted, or left for later:
+
+- **Logout by GET without CSRF** (RP-Initiated Logout requires GET): a third-party page can sign a
+  user out. Nuisance only.
+- **`/forgot-password` sends mail synchronously** only for real accounts, so its timing can reveal
+  whether an address is registered. Replies are identical; send asynchronously to close it.
+- **`IDPICO_ADMIN_EMAILS` re-grants admin at every start** (now audited and logged as a warning):
+  remove an address from the list as well as demoting it in the console.
+- **Lockout counters are in memory and unbounded** per distinct address tried; per-IP rate limits
+  bound the growth. A restart clears them.
+- **Playground `state` is not bound to the browser.** Development tool, off by default on https.
+- **TOTP secrets and signing keys are stored unencrypted** in the database; protect backups.
+- **`GET /` lists all users** to detect a fresh instance — a cost, not a leak.
+
 ## OpenID Foundation conformance (level 4)
 
 `make validate-oidf` runs the official [conformance suite](https://gitlab.com/openid/conformance-suite)

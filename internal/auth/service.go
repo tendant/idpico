@@ -84,13 +84,16 @@ func (s *Service) Authenticate(ctx context.Context, email, password string) (*do
 	user, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
 		if idperrors.IsCode(err, idperrors.CodeNotFound) {
-			// Don't reveal whether user exists
+			// Don't reveal whether the user exists, not even by timing:
+			// spend the same Argon2id work as for a real account.
+			burnPasswordCheck(password)
 			return nil, idperrors.New(idperrors.CodeUnauthorized, "invalid credentials")
 		}
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
 	if !user.Active {
+		burnPasswordCheck(password)
 		return nil, idperrors.New(idperrors.CodeUnauthorized, "account is disabled")
 	}
 
@@ -105,6 +108,17 @@ func (s *Service) Authenticate(ctx context.Context, email, password string) (*do
 	}
 
 	return user, nil
+}
+
+var dummyHash = sync.OnceValue(func() string {
+	h, _ := HashPassword("idpico-timing-equaliser")
+	return h
+})
+
+// burnPasswordCheck verifies password against a fixed hash, so a login for
+// an unknown or disabled account takes as long as one for a real account.
+func burnPasswordCheck(password string) {
+	_, _ = VerifyPassword(password, dummyHash())
 }
 
 // Login authenticates a user and creates a session.

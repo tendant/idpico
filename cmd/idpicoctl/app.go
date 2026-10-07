@@ -346,6 +346,14 @@ func (a *app) client(ctx context.Context, cmd string, args []string) error {
 		if len(redirects) == 0 {
 			return fmt.Errorf("at least one -redirect URI is required")
 		}
+		for _, uri := range redirects {
+			if err := domain.ValidateRedirectURI(uri); err != nil {
+				return err
+			}
+		}
+		if *accessTTL < 0 || *accessTTL > domain.MaxAccessTokenTTL {
+			return fmt.Errorf("-access-ttl: at most %v", domain.MaxAccessTokenTTL)
+		}
 		for _, g := range strings.Fields(*grantTypes) {
 			if g != "authorization_code" && g != "refresh_token" {
 				return fmt.Errorf("unsupported grant type %q (authorization_code, refresh_token)", g)
