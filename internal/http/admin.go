@@ -504,6 +504,7 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	wasActive, wasAdmin := user.Active, user.Admin
 	newEmail := strings.TrimSpace(r.FormValue("email"))
 	if newEmail == "" {
 		data := userFormData{User: user}
@@ -551,7 +552,24 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		h.renderUserForm(w, r, http.StatusBadRequest, data)
 		return
 	}
-	h.record(r, audit.UserUpdated, "user", user.ID, user.Email)
+	detail := user.Email
+	if wasAdmin != user.Admin {
+		detail += fmt.Sprintf(" admin: %v -> %v", wasAdmin, user.Admin)
+	}
+	if wasActive != user.Active {
+		detail += fmt.Sprintf(" active: %v -> %v", wasActive, user.Active)
+	}
+	// Disabling a user ends everything they hold: sessions, refresh tokens
+	// and (through the revocation watermark) access tokens.
+	if wasActive && !user.Active {
+		if err := h.cfg.Store.Sessions().DeleteByUserID(r.Context(), user.ID); err != nil {
+			h.logger.Error("failed to end sessions of disabled user", "error", err)
+		}
+		if err := h.cfg.Store.Tokens().RevokeByUserID(r.Context(), user.ID); err != nil {
+			h.logger.Error("failed to revoke tokens of disabled user", "error", err)
+		}
+	}
+	h.record(r, audit.UserUpdated, "user", user.ID, detail)
 	h.redirect(w, r, "/admin/users/"+user.ID, "User updated")
 }
 

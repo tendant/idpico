@@ -272,6 +272,7 @@ func TestHandleAuthorizationCode(t *testing.T) {
 					Scopes:       []string{"openid", "profile"},
 				})
 				userRepo.Create(ctx, &domain.User{
+					Active:      true,
 					ID:          "user-123",
 					Email:       "test@example.com",
 					DisplayName: "Test User",
@@ -306,6 +307,7 @@ func TestHandleAuthorizationCode(t *testing.T) {
 					Scopes:       []string{"openid", "profile", "email"},
 				})
 				userRepo.Create(ctx, &domain.User{
+					Active:      true,
 					ID:          "user-123",
 					Email:       "test@example.com",
 					DisplayName: "Test User",
@@ -1149,8 +1151,9 @@ func TestHandleIntrospection(t *testing.T) {
 					Public: false,
 				})
 				userRepo.Create(ctx, &domain.User{
-					ID:    "user-123",
-					Email: "test@example.com",
+					Active: true,
+					ID:     "user-123",
+					Email:  "test@example.com",
 				})
 				tokenRepo.Create(ctx, &domain.Token{
 					ID:        "valid-token",

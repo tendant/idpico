@@ -113,6 +113,11 @@ func (s *UserInfoService) GetUserInfo(ctx context.Context, accessToken string) (
 		}
 		return nil, err
 	}
+	// A disabled account's tokens are dead even before they expire.
+	if !user.Active {
+		metrics.RecordTokenRejected("revoked")
+		return nil, idperrors.New(idperrors.CodeTokenInvalid, "user account is disabled")
+	}
 
 	// Build response based on scopes
 	response := &UserInfoResponse{

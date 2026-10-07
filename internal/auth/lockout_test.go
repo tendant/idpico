@@ -172,3 +172,19 @@ func TestLockoutResetAfterExpiry(t *testing.T) {
 		t.Error("Second failure after expiry should lock")
 	}
 }
+
+// User lookup ignores case, so lockout must too: case variants of one
+// address share a failure count.
+func TestLockoutIgnoresCase(t *testing.T) {
+	s := NewLockoutService(3, time.Minute)
+	s.RecordFailure("alice@example.com")
+	s.RecordFailure("Alice@Example.com")
+	s.RecordFailure(" ALICE@example.com ")
+	if !s.IsLocked("aLiCe@example.COM") {
+		t.Error("case variants of one address did not add up to a lockout")
+	}
+	s.RecordSuccess("ALICE@EXAMPLE.COM")
+	if s.IsLocked("alice@example.com") {
+		t.Error("success under another case did not clear the lockout")
+	}
+}

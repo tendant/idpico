@@ -244,10 +244,13 @@ func (s *TokenService) HandleAuthorizationCode(ctx context.Context, req *TokenRe
 		return nil, fmt.Errorf("failed to mark code as used: %w", err)
 	}
 
-	// Get user
+	// Get user; one disabled since the code was issued gets nothing
 	user, err := s.users.GetByID(ctx, authCode.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	if !user.Active {
+		return nil, idperrors.InvalidGrant("user account is disabled")
 	}
 
 	// Generate tokens
@@ -367,6 +370,13 @@ func (s *TokenService) revokeGrant(ctx context.Context, userID, clientID string)
 		return s.revocations.RevokeBefore(ctx, domain.RevocationUserClient, domain.UserClientKey(userID, clientID), time.Now())
 	}
 	return nil
+}
+
+// userActive reports whether the user exists and is not disabled; a token
+// of anyone else is reported inactive.
+func (s *TokenService) userActive(ctx context.Context, userID string) bool {
+	user, err := s.users.GetByID(ctx, userID)
+	return err == nil && user.Active
 }
 
 // scopeSubset reports whether every scope in requested is also in granted.
@@ -539,7 +549,7 @@ func (s *TokenService) introspect(ctx context.Context, req *IntrospectionRequest
 	if err == nil {
 		if revoked, err := accessTokenRevoked(ctx, s.revocations, claims); err != nil {
 			return nil, err
-		} else if revoked {
+		} else if revoked || !s.userActive(ctx, claims.Subject) {
 			return &IntrospectionResponse{Active: false}, nil
 		}
 		return &IntrospectionResponse{
@@ -557,7 +567,7 @@ func (s *TokenService) introspect(ctx context.Context, req *IntrospectionRequest
 
 	// Try to introspect as refresh token
 	token, err := s.tokens.GetByID(ctx, req.Token)
-	if err == nil && token.IsValid() {
+	if err == nil && token.IsValid() && s.userActive(ctx, token.UserID) {
 		// Get user for username
 		var username string
 		if user, err := s.users.GetByID(ctx, token.UserID); err == nil {

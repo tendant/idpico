@@ -236,3 +236,23 @@ func TestIntegration_TwoStepDisableNeedsCode(t *testing.T) {
 		t.Error("still on after disable")
 	}
 }
+
+// A signed-in browser visiting /login is sent to return_url only if it is a
+// path on this server (it was an open redirect).
+func TestIntegration_LoginPageReturnURLWhenSignedIn(t *testing.T) {
+	env := setupTestEnv(t, "sqlite")
+	defer env.cleanup()
+	c := &twoStepClient{t: t, env: env, http: newClientWithCookies()}
+	c.password("")
+	for target, want := range map[string]string{
+		"https://evil.example/phish": "/",
+		"//evil.example":             "/",
+		"/\\evil.example":            "/",
+		"/account":                   "/account",
+	} {
+		resp, _ := c.get("/login?return_url=" + url.QueryEscape(target))
+		if got := resp.Header.Get("Location"); resp.StatusCode != http.StatusFound || got != want {
+			t.Errorf("return_url=%q: HTTP %d to %q, want %q", target, resp.StatusCode, got, want)
+		}
+	}
+}

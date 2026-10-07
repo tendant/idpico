@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -32,6 +33,7 @@ func NewLockoutService(maxAttempts int, duration time.Duration) *LockoutService 
 
 // IsLocked checks if an account is currently locked.
 func (s *LockoutService) IsLocked(email string) bool {
+	email = lockoutKey(email)
 	if s.maxAttempts <= 0 {
 		return false // Lockout disabled
 	}
@@ -54,6 +56,7 @@ func (s *LockoutService) IsLocked(email string) bool {
 
 // RecordFailure records a failed login attempt and returns true if account is now locked.
 func (s *LockoutService) RecordFailure(email string) bool {
+	email = lockoutKey(email)
 	if s.maxAttempts <= 0 {
 		return false // Lockout disabled
 	}
@@ -86,6 +89,7 @@ func (s *LockoutService) RecordFailure(email string) bool {
 
 // RecordSuccess clears failed attempts for an account after successful login.
 func (s *LockoutService) RecordSuccess(email string) {
+	email = lockoutKey(email)
 	if s.maxAttempts <= 0 {
 		return // Lockout disabled
 	}
@@ -98,6 +102,7 @@ func (s *LockoutService) RecordSuccess(email string) {
 
 // GetRemainingAttempts returns the number of attempts remaining before lockout.
 func (s *LockoutService) GetRemainingAttempts(email string) int {
+	email = lockoutKey(email)
 	if s.maxAttempts <= 0 {
 		return -1 // Lockout disabled
 	}
@@ -125,6 +130,7 @@ func (s *LockoutService) GetRemainingAttempts(email string) int {
 // GetLockoutRemaining returns the time remaining until the account is unlocked.
 // Returns 0 if not locked.
 func (s *LockoutService) GetLockoutRemaining(email string) time.Duration {
+	email = lockoutKey(email)
 	if s.maxAttempts <= 0 {
 		return 0
 	}
@@ -142,4 +148,10 @@ func (s *LockoutService) GetLockoutRemaining(email string) time.Duration {
 		return 0
 	}
 	return remaining
+}
+
+// lockoutKey normalises an address the way user lookup does (case
+// insensitive), so "Alice@x" and "alice@x" share one failure count.
+func lockoutKey(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }

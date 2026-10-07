@@ -367,3 +367,27 @@ func TestUsedCodeOfAnotherClientRevokesNothing(t *testing.T) {
 		t.Error("app-a's grant was revoked by app-b presenting its used code")
 	}
 }
+
+// Disabling a user kills their tokens at /userinfo and introspection, and
+// a code issued before the disable cannot be exchanged.
+func TestDisabledUserTokensAreDead(t *testing.T) {
+	f := newRevocationFixture(t)
+	resp, _ := f.issue("alice", "app-a", "secret-a")
+	code := uuid.New().String()
+	f.store.AuthCodes().Create(f.ctx, &domain.AuthCode{Code: code, ClientID: "app-a", UserID: "alice", RedirectURI: "http://a/cb", Scope: "openid", ExpiresAt: time.Now().Add(time.Minute)})
+
+	u, _ := f.store.Users().GetByID(f.ctx, "alice")
+	u.Active = false
+	if err := f.store.Users().Update(f.ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	if f.accepted(resp.AccessToken) {
+		t.Error("userinfo accepted a disabled user's access token")
+	}
+	if f.active(resp.AccessToken, "app-a", "secret-a") || f.active(resp.RefreshToken, "app-a", "secret-a") {
+		t.Error("introspection reported a disabled user's token active")
+	}
+	if _, err := f.tokens.HandleAuthorizationCode(f.ctx, &TokenRequest{GrantType: "authorization_code", Code: code, RedirectURI: "http://a/cb", ClientID: "app-a", ClientSecret: "secret-a"}); err == nil {
+		t.Error("a disabled user's code was exchanged")
+	}
+}

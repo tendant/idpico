@@ -46,7 +46,7 @@ func (h *LoginHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
 	if h.authService.IsAuthenticated(r.Context(), r) {
 		// Redirect to the return URL or home
 		returnURL := r.URL.Query().Get("return_url")
-		if returnURL == "" {
+		if returnURL == "" || !isValidReturnURL(returnURL) {
 			returnURL = "/"
 		}
 		http.Redirect(w, r, returnURL, http.StatusFound)
@@ -159,7 +159,14 @@ func (h *LoginHandler) Logout(w http.ResponseWriter, r *http.Request) {
 func (h *LoginHandler) resolvePostLogoutRedirect(r *http.Request, uri, state string) (string, error) {
 	if isValidReturnURL(uri) {
 		if state != "" {
-			uri += "?state=" + url.QueryEscape(state)
+			u, err := url.Parse(uri)
+			if err != nil {
+				return "", err
+			}
+			q := u.Query()
+			q.Set("state", state)
+			u.RawQuery = q.Encode()
+			uri = u.String()
 		}
 		return uri, nil
 	}
