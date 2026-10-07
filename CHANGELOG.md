@@ -4,6 +4,10 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Added
+
+- A start that has a schema migration to apply first copies the database, unmigrated, to `<IDPICO_DATA_DIR>/backups/idpico-pre-migration-v<from>-to-v<to>-<time>.db` and logs the path. If the copy fails, nothing is migrated and the server does not start, so the previous release can still open the database. A new database or one already current takes no copy; `idpicoctl` (which opens the same store) does the same. `TestOperationalUpgrade` checks the copy exists at the old schema version whenever an upgrade migrated.
+
 ## [0.0.9] - 2026-10-06
 
 Safer for a small production deployment. Logout, introspection and grant types joined the black-box

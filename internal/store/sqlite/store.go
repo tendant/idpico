@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,7 +72,24 @@ func NewStore(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("failed to connect to sqlite database: %w", err)
 	}
 
-	if err := migrations.Up(ctx, db, goose.DialectSQLite3); err != nil {
+	// Migrations are forward-only, so a database file that is about to be
+	// migrated is first copied to backups/ beside it; restoring that copy is
+	// the way back to the previous release. If the copy fails, nothing is
+	// migrated. (A full "file:" DSN is the caller's own setup and is not
+	// backed up.)
+	var opts []migrations.Option
+	if !isMemory(path) && !strings.HasPrefix(path, "file:") {
+		opts = append(opts, migrations.BeforeMigrate(func(ctx context.Context, current, target int64) error {
+			dst := filepath.Join(filepath.Dir(path), "backups",
+				fmt.Sprintf("idpico-pre-migration-v%d-to-v%d-%s.db", current, target, time.Now().UTC().Format("20060102T150405Z")))
+			if err := backup(ctx, db, dst); err != nil {
+				return fmt.Errorf("backing up before migrating schema %d -> %d failed, nothing was migrated: %w", current, target, err)
+			}
+			slog.InfoContext(ctx, "backed up database before migrating", "path", dst, "from_version", current, "to_version", target)
+			return nil
+		}))
+	}
+	if err := migrations.Up(ctx, db, goose.DialectSQLite3, opts...); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -124,6 +142,10 @@ func (s *Store) Checkpoint(ctx context.Context) error {
 // complete; an existing path is never overwritten. Missing directories are
 // created.
 func (s *Store) Backup(ctx context.Context, path string) error {
+	return backup(ctx, s.db, path)
+}
+
+func backup(ctx context.Context, db *sql.DB, path string) error {
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("%s already exists", path)
 	}
@@ -132,7 +154,7 @@ func (s *Store) Backup(ctx context.Context, path string) error {
 	}
 	tmp := path + ".partial"
 	_ = os.Remove(tmp)
-	if _, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, tmp); err != nil {
+	if _, err := db.ExecContext(ctx, `VACUUM INTO ?`, tmp); err != nil {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("sqlite backup: %w", err)
 	}

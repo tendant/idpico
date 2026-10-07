@@ -288,7 +288,10 @@ Restore by placing the file at `<IDPICO_DATA_DIR>/idpico.db` (with no `-wal`/`-s
 starting the server. `make validate-operational` rehearses exactly this (`TestOperationalOnlineBackup`):
 back up a running server, restore into an empty directory, and check keys, tokens and sessions.
 Migrations are forward-only: restore a backup rather than running an older release on a migrated
-database.
+database. Whenever a start has a migration to apply, IDPico first copies the unmigrated database to
+`<IDPICO_DATA_DIR>/backups/idpico-pre-migration-v<from>-to-v<to>-<time>.db` (and logs the path); that
+file is the way back. If the copy cannot be written, the server refuses to start and nothing is
+migrated. These copies are never deleted automatically.
 
 ### JSON files (`IDPICO_STORE_DRIVER=file`)
 

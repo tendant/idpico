@@ -70,6 +70,18 @@ func TestOperationalUpgrade(t *testing.T) {
 					t.Errorf("version went backwards: %d -> %d", versionBefore, got)
 				}
 				t.Logf("%s wrote schema version %d; current build migrated it to %d", tag, versionBefore, got)
+
+				// A migrating start first copies the unmigrated database to
+				// backups/; one that migrates nothing takes no copy.
+				backups, _ := filepath.Glob(filepath.Join(dataDir, "backups", "*.db"))
+				switch {
+				case got > versionBefore && len(backups) != 1:
+					t.Errorf("migrated %d -> %d but backups/ holds %v, want one pre-migration copy", versionBefore, got, backups)
+				case got > versionBefore && appliedMigration(t, backups[0]) != versionBefore:
+					t.Errorf("pre-migration copy %s is not at schema version %d", backups[0], versionBefore)
+				case got == versionBefore && len(backups) != 0:
+					t.Errorf("nothing to migrate but backups/ holds %v", backups)
+				}
 			})
 			t.Run("signing_key_kept", func(t *testing.T) {
 				if kids := jwksKIDs(t, p); len(kids) != 1 || kids[0] != before.kid {
