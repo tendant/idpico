@@ -184,7 +184,8 @@ func (i *instance) start(ctx context.Context, env map[string]string) error {
 		if v == "" {
 			delete(merged, k)
 		} else {
-			merged[k] = v
+			// "{port}" stands for the instance's port, unknown to the caller.
+			merged[k] = strings.ReplaceAll(v, "{port}", strconv.Itoa(i.port))
 		}
 	}
 	i.issuer = merged["IDPICO_ISSUER_URL"]

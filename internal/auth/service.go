@@ -26,6 +26,7 @@ type Service struct {
 	pending  *pendingLogins // password accepted, authenticator code still due
 	// userLocks serialises second-factor checks per user (see consumeSecondFactor).
 	userLocks sync.Map
+	passkeys  *passkeySupport // nil: no passkey store configured
 }
 
 // ServiceOption configures the Service.
@@ -155,7 +156,7 @@ func (s *Service) Login(ctx context.Context, w http.ResponseWriter, r *http.Requ
 	// The password alone is not enough for a user with an authenticator:
 	// remember the half-finished login and ask for the code. Failed attempts
 	// are not cleared until the code is right.
-	if user.TOTPEnabled() {
+	if s.hasSecondFactor(ctx, user) {
 		token, err := s.pending.add(user)
 		if err != nil {
 			return nil, err

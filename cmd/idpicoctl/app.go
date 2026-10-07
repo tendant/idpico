@@ -158,11 +158,10 @@ func (a *app) user(ctx context.Context, cmd string, args []string) error {
 		if err != nil {
 			return err
 		}
-		auth.ClearTOTP(u)
-		if err := users.Update(ctx, u); err != nil {
+		if err := auth.ResetSecondFactors(ctx, a.store, u); err != nil {
 			return err
 		}
-		fmt.Fprintf(a.out, "two-step sign-in reset for %s: authenticator and recovery codes removed\n", u.Email)
+		fmt.Fprintf(a.out, "two-step sign-in reset for %s: authenticator app, passkeys and recovery codes removed\n", u.Email)
 		return nil
 
 	case "set-admin":
@@ -191,6 +190,7 @@ func (a *app) user(ctx context.Context, cmd string, args []string) error {
 		_ = a.store.Sessions().DeleteByUserID(ctx, u.ID)
 		_ = a.store.Tokens().RevokeByUserID(ctx, u.ID)
 		_ = a.store.Consents().DeleteByUserID(ctx, u.ID)
+		_ = a.store.Passkeys().DeleteByUserID(ctx, u.ID)
 		_ = a.store.VerificationTokens().DeleteByUserID(ctx, u.ID, "")
 		_ = a.store.Groups().RemoveUser(ctx, u.ID)
 		if err := users.Delete(ctx, u.ID); err != nil {

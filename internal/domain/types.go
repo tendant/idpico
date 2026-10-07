@@ -70,6 +70,18 @@ func (c *Client) AllowsGrant(grantType string) bool {
 	return false
 }
 
+// Passkey is a WebAuthn credential registered as a second step for a user.
+// Credential holds the WebAuthn library's credential record (public key,
+// sign counter, flags) as JSON; the domain does not interpret it.
+type Passkey struct {
+	ID         string    `json:"id"` // credential ID, base64url
+	UserID     string    `json:"user_id"`
+	Name       string    `json:"name"`
+	Credential []byte    `json:"credential"`
+	CreatedAt  time.Time `json:"created_at"`
+	LastUsedAt time.Time `json:"last_used_at,omitempty"`
+}
+
 // ValidateRedirectURI checks a redirect URI at registration (RFC 6749
 // §3.1.2): absolute, no fragment, and not a scheme that runs or embeds
 // content in the browser. Custom schemes (native apps) are allowed.

@@ -33,6 +33,7 @@ type Store struct {
 	revocations *revocationRepository
 	signingKeys *signingKeyRepository
 	consents    *consentRepository
+	passkeys    *passkeyRepository
 	verifTokens *verificationTokenRepository
 	groups      *groupRepository
 	audit       *auditRepository
@@ -64,6 +65,7 @@ func NewStore(dataDir string, opts ...Option) (*Store, error) {
 	s.revocations = &revocationRepository{store: s}
 	s.signingKeys = &signingKeyRepository{store: s}
 	s.consents = &consentRepository{store: s}
+	s.passkeys = &passkeyRepository{store: s}
 	s.verifTokens = &verificationTokenRepository{store: s}
 	s.groups = &groupRepository{store: s}
 	s.audit = &auditRepository{store: s}
@@ -82,9 +84,10 @@ func (s *Store) Consents() store.ConsentRepository       { return s.consents }
 func (s *Store) VerificationTokens() store.VerificationTokenRepository {
 	return s.verifTokens
 }
-func (s *Store) Groups() store.GroupRepository { return s.groups }
-func (s *Store) Audit() store.AuditRepository  { return s.audit }
-func (s *Store) Close() error                  { return nil }
+func (s *Store) Groups() store.GroupRepository     { return s.groups }
+func (s *Store) Audit() store.AuditRepository      { return s.audit }
+func (s *Store) Passkeys() store.PasskeyRepository { return s.passkeys }
+func (s *Store) Close() error                      { return nil }
 
 // Helper methods for file operations
 

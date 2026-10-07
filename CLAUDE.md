@@ -142,7 +142,7 @@ All production code goes under `internal/` to prevent accidental coupling.
 
 ## UI Conventions
 
-- Server-rendered `html/template`, no JavaScript, no build step. Three layouts: `templates/layout.html` (centered card: login, consent, reset), `templates/admin/layout.html` (admin console), `templates/wide/layout.html` (playground)
+- Server-rendered `html/template`, no build step, and no JavaScript except `static/passkeys.js` (WebAuthn can only be reached from script): it is loaded with `<script src>` on the pages that need it, never inline, and the CSP stays `default-src 'self'`. Three layouts: `templates/layout.html` (centered card: login, consent, reset), `templates/admin/layout.html` (admin console), `templates/wide/layout.html` (playground)
 - All styling is in `internal/http/static/style.css`, served at `/static/style.css`. Colors are CSS custom properties on `:root` with a `prefers-color-scheme: dark` override — add tokens there, never hard-code colors in templates
 - Forms are plain POST + redirect with a `csrf_token` hidden field and a `?flash=` message
 

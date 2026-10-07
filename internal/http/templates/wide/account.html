@@ -89,26 +89,88 @@ Everything on this page is yours alone: the browsers you are signed in on, the a
 {{end}}
 
 <h2>Two-step sign-in</h2>
+<p class="muted">After your password, ask for something only you have: a code from an authenticator app, or a passkey on your phone, computer or security key. Both are optional; with either, a stolen password alone is not enough.</p>
+
+<h3>Authenticator app</h3>
 {{if .CurrentUser.TOTPEnabled}}
 <div class="card">
-    <p><span class="badge on">on</span> Signing in asks for a code from your authenticator app after your password.
-    You have <strong>{{len .CurrentUser.RecoveryCodes}}</strong> unused recovery code{{if ne (len .CurrentUser.RecoveryCodes) 1}}s{{end}}.</p>
-    <p class="help">Both actions need a current code from the app, or a recovery code.</p>
-    <form class="inline" method="POST" action="/account/two-step/recovery-codes">
+    <p><span class="badge on">on</span> Signing in can use a code from your authenticator app.</p>
+    <form class="inline" method="POST" action="/account/two-step/disable">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <input type="text" name="code" placeholder="Code" inputmode="numeric" autocomplete="one-time-code" required style="width:140px">
-        <button type="submit" class="secondary">New recovery codes</button>
-    </form>
-    <form class="inline" method="POST" action="/account/two-step/disable" style="margin-left:12px">
-        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-        <input type="text" name="code" placeholder="Code" inputmode="numeric" autocomplete="one-time-code" required style="width:140px">
+        <input type="text" name="code" placeholder="Current code" inputmode="numeric" autocomplete="one-time-code" required style="width:140px">
         <button type="submit" class="secondary">Turn off</button>
     </form>
 </div>
 {{else}}
 <div class="card">
-    <p class="muted">Off. Add a code from an authenticator app to your sign-in, so a stolen password alone is not enough.</p>
+    <p class="muted">Off.</p>
     <a href="/account/two-step" class="button">Set up</a>
+</div>
+{{end}}
+
+{{if .PasskeysAvailable}}
+<h3>Passkeys</h3>
+<div class="card">
+    {{if .Passkeys}}
+    <table>
+        <thead><tr><th>Name</th><th>Added</th><th>Last used</th><th></th></tr></thead>
+        <tbody>
+        {{range .Passkeys}}
+        <tr>
+            <td>{{.Name}}</td>
+            <td class="muted">{{date .CreatedAt}}</td>
+            <td class="muted">{{if .LastUsedAt.IsZero}}never{{else}}{{date .LastUsedAt}}{{end}}</td>
+            <td class="actions">
+                <form class="inline" method="POST" action="/account/passkeys/{{.ID}}/remove">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <input type="password" name="current_password" placeholder="Password" required autocomplete="current-password" style="width:140px">
+                    <button type="submit" class="small secondary">Remove</button>
+                </form>
+            </td>
+        </tr>
+        {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p class="muted">None yet.</p>
+    {{end}}
+    <form data-passkey-register data-begin="/account/passkeys/register/begin" data-finish="/account/passkeys/register/finish" style="margin-top:12px">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <div class="error" data-passkey-error hidden></div>
+        <div class="form-row two">
+            <div>
+                <label for="passkey_name">Name</label>
+                <input type="text" id="passkey_name" name="name" maxlength="64" placeholder="e.g. Phone, Laptop, YubiKey">
+            </div>
+            <div>
+                <label for="passkey_password">Your current password</label>
+                <input type="password" id="passkey_password" name="current_password" required autocomplete="current-password">
+            </div>
+        </div>
+        <button type="submit">Add a passkey</button>
+    </form>
+    <div data-passkey-recovery hidden>
+        <p><strong>Passkey added. Save these recovery codes now.</strong> Each one signs you in once if you lose your passkeys. They are not shown again.</p>
+        <pre class="nowrap"></pre>
+        <p><a href="/account">Done</a></p>
+    </div>
+</div>
+<script src="{{asset "passkeys.js"}}" defer></script>
+{{end}}
+
+{{if .HasSecondFactor}}
+<h3>Recovery codes</h3>
+<div class="card">
+    <p>You have <strong>{{len .CurrentUser.RecoveryCodes}}</strong> unused recovery code{{if ne (len .CurrentUser.RecoveryCodes) 1}}s{{end}}. Each signs you in once in place of the second step.</p>
+    <form class="inline" method="POST" action="/account/two-step/recovery-codes">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        {{if .CurrentUser.TOTPEnabled}}
+        <input type="text" name="code" placeholder="Current code" inputmode="numeric" autocomplete="one-time-code" required style="width:140px">
+        {{else}}
+        <input type="password" name="current_password" placeholder="Password" required autocomplete="current-password" style="width:160px">
+        {{end}}
+        <button type="submit" class="secondary">New recovery codes</button>
+    </form>
 </div>
 {{end}}
 

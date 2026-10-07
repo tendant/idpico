@@ -125,6 +125,7 @@ func main() {
 		auth.WithLogger(logger),
 		auth.WithLockout(lockoutService),
 		auth.WithAudit(auditRecorder),
+		auth.WithPasskeys(store.Passkeys(), cfg.IssuerURL),
 	)
 
 	// Outbound mail + self-service account flows

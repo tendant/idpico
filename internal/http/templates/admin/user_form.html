@@ -74,9 +74,12 @@
 
 <h2>Two-step sign-in</h2>
 <div class="card">
-    {{if .User.TOTPEnabled}}
-    <p><span class="badge on">on</span> {{len .User.RecoveryCodes}} unused recovery code{{if ne (len .User.RecoveryCodes) 1}}s{{end}}.</p>
-    <p class="help">Reset only for a user who lost their authenticator and their recovery codes, after confirming who they are: they can then sign in with the password alone and set up a new authenticator on their account page.</p>
+    {{if or .User.TOTPEnabled .Passkeys}}
+    <p><span class="badge on">on</span>
+        Authenticator app: {{if .User.TOTPEnabled}}yes{{else}}no{{end}} ·
+        passkeys: {{len .Passkeys}}{{range .Passkeys}} ({{.Name}}){{end}} ·
+        {{len .User.RecoveryCodes}} unused recovery code{{if ne (len .User.RecoveryCodes) 1}}s{{end}}.</p>
+    <p class="help">Reset only for a user who lost their devices and their recovery codes, after confirming who they are. It removes the authenticator app, every passkey and the recovery codes; they can then sign in with the password alone and set up a second step again on their account page.</p>
     <form class="inline" method="POST" action="/admin/users/{{.User.ID}}/two-step/reset">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <button type="submit" class="secondary">Reset two-step sign-in</button>

@@ -54,6 +54,14 @@ func (h *AccountPageHandler) Routes(r chi.Router, limit func(http.Handler) http.
 		r.Post("/account/two-step/enable", h.TwoStepEnable)
 		r.Post("/account/two-step/disable", h.TwoStepDisable)
 		r.Post("/account/two-step/recovery-codes", h.TwoStepRecoveryCodes)
+		r.Post("/account/passkeys/register/begin", h.PasskeyRegisterBegin)
+		r.Post("/account/passkeys/{passkeyID}/remove", h.PasskeyRemove)
+	})
+	// Finishing needs no secret (the ceremony was opened by one) and must
+	// not be throttled away mid-registration.
+	r.Group(func(r chi.Router) {
+		r.Use(h.requireUser)
+		r.Post("/account/passkeys/register/finish", h.PasskeyRegisterFinish)
 	})
 }
 
@@ -107,6 +115,9 @@ type accountPageData struct {
 	Consents          []*domain.Consent
 	CanChangePassword bool
 	MinPasswordLength int
+	PasskeysAvailable bool
+	Passkeys          []*domain.Passkey
+	HasSecondFactor   bool
 }
 
 func (h *AccountPageHandler) Page(w http.ResponseWriter, r *http.Request) {
@@ -137,6 +148,9 @@ func (h *AccountPageHandler) render(w http.ResponseWriter, r *http.Request, stat
 		}
 	}
 	data.Consents, _ = h.store.Consents().ListByUserID(ctx, user.ID)
+	data.PasskeysAvailable = h.auth.PasskeysAvailable()
+	data.Passkeys, _ = h.auth.Passkeys(ctx, user.ID)
+	data.HasSecondFactor = user.TOTPEnabled() || len(data.Passkeys) > 0
 	h.templates.Render(w, status, "wide/account", data)
 }
 

@@ -37,6 +37,7 @@ type Store struct {
 	groups      *groupRepository
 	audit       *auditRepository
 	keys        *KeyRepository
+	passkeys    *passkeyRepository
 }
 
 // NewStore opens (creating if needed) the SQLite database at path, applies
@@ -115,6 +116,7 @@ func NewStore(ctx context.Context, path string) (*Store, error) {
 	s.groups = &groupRepository{db: db}
 	s.audit = &auditRepository{db: db}
 	s.keys = &KeyRepository{db: db}
+	s.passkeys = &passkeyRepository{db: db}
 
 	return s, nil
 }
@@ -130,9 +132,10 @@ func (s *Store) Consents() store.ConsentRepository       { return s.consents }
 func (s *Store) VerificationTokens() store.VerificationTokenRepository {
 	return s.verifTokens
 }
-func (s *Store) Groups() store.GroupRepository { return s.groups }
-func (s *Store) Audit() store.AuditRepository  { return s.audit }
-func (s *Store) Close() error                  { return s.db.Close() }
+func (s *Store) Groups() store.GroupRepository     { return s.groups }
+func (s *Store) Audit() store.AuditRepository      { return s.audit }
+func (s *Store) Passkeys() store.PasskeyRepository { return s.passkeys }
+func (s *Store) Close() error                      { return s.db.Close() }
 
 // Checkpoint folds the write-ahead log into idpico.db and truncates it, so
 // the main file is self-contained. SQLite only does this by itself once the

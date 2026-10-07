@@ -31,6 +31,8 @@ const (
 	TOTPDisabled             = "totp.disabled"
 	TOTPRecoveryCodeUsed     = "totp.recovery_code_used"
 	TOTPRecoveryCodesRenewed = "totp.recovery_codes_renewed"
+	PasskeyAdded             = "passkey.added"
+	PasskeyRemoved           = "passkey.removed"
 
 	KeyRotated = "key.rotated"
 

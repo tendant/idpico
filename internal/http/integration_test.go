@@ -183,6 +183,7 @@ func setupTestEnv(t *testing.T, driver string) *testEnv {
 		auth.WithLogger(logger),
 		auth.WithLockout(lockoutService),
 		auth.WithAudit(auditRecorder),
+		auth.WithPasskeys(store.Passkeys(), "http://localhost"),
 	)
 
 	// Self-service account flows with an in-memory mailer

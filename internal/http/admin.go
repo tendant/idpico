@@ -255,6 +255,7 @@ type userFormData struct {
 	AllGroups         []groupMembership
 	Sessions          []*domain.Session
 	Tokens            []*domain.Token
+	Passkeys          []*domain.Passkey
 	MinPasswordLength int
 }
 
@@ -285,6 +286,9 @@ func (h *AdminHandler) renderUserForm(w http.ResponseWriter, r *http.Request, st
 	data.MinPasswordLength = auth.MinPasswordLength
 	if data.User != nil && currentAdmin(r) != nil {
 		data.IsSelf = data.User.ID == currentAdmin(r).ID
+	}
+	if data.User != nil && !data.IsNew {
+		data.Passkeys, _ = h.cfg.Store.Passkeys().ListByUserID(r.Context(), data.User.ID)
 	}
 	h.templates.Render(w, status, "admin/user_form", data)
 }
@@ -651,8 +655,9 @@ func (h *AdminHandler) RevokeUserSessions(w http.ResponseWriter, r *http.Request
 	h.redirect(w, r, "/admin/users/"+user.ID, "Sessions and tokens revoked")
 }
 
-// ResetUserTwoStep removes a user's authenticator and recovery codes, for
-// one who lost both; they sign in with the password and set it up again.
+// ResetUserTwoStep removes a user's authenticator app, passkeys and recovery
+// codes, for one who lost them all; they sign in with the password and set
+// up a second step again.
 func (h *AdminHandler) ResetUserTwoStep(w http.ResponseWriter, r *http.Request) {
 	if !h.checkCSRF(w, r) {
 		return
@@ -661,8 +666,7 @@ func (h *AdminHandler) ResetUserTwoStep(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	auth.ClearTOTP(user)
-	if err := h.cfg.Store.Users().Update(r.Context(), user); err != nil {
+	if err := auth.ResetSecondFactors(r.Context(), h.cfg.Store, user); err != nil {
 		h.logger.Error("failed to reset two-step sign-in", "error", err)
 		h.redirect(w, r, "/admin/users/"+user.ID, "Failed to reset two-step sign-in")
 		return
@@ -706,6 +710,7 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	_ = h.cfg.Store.Sessions().DeleteByUserID(ctx, user.ID)
 	_ = h.cfg.Store.Tokens().RevokeByUserID(ctx, user.ID)
 	_ = h.cfg.Store.Consents().DeleteByUserID(ctx, user.ID)
+	_ = h.cfg.Store.Passkeys().DeleteByUserID(ctx, user.ID)
 	_ = h.cfg.Store.VerificationTokens().DeleteByUserID(ctx, user.ID, "")
 	_ = h.cfg.Store.Groups().RemoveUser(ctx, user.ID)
 	if err := h.cfg.Store.Users().Delete(ctx, user.ID); err != nil {

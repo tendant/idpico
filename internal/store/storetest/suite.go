@@ -34,6 +34,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"SessionRepository_CRUD", SessionRepository_CRUD},
 		{"SessionRepository_DeleteByUserID", SessionRepository_DeleteByUserID},
 		{"ConsumeOnce", ConsumeOnce},
+		{"PasskeyRepository_CRUD", PasskeyRepository_CRUD},
 		{"SessionAndAuthCode_AMRRoundTrip", SessionAndAuthCode_AMRRoundTrip},
 		{"SessionRepository_DeleteExpired", SessionRepository_DeleteExpired},
 		{"SessionRepository_ListByUserID", SessionRepository_ListByUserID},
@@ -362,6 +363,58 @@ func SessionAndAuthCode_AMRRoundTrip(t *testing.T, newStore Factory) {
 	c, err := store.AuthCodes().GetByCode(ctx, "c-amr")
 	if err != nil || len(c.AMR) != 1 || c.AMR[0] != "pwd" {
 		t.Errorf("auth code AMR = %v, %v", c, err)
+	}
+}
+
+func PasskeyRepository_CRUD(t *testing.T, newStore Factory) {
+	store := newStore(t)
+	ctx := context.Background()
+	seedUsers(t, store, "user-p", "user-q")
+	repo := store.Passkeys()
+
+	for _, p := range []*domain.Passkey{
+		{ID: "cred-1", UserID: "user-p", Name: "Phone", Credential: []byte(`{"id":"1"}`)},
+		{ID: "cred-2", UserID: "user-p", Name: "Laptop", Credential: []byte(`{"id":"2"}`)},
+		{ID: "cred-3", UserID: "user-q", Name: "Key", Credential: []byte(`{"id":"3"}`)},
+	} {
+		if err := repo.Create(ctx, p); err != nil {
+			t.Fatalf("Create %s: %v", p.ID, err)
+		}
+	}
+	if err := repo.Create(ctx, &domain.Passkey{ID: "cred-1", UserID: "user-q", Credential: []byte("{}")}); !idperrors.IsCode(err, idperrors.CodeAlreadyExists) {
+		t.Errorf("duplicate credential ID = %v, want AlreadyExists", err)
+	}
+	list, err := repo.ListByUserID(ctx, "user-p")
+	if err != nil || len(list) != 2 || list[0].Name == "" || string(list[0].Credential) == "" || list[0].CreatedAt.IsZero() {
+		t.Fatalf("ListByUserID = %+v, %v", list, err)
+	}
+
+	got := list[0]
+	got.Credential = []byte(`{"id":"1","signCount":5}`)
+	got.LastUsedAt = time.Now()
+	if err := repo.Update(ctx, got); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	list, _ = repo.ListByUserID(ctx, "user-p")
+	if string(list[0].Credential) != `{"id":"1","signCount":5}` || list[0].LastUsedAt.IsZero() {
+		t.Errorf("Update not persisted: %+v", list[0])
+	}
+
+	// Delete is scoped to the owner.
+	if err := repo.Delete(ctx, "user-q", "cred-1"); !idperrors.IsCode(err, idperrors.CodeNotFound) {
+		t.Errorf("Delete of another user's passkey = %v, want NotFound", err)
+	}
+	if err := repo.Delete(ctx, "user-p", "cred-1"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if err := repo.DeleteByUserID(ctx, "user-p"); err != nil {
+		t.Fatalf("DeleteByUserID: %v", err)
+	}
+	if list, _ := repo.ListByUserID(ctx, "user-p"); len(list) != 0 {
+		t.Errorf("user-p still has %d passkeys", len(list))
+	}
+	if list, _ := repo.ListByUserID(ctx, "user-q"); len(list) != 1 {
+		t.Errorf("user-q lost its passkey: %d", len(list))
 	}
 }
 

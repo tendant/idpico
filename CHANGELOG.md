@@ -4,6 +4,11 @@ All notable changes to idpico. The format follows [Keep a Changelog](https://kee
 
 ## [Unreleased]
 
+### Added
+
+- **Passkeys (WebAuthn) as a second sign-in step**, next to the authenticator app. Add one on `/account` (current password, then the device prompt); `/login/code` offers "Use a passkey". Phishing-resistant (the browser signs for the real origin only), bound to the issuer's host, and available with an `https://` issuer or `http://localhost`. A user may have several, with or without an authenticator app; the first second step of either kind creates the recovery codes, and removing the last one drops them. Renewing recovery codes needs a current code with an authenticator app, the password with passkeys only. `amr` is `["pwd","swk","mfa"]` (+ `"user"` when the device verified the user). Admin reset and `idpicoctl user reset-two-step` remove passkeys too. Audit events `passkey.added`, `passkey.removed`. **Migration `00006`** adds the `passkeys` table. Built on `github.com/go-webauthn/webauthn` v0.15.0 (the newest release for Go 1.24). The one piece of JavaScript is `/static/passkeys.js`, loaded only on the two pages that use it; no inline script, CSP unchanged.
+- Tests drive registration and sign-in with a software authenticator (ES256, "none" attestation): integration over sqlite and file (wrong password refused, `amr`, a phishing origin refused, assertion replay refused, recovery codes, removal), and conformance `TestPasskeySecondStep` through a full authorization on a `http://localhost` instance.
+
 ## [0.0.11] - 2026-10-07
 
 Optional two-step sign-in with an authenticator app, an `amr` claim that says when it was used, and

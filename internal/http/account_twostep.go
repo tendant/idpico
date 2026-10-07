@@ -92,7 +92,7 @@ func (h *AccountPageHandler) TwoStepRecoveryCodes(w http.ResponseWriter, r *http
 	if !h.checkCSRF(w, r) {
 		return
 	}
-	codes, err := h.auth.RenewRecoveryCodes(r.Context(), r, h.user(r), r.FormValue("code"))
+	codes, err := h.auth.RenewRecoveryCodes(r.Context(), r, h.user(r), r.FormValue("code"), r.FormValue("current_password"))
 	if err != nil {
 		h.twoStepError(w, r, err)
 		return
@@ -107,6 +107,10 @@ func (h *AccountPageHandler) twoStepError(w http.ResponseWriter, r *http.Request
 	}
 	if errors.Is(err, auth.ErrAccountLocked) {
 		h.render(w, r, http.StatusForbidden, lockedMessage)
+		return
+	}
+	if errors.Is(err, auth.ErrInvalidPassword) {
+		h.render(w, r, http.StatusBadRequest, "Your current password is incorrect.")
 		return
 	}
 	h.logger.Error("two-step sign-in change failed", "error", err)

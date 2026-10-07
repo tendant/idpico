@@ -11,10 +11,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/tendant/idpico/internal/audit"
 	"github.com/tendant/idpico/internal/domain"
 	idperrors "github.com/tendant/idpico/internal/errors"
 	"github.com/tendant/idpico/internal/metrics"
+	"github.com/tendant/idpico/internal/store"
 )
 
 // Two-step sign-in. Login accepts the password of a user with an
@@ -64,6 +66,9 @@ type pendingLogin struct {
 	email    string
 	expires  time.Time
 	attempts int
+	// passkey is the WebAuthn challenge issued for this login, if any;
+	// single use.
+	passkey *webauthn.SessionData
 }
 
 type pendingLogins struct {
@@ -119,6 +124,32 @@ func (p *pendingLogins) reserve(token string) (pendingLogin, bool) {
 	return *e, true
 }
 
+// setPasskeyChallenge records the WebAuthn challenge issued for a login.
+func (p *pendingLogins) setPasskeyChallenge(token string, data *webauthn.SessionData) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	e, ok := p.entries[token]
+	if !ok || time.Now().After(e.expires) {
+		return false
+	}
+	e.passkey = data
+	return true
+}
+
+// takePasskeyChallenge returns the login's WebAuthn challenge and forgets
+// it, so one signed assertion cannot be submitted twice.
+func (p *pendingLogins) takePasskeyChallenge(token string) *webauthn.SessionData {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	e, ok := p.entries[token]
+	if !ok {
+		return nil
+	}
+	data := e.passkey
+	e.passkey = nil
+	return data
+}
+
 func (p *pendingLogins) remove(token string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -154,58 +185,73 @@ func (s *Service) HasPendingLogin(r *http.Request) bool {
 // CompleteSecondFactor finishes a pending login with a TOTP code or a
 // recovery code and starts the session.
 func (s *Service) CompleteSecondFactor(ctx context.Context, w http.ResponseWriter, r *http.Request, code string) (*domain.User, error) {
+	token, user, attempts, err := s.reservePendingAttempt(ctx, w, r)
+	if err != nil {
+		return nil, err
+	}
+	ok, err := s.consumeSecondFactor(ctx, r, user, code)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, s.secondFactorFailed(ctx, w, r, user, token, attempts, "wrong authenticator or recovery code")
+	}
+	return user, s.finishPendingLogin(ctx, w, r, token, user, AMRPassword, AMROneTimePassword, AMRMultiFactor)
+}
+
+// reservePendingAttempt checks CSRF, finds the pending login, counts one
+// attempt against it and loads the user, who must still be active and
+// still have a second step.
+func (s *Service) reservePendingAttempt(ctx context.Context, w http.ResponseWriter, r *http.Request) (token string, user *domain.User, attempts int, err error) {
 	if err := s.csrf.ValidateToken(r); err != nil {
-		return nil, idperrors.New(idperrors.CodeForbidden, "invalid CSRF token")
+		return "", nil, 0, idperrors.New(idperrors.CodeForbidden, "invalid CSRF token")
 	}
 	c, err := r.Cookie(PendingLoginCookieName)
 	if err != nil {
-		return nil, ErrPendingLoginExpired
+		return "", nil, 0, ErrPendingLoginExpired
 	}
 	p, ok := s.pending.reserve(c.Value)
 	if !ok {
 		s.clearPendingCookie(w)
-		return nil, ErrPendingLoginExpired
+		return "", nil, 0, ErrPendingLoginExpired
 	}
 	if s.lockout != nil && s.lockout.IsLocked(p.email) {
 		s.pending.remove(c.Value)
 		s.clearPendingCookie(w)
 		metrics.RecordLogin("locked")
-		return nil, idperrors.New(idperrors.CodeForbidden, "account is temporarily locked")
+		return "", nil, 0, idperrors.New(idperrors.CodeForbidden, "account is temporarily locked")
 	}
-
-	user, err := s.users.GetByID(ctx, p.userID)
-	if err != nil || !user.Active || !user.TOTPEnabled() {
+	user, err = s.users.GetByID(ctx, p.userID)
+	if err != nil || !user.Active || !s.hasSecondFactor(ctx, user) {
 		// Disabled, deleted or reset since the password was accepted.
 		s.pending.remove(c.Value)
 		s.clearPendingCookie(w)
-		return nil, ErrPendingLoginExpired
+		return "", nil, 0, ErrPendingLoginExpired
 	}
+	return c.Value, user, p.attempts, nil
+}
 
-	ok, err = s.consumeSecondFactor(ctx, r, user, code)
-	if err != nil {
-		return nil, err
+// secondFactorFailed records a wrong code or passkey and reports whether
+// the pending login may try again (ErrInvalidCode) or is used up.
+func (s *Service) secondFactorFailed(ctx context.Context, w http.ResponseWriter, r *http.Request, user *domain.User, token string, attempts int, detail string) error {
+	if s.lockout != nil && s.lockout.RecordFailure(user.Email) {
+		s.logger.Warn("account locked due to failed attempts", "email", user.Email)
+		metrics.RecordAccountLockout()
 	}
-	if !ok {
-		if s.lockout != nil && s.lockout.RecordFailure(user.Email) {
-			s.logger.Warn("account locked due to failed attempts", "email", user.Email)
-			metrics.RecordAccountLockout()
-		}
-		s.audit.Record(ctx, audit.Event{ActorEmail: user.Email, Action: audit.LoginFailure, TargetType: "user", TargetID: user.ID, Detail: "wrong authenticator or recovery code", IP: audit.ClientIP(r)})
-		metrics.RecordLogin("failure")
-		if p.attempts >= pendingLoginAttempts {
-			s.pending.remove(c.Value)
-			s.clearPendingCookie(w)
-			return nil, ErrPendingLoginExpired
-		}
-		return nil, ErrInvalidCode
+	s.audit.Record(ctx, audit.Event{ActorEmail: user.Email, Action: audit.LoginFailure, TargetType: "user", TargetID: user.ID, Detail: detail, IP: audit.ClientIP(r)})
+	metrics.RecordLogin("failure")
+	if attempts >= pendingLoginAttempts {
+		s.pending.remove(token)
+		s.clearPendingCookie(w)
+		return ErrPendingLoginExpired
 	}
+	return ErrInvalidCode
+}
 
-	s.pending.remove(c.Value)
+func (s *Service) finishPendingLogin(ctx context.Context, w http.ResponseWriter, r *http.Request, token string, user *domain.User, amr ...string) error {
+	s.pending.remove(token)
 	s.clearPendingCookie(w)
-	if err := s.startSession(ctx, w, r, user, AMRPassword, AMROneTimePassword, AMRMultiFactor); err != nil {
-		return nil, err
-	}
-	return user, nil
+	return s.startSession(ctx, w, r, user, amr...)
 }
 
 // consumeSecondFactor checks a 6-digit TOTP code or a recovery code for the
@@ -226,15 +272,14 @@ func (s *Service) consumeSecondFactor(ctx context.Context, r *http.Request, user
 		return false, err
 	}
 	*user = *fresh
-	if !user.TOTPEnabled() {
-		return false, nil
-	}
-	if step, ok := VerifyTOTP(user.TOTPSecret, code, time.Now(), user.TOTPLastStep); ok {
-		user.TOTPLastStep = step
-		if err := s.users.Update(ctx, user); err != nil {
-			return false, fmt.Errorf("failed to record code use: %w", err)
+	if user.TOTPEnabled() {
+		if step, ok := VerifyTOTP(user.TOTPSecret, code, time.Now(), user.TOTPLastStep); ok {
+			user.TOTPLastStep = step
+			if err := s.users.Update(ctx, user); err != nil {
+				return false, fmt.Errorf("failed to record code use: %w", err)
+			}
+			return true, nil
 		}
-		return true, nil
 	}
 	if rest, ok := UseRecoveryCode(user.RecoveryCodes, code); ok {
 		user.RecoveryCodes = rest
@@ -320,6 +365,9 @@ func (s *Service) DisableTOTP(ctx context.Context, r *http.Request, user *domain
 		return err
 	}
 	ClearTOTP(user)
+	if !s.hasSecondFactor(ctx, user) {
+		user.RecoveryCodes = nil // nothing left for them to stand in for
+	}
 	if err := s.users.Update(ctx, user); err != nil {
 		return err
 	}
@@ -328,9 +376,19 @@ func (s *Service) DisableTOTP(ctx context.Context, r *http.Request, user *domain
 }
 
 // RenewRecoveryCodes replaces the recovery codes (all old ones stop
-// working); it takes a current code or a recovery code.
-func (s *Service) RenewRecoveryCodes(ctx context.Context, r *http.Request, user *domain.User, code string) ([]string, error) {
-	if err := s.guarded(user, func() (bool, error) { return s.consumeSecondFactor(ctx, r, user, code) }, ErrInvalidCode); err != nil {
+// working). A user with an authenticator app proves it with a current code
+// or a recovery code; a passkey-only user with the current password.
+func (s *Service) RenewRecoveryCodes(ctx context.Context, r *http.Request, user *domain.User, code, password string) ([]string, error) {
+	if !s.hasSecondFactor(ctx, user) {
+		return nil, idperrors.InvalidInput("set up an authenticator app or a passkey first")
+	}
+	var err error
+	if user.TOTPEnabled() {
+		err = s.guarded(user, func() (bool, error) { return s.consumeSecondFactor(ctx, r, user, code) }, ErrInvalidCode)
+	} else {
+		err = s.VerifyCurrentPassword(user, password)
+	}
+	if err != nil {
 		return nil, err
 	}
 	codes, hashes, err := NewRecoveryCodes()
@@ -345,8 +403,23 @@ func (s *Service) RenewRecoveryCodes(ctx context.Context, r *http.Request, user 
 	return codes, nil
 }
 
-// ClearTOTP removes the authenticator and recovery codes from user (the
-// caller saves it); used to turn it off and by an admin reset.
+// ClearTOTP removes the authenticator app from user (the caller saves it).
+// Recovery codes stay: they may still stand in for a passkey.
 func ClearTOTP(user *domain.User) {
-	user.TOTPSecret, user.TOTPLastStep, user.RecoveryCodes = "", 0, nil
+	user.TOTPSecret, user.TOTPLastStep = "", 0
+}
+
+// ResetSecondFactors removes every second step — authenticator app,
+// recovery codes and passkeys — for a user who lost them all (admin reset).
+// It saves the user.
+func ResetSecondFactors(ctx context.Context, st interface {
+	Users() store.UserRepository
+	Passkeys() store.PasskeyRepository
+}, user *domain.User) error {
+	ClearTOTP(user)
+	user.RecoveryCodes = nil
+	if err := st.Users().Update(ctx, user); err != nil {
+		return err
+	}
+	return st.Passkeys().DeleteByUserID(ctx, user.ID)
 }

@@ -298,6 +298,8 @@ func NewServer(addr string, opts ...Option) *Server {
 		limited(interactive).Post("/login", login.Login)
 		r.Get("/login/code", login.CodePage)
 		limited(interactive).Post("/login/code", login.Code)
+		r.Post("/login/passkey/begin", login.PasskeyBegin)
+		limited(interactive).Post("/login/passkey/finish", login.PasskeyFinish)
 		if interactive != nil {
 			s.logger.Info("rate limiting enabled", "interactive_per_min", s.loginRateLimit, "api_per_min", s.loginRateLimit*10)
 		}

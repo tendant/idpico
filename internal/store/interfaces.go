@@ -110,6 +110,16 @@ type ConsentRepository interface {
 	DeleteByUserID(ctx context.Context, userID string) error
 }
 
+// PasskeyRepository stores users' WebAuthn credentials.
+type PasskeyRepository interface {
+	Create(ctx context.Context, passkey *domain.Passkey) error
+	ListByUserID(ctx context.Context, userID string) ([]*domain.Passkey, error)
+	// Update saves the credential record and last use after a sign-in.
+	Update(ctx context.Context, passkey *domain.Passkey) error
+	Delete(ctx context.Context, userID, id string) error
+	DeleteByUserID(ctx context.Context, userID string) error
+}
+
 // VerificationTokenRepository defines operations for emailed single-use tokens.
 type VerificationTokenRepository interface {
 	Create(ctx context.Context, token *domain.VerificationToken) error
@@ -170,5 +180,6 @@ type Store interface {
 	VerificationTokens() VerificationTokenRepository
 	Groups() GroupRepository
 	Audit() AuditRepository
+	Passkeys() PasskeyRepository
 	Close() error
 }

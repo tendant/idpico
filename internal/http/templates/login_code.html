@@ -1,20 +1,29 @@
-{{define "title"}}Verification code{{end}}
+{{define "title"}}Second step{{end}}
 {{define "content"}}
-<h1>Verification code</h1>
+<h1>Second step</h1>
 {{if .Error}}
 <div class="error">{{.Error}}</div>
 {{end}}
+{{if .HasPasskeys}}
+<div data-passkey-login data-begin="/login/passkey/begin" data-finish="/login/passkey/finish" data-csrf="{{.CSRFToken}}" data-return-url="{{.ReturnURL}}">
+    <div class="error" data-passkey-error hidden></div>
+    <button type="button">Use a passkey</button>
+</div>
+<p class="muted" style="margin-top:16px">{{if .HasTOTP}}Or enter the 6-digit code from your authenticator app, or a recovery code.{{else}}Or enter a recovery code.{{end}}</p>
+<script src="{{asset "passkeys.js"}}" defer></script>
+{{else}}
 <p>Enter the 6-digit code from your authenticator app.</p>
+{{end}}
 <form method="POST" action="/login/code">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     {{if .ReturnURL}}
     <input type="hidden" name="return_url" value="{{.ReturnURL}}">
     {{end}}
     <div class="form-group">
-        <label for="code">Code</label>
-        <input type="text" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus>
+        <label for="code">{{if .HasTOTP}}Code{{else}}Recovery code{{end}}</label>
+        <input type="text" id="code" name="code" {{if .HasTOTP}}inputmode="numeric" {{end}}autocomplete="one-time-code" required {{if not .HasPasskeys}}autofocus{{end}}>
     </div>
-    <button type="submit">Verify</button>
+    <button type="submit" {{if .HasPasskeys}}class="secondary"{{end}}>Verify</button>
 </form>
-<div class="links">Lost your device? Enter one of your recovery codes instead. <a href="/login{{if .ReturnURL}}?return_url={{.ReturnURL}}{{end}}">Start over</a></div>
+<div class="links">{{if .HasTOTP}}Lost your device? Enter one of your recovery codes instead. {{end}}<a href="/login{{if .ReturnURL}}?return_url={{.ReturnURL}}{{end}}">Start over</a></div>
 {{end}}

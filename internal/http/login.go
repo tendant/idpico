@@ -184,7 +184,7 @@ func (h *LoginHandler) CodePage(w http.ResponseWriter, r *http.Request) {
 		h.restartLogin(w, r, returnURL)
 		return
 	}
-	h.renderCodePage(w, http.StatusOK, returnURL, "")
+	h.renderCodePage(w, r, http.StatusOK, returnURL, "")
 }
 
 // Code handles POST /login/code.
@@ -193,7 +193,7 @@ func (h *LoginHandler) Code(w http.ResponseWriter, r *http.Request) {
 	user, err := h.authService.CompleteSecondFactor(r.Context(), w, r, r.FormValue("code"))
 	switch {
 	case errors.Is(err, auth.ErrInvalidCode):
-		h.renderCodePage(w, http.StatusUnauthorized, returnURL, "That code is not valid. Check the time on your device, or use a recovery code.")
+		h.renderCodePage(w, r, http.StatusUnauthorized, returnURL, "That code is not valid. Check the time on your device, or use a recovery code.")
 		return
 	case errors.Is(err, auth.ErrPendingLoginExpired):
 		h.restartLogin(w, r, returnURL)
@@ -203,7 +203,7 @@ func (h *LoginHandler) Code(w http.ResponseWriter, r *http.Request) {
 		if e, ok := err.(*idperrors.Error); ok && e.Message == "account is temporarily locked" {
 			msg = "Account is temporarily locked due to too many failed attempts. Please try again later."
 		}
-		h.renderCodePage(w, http.StatusForbidden, returnURL, msg)
+		h.renderCodePage(w, r, http.StatusForbidden, returnURL, msg)
 		return
 	case err != nil:
 		h.logger.Error("second factor failed", "error", err)
@@ -227,14 +227,18 @@ func (h *LoginHandler) restartLogin(w http.ResponseWriter, r *http.Request, retu
 	http.Redirect(w, r, "/login?"+q.Encode(), http.StatusFound)
 }
 
-func (h *LoginHandler) renderCodePage(w http.ResponseWriter, status int, returnURL, errMsg string) {
+func (h *LoginHandler) renderCodePage(w http.ResponseWriter, r *http.Request, status int, returnURL, errMsg string) {
 	csrfToken, err := h.authService.CSRF().GenerateToken(w)
 	if err != nil {
 		h.logger.Error("failed to generate CSRF token", "error", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	h.templates.Render(w, status, "login_code", loginPageData{CSRFToken: csrfToken, ReturnURL: returnURL, Error: errMsg})
+	h.templates.Render(w, status, "login_code", loginPageData{
+		CSRFToken: csrfToken, ReturnURL: returnURL, Error: errMsg,
+		HasTOTP:     h.authService.PendingLoginHasTOTP(r.Context(), r),
+		HasPasskeys: h.authService.PendingLoginHasPasskeys(r.Context(), r),
+	})
 }
 
 func (h *LoginHandler) renderLoginError(w http.ResponseWriter, errMsg, returnURL string) {
@@ -278,4 +282,7 @@ type loginPageData struct {
 	Error             string
 	Message           string
 	ForgotPasswordURL string
+	// Code page only: which second steps the pending user has.
+	HasTOTP     bool
+	HasPasskeys bool
 }

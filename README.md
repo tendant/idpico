@@ -9,11 +9,11 @@ IdP without standing up Keycloak.
 >
 > Local development and testing, and **small single-server deployments** — internal tools, an
 > early product with a modest user base — where an outage of the one instance is survivable.
-> It is deliberately small. Two-step sign-in (an authenticator app) is optional per user, with no
-> passkeys or WebAuthn; there is **no high availability** (one instance, one data directory), no
-> external security audit, and it is pre-1.0. Back up
+> It is deliberately small. Two-step sign-in (authenticator app or passkey) is optional per user,
+> and passkeys are a second step only, not passwordless; there is **no high availability** (one
+> instance, one data directory), no external security audit, and it is pre-1.0. Back up
 > the data directory (see [Data Storage](#data-storage)), keep it behind TLS, and read the known
-> limitations in [CONFORMANCE.md](CONFORMANCE.md). If you need enforced MFA, passkeys, HA, federation or
+> limitations in [CONFORMANCE.md](CONFORMANCE.md). If you need enforced MFA, passwordless sign-in, HA, federation or
 > compliance guarantees, use Keycloak, Zitadel, Authentik or a hosted provider.
 
 ## Features
@@ -25,7 +25,7 @@ IdP without standing up Keycloak.
 - **Token introspection** (RFC 7662)
 - **OIDC logout** (end_session_endpoint)
 - **Argon2id password hashing**
-- **Two-step sign-in** with an authenticator app (TOTP), optional per user, with recovery codes
+- **Two-step sign-in** with an authenticator app (TOTP) or a passkey (WebAuthn), optional per user, with recovery codes
 - **Secure session cookies** (HttpOnly, Secure, SameSite)
 - **CSRF protection** on login forms
 - **CORS support** with configurable origins
@@ -110,6 +110,7 @@ lockout, CORS, security headers, logging, bootstrap formats — is in
 | `GET /login` | Login page |
 | `POST /login` | Process login |
 | `GET/POST /login/code` | Second step for users with an authenticator: the 6-digit code or a recovery code |
+| `POST /login/passkey/begin`, `/login/passkey/finish` | Second step with a passkey (driven by `/static/passkeys.js`) |
 | `GET /logout` | Logout |
 | `POST /consent` | Records the user's allow/deny decision from the consent screen |
 | `GET/POST /forgot-password` | Request a password reset link by email |
@@ -371,8 +372,19 @@ nothing forces a user, or an admin, to set it up.
   a current code or a recovery code, not just an open session.
 - A **password reset by email does not remove it**: someone who takes over the mailbox still needs
   the authenticator.
+- **Passkeys** (WebAuthn) are a second step too: **Add a passkey** on `/account` (current password,
+  then the device's own prompt — Face ID, fingerprint, PIN or a security key), and `/login/code`
+  offers **Use a passkey**. A user may have several, an authenticator app as well, or only passkeys;
+  the first second step of any kind creates the recovery codes. A passkey is phishing-resistant: the
+  browser signs for the real origin only. They are bound to the issuer's host name — moving
+  `IDPICO_ISSUER_URL` to another host makes them unusable (sign in with a recovery code) — and need
+  an `https://` issuer, or `http://localhost` for development; with any other http issuer the
+  option is hidden. `amr` for a passkey sign-in is `["pwd","swk","mfa"]` plus `"user"` when the
+  device verified the user (`swk` because synced passkeys are not hardware-bound). This is the only
+  JavaScript in IDPico: `/static/passkeys.js`, loaded on the two pages that need it, no inline script.
 - Lost the phone and the recovery codes? An admin resets it on the user's page in `/admin`, or
-  `idpicoctl user reset-two-step <email>`; the user then signs in with the password and sets up a new one.
+  `idpicoctl user reset-two-step <email>` — this removes the authenticator app, every passkey and the
+  recovery codes; the user then signs in with the password and sets up a new second step.
 - The secret is stored unencrypted in the database, like the signing keys: protect backups accordingly.
 - ID tokens carry `amr` (RFC 8176): `["pwd"]` after a password-only sign-in, `["pwd","otp","mfa"]`
   after the code step (a recovery code counts as `otp`). An app that wants a second factor checks for
